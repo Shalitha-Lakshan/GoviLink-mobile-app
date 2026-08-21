@@ -14,66 +14,6 @@ import {
 } from 'firebase/auth';
 import { db, auth } from '../firebaseConfig';
 
-// Default Sri Lanka Context Produce Data for Initial Firestore Seeding
-const INITIAL_PRODUCE = [
-  {
-    nameEn: 'Fresh Nuwara Eliya Carrots',
-    nameSi: 'නුවරඑළිය නැවුම් කැරට්',
-    nameTa: 'நுவப்ரஎலியா கேரட்',
-    category: 'Vegetables',
-    price: 340,
-    unitEn: 'kg',
-    unitSi: 'කි.ග්‍රෑ.',
-    unitTa: 'கிலோ',
-    farmerName: 'Sunil Bandara',
-    location: 'Nuwara Eliya',
-    stockQty: 450,
-    image: 'https://images.unsplash.com/photo-1598170845058-12ef4a457c3b?w=400&q=80',
-  },
-  {
-    nameEn: 'Organic Red Onions (Rathu Lunu)',
-    nameSi: 'කාබනික රතු ළූණු',
-    nameTa: 'சிவப்பு வெங்காயம்',
-    category: 'Vegetables',
-    price: 520,
-    unitEn: 'kg',
-    unitSi: 'කි.ග්‍රෑ.',
-    unitTa: 'கிலோ',
-    farmerName: 'K. Rajaratnam',
-    location: 'Jaffna',
-    stockQty: 800,
-    image: 'https://images.unsplash.com/photo-1618512496248-a07fe83aa8cb?w=400&q=80',
-  },
-  {
-    nameEn: 'Keeri Samba Rice',
-    nameSi: 'කීරි සම්බා සහල්',
-    nameTa: 'கீரி சம்பா அரிசி',
-    category: 'Rice & Grains',
-    price: 260,
-    unitEn: 'kg',
-    unitSi: 'කි.ග්‍රෑ.',
-    unitTa: 'கிலோ',
-    farmerName: 'Mahinda Ranasinghe',
-    location: 'Polonnaruwa',
-    stockQty: 1200,
-    image: 'https://images.unsplash.com/photo-1586201375761-83865001e31c?w=400&q=80',
-  },
-  {
-    nameEn: 'Ceylon Cinnamon Bundles',
-    nameSi: 'ලංකා කුරුඳු මිටි',
-    nameTa: 'இலங்கை இலவங்கப்பட்டை',
-    category: 'Spices',
-    price: 1450,
-    unitEn: 'bundle',
-    unitSi: 'මිටිය',
-    unitTa: 'கட்டு',
-    farmerName: 'P. G. Gamage',
-    location: 'Matara',
-    stockQty: 150,
-    image: 'https://images.unsplash.com/photo-1509358271058-acd05cc93898?w=400&q=80',
-  },
-];
-
 // -------------------------------------------------------
 // PRODUCE LISTINGS
 // -------------------------------------------------------
@@ -84,22 +24,12 @@ const INITIAL_PRODUCE = [
 export const subscribeToProduceListings = (onUpdate) => {
   const produceRef = collection(db, 'produce');
 
-  return onSnapshot(produceRef, async (snapshot) => {
-    if (snapshot.empty) {
-      // Seed default initial produce items into Firestore if empty
-      for (const item of INITIAL_PRODUCE) {
-        await addDoc(produceRef, {
-          ...item,
-          createdAt: serverTimestamp(),
-        });
-      }
-    } else {
-      const items = snapshot.docs.map((docSnap) => ({
-        id: docSnap.id,
-        ...docSnap.data(),
-      }));
-      onUpdate(items);
-    }
+  return onSnapshot(produceRef, (snapshot) => {
+    const items = snapshot.docs.map((docSnap) => ({
+      id: docSnap.id,
+      ...docSnap.data(),
+    }));
+    onUpdate(items);
   }, (error) => {
     console.error('Firestore produce subscription error:', error);
   });
@@ -221,6 +151,9 @@ export const registerWithFirebase = async (userData) => {
     // 3. Write to users/{uid}
     await setDoc(doc(db, 'users', user.uid), profile);
 
+    // 4. Sign out so user must explicitly log in after registering
+    await firebaseSignOut(auth);
+
     return { success: true, user, profile };
   } catch (error) {
     console.error('Registration error:', error);
@@ -235,28 +168,44 @@ export const registerWithFirebase = async (userData) => {
  * @param {string} password
  */
 export const loginWithFirebase = async (email, password) => {
+  const cleanEmail = email.trim().toLowerCase();
+  const isAdminEmail = cleanEmail === 'govilink@admin.lk';
+
   try {
-    // 1. Firebase Auth sign-in
-    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    let userCredential;
+    try {
+      userCredential = await signInWithEmailAndPassword(auth, cleanEmail, password);
+    } catch (authErr) {
+      // If admin account doesn't exist in Firebase Auth yet, auto-create it
+      if (isAdminEmail && (authErr.code === 'auth/user-not-found' || authErr.code === 'auth/invalid-credential')) {
+        try {
+          userCredential = await createUserWithEmailAndPassword(auth, cleanEmail, password);
+        } catch (_createErr) {
+          throw authErr;
+        }
+      } else {
+        throw authErr;
+      }
+    }
+
     const user = userCredential.user;
 
-    // 2. Fetch Firestore profile
+    // Fetch Firestore profile
     const profileResult = await getUserProfile(user.uid);
 
-    if (!profileResult.success) {
-      // Auth succeeded but Firestore doc is missing — handle safely
-      console.warn('Firebase Auth OK but Firestore profile missing for uid:', user.uid);
-      return {
-        success: true,
-        user,
-        profile: {
-          uid: user.uid,
-          email: user.email,
-          fullName: '',
-          phoneNumber: '',
-          role: 'buyer',
-        },
+    // If profile doc missing or email is admin, ensure profile doc with cooperative_admin role exists
+    if (!profileResult.success || isAdminEmail) {
+      const adminProfile = {
+        uid: user.uid,
+        email: cleanEmail,
+        fullName: profileResult?.profile?.fullName || 'GoviLink Cooperative Admin',
+        phoneNumber: profileResult?.profile?.phoneNumber || '0770000000',
+        role: 'cooperative_admin',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
       };
+      await setDoc(doc(db, 'users', user.uid), adminProfile);
+      return { success: true, user, profile: adminProfile };
     }
 
     return { success: true, user, profile: profileResult.profile };

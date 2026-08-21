@@ -187,78 +187,18 @@ const TRANSLATIONS = {
   },
 };
 
-// ----------------------------------------------------
-// SAMPLE PRODUCE MARKETPLACE DATA (SRI LANKA CONTEXT)
-// ----------------------------------------------------
-const SAMPLE_PRODUCE = [
-  {
-    id: '1',
-    nameEn: 'Fresh Nuwara Eliya Carrots',
-    nameSi: 'නුවරඑළිය නැවුම් කැරට්',
-    nameTa: 'நுவப்ரஎலியா கேரட்',
-    category: 'Vegetables',
-    price: 340,
-    unitEn: 'kg',
-    unitSi: 'කි.ග්‍රෑ.',
-    unitTa: 'கிலோ',
-    farmerName: 'Sunil Bandara',
-    location: 'Nuwara Eliya',
-    stockQty: 450,
-    image: 'https://images.unsplash.com/photo-1598170845058-12ef4a457c3b?w=400&q=80',
-  },
-  {
-    id: '2',
-    nameEn: 'Organic Red Onions (Rathu Lunu)',
-    nameSi: 'කාබනික රතු ළූණු',
-    nameTa: 'சிவப்பு வெங்காயம்',
-    category: 'Vegetables',
-    price: 520,
-    unitEn: 'kg',
-    unitSi: 'කි.ග්‍රෑ.',
-    unitTa: 'கிலோ',
-    farmerName: 'K. Rajaratnam',
-    location: 'Jaffna',
-    stockQty: 800,
-    image: 'https://images.unsplash.com/photo-1618512496248-a07fe83aa8cb?w=400&q=80',
-  },
-  {
-    id: '3',
-    nameEn: 'Keeri Samba Rice',
-    nameSi: 'කීරි සම්බා සහල්',
-    nameTa: 'கீரி சம்பா அரிசி',
-    category: 'Rice & Grains',
-    price: 260,
-    unitEn: 'kg',
-    unitSi: 'කි.ග්‍රෑ.',
-    unitTa: 'கிலோ',
-    farmerName: 'Mahinda Ranasinghe',
-    location: 'Polonnaruwa',
-    stockQty: 1200,
-    image: 'https://images.unsplash.com/photo-1586201375761-83865001e31c?w=400&q=80',
-  },
-  {
-    id: '4',
-    nameEn: 'Ceylon Cinnamon Bundles',
-    nameSi: 'ලංකා කුරුඳු මිටි',
-    nameTa: 'இலங்கை இலவங்கப்பட்டை',
-    category: 'Spices',
-    price: 1450,
-    unitEn: 'bundle',
-    unitSi: 'මිටිය',
-    unitTa: 'கட்டு',
-    farmerName: 'P. G. Gamage',
-    location: 'Matara',
-    stockQty: 150,
-    image: 'https://images.unsplash.com/photo-1509358271058-acd05cc93898?w=400&q=80',
-  },
-];
 
-// Helper: map Firestore role string to internal dashboard role
-const mapRoleToDashboard = (role) => {
+
+// Helper: map Firestore role string & email to internal dashboard role
+const mapRoleToDashboard = (role, email) => {
+  if (email && email.toLowerCase() === 'govilink@admin.lk') {
+    return 'admin';
+  }
   switch (role) {
     case 'farmer': return 'farmer';
     case 'buyer': return 'buyer';
     case 'cooperative_admin': return 'admin';
+    case 'admin': return 'admin';
     case 'driver': return 'driver';
     default: return 'buyer';
   }
@@ -276,7 +216,7 @@ function AppInner() {
   const [selectedItem, setSelectedItem] = useState(null);
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [orderQty, setOrderQty] = useState(5);
-  const [produceListings, setProduceListings] = useState(SAMPLE_PRODUCE);
+  const [produceListings, setProduceListings] = useState([]);
   const [ordersList, setOrdersList] = useState([]);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
@@ -314,7 +254,7 @@ function AppInner() {
         if (result.success) {
           const profile = result.profile;
           setUserProfile(profile);
-          setCurrentRole(mapRoleToDashboard(profile.role));
+          setCurrentRole(mapRoleToDashboard(profile.role, profile.email));
           setAuthScreen('authenticated');
         } else {
           // Auth OK but no Firestore doc — go to login so user can re-authenticate
@@ -427,7 +367,7 @@ function AppInner() {
         onNavigateToRegister={() => setAuthScreen('register')}
         onLoginSuccess={(profile) => {
           setUserProfile(profile);
-          setCurrentRole(mapRoleToDashboard(profile?.role));
+          setCurrentRole(mapRoleToDashboard(profile?.role, profile?.email));
           setAuthScreen('authenticated');
         }}
       />
@@ -440,10 +380,8 @@ function AppInner() {
         lang={lang}
         onBack={() => setAuthScreen('login')}
         onNavigateToLogin={() => setAuthScreen('login')}
-        onRegisterComplete={(profile) => {
-          setUserProfile(profile);
-          setCurrentRole(mapRoleToDashboard(profile?.role));
-          setAuthScreen('authenticated');
+        onRegisterComplete={() => {
+          setAuthScreen('login');
         }}
       />
     );

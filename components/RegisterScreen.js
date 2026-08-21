@@ -171,7 +171,6 @@ const TRANSLATIONS = {
     roles: [
       { id: 'farmer', iconComponent: FarmerIcon, label: 'Farmer' },
       { id: 'buyer', iconComponent: BuyerIcon, label: 'Buyer' },
-      { id: 'cooperative_admin', iconComponent: AdminIcon, label: 'Co-op Admin' },
       { id: 'driver', iconComponent: DriverIcon, label: 'Driver' },
     ],
     submitBtn: 'Create Account',
@@ -210,7 +209,6 @@ const TRANSLATIONS = {
     roles: [
       { id: 'farmer', iconComponent: FarmerIcon, label: 'ගොවියා' },
       { id: 'buyer', iconComponent: BuyerIcon, label: 'ගණුදෙනුකරු' },
-      { id: 'cooperative_admin', iconComponent: AdminIcon, label: 'සමිති පරිපාලක' },
       { id: 'driver', iconComponent: DriverIcon, label: 'රියදුරු' },
     ],
     submitBtn: 'ගිණුම සාදන්න',
@@ -249,7 +247,6 @@ const TRANSLATIONS = {
     roles: [
       { id: 'farmer', iconComponent: FarmerIcon, label: 'விவசாயி' },
       { id: 'buyer', iconComponent: BuyerIcon, label: 'கொள்முதல் செய்பவர்' },
-      { id: 'cooperative_admin', iconComponent: AdminIcon, label: 'கூட்டுறவு நிர்வாகி' },
       { id: 'driver', iconComponent: DriverIcon, label: 'ஓட்டுநர்' },
     ],
     submitBtn: 'கணக்கை உருவாக்கவும்',
@@ -385,9 +382,23 @@ export default function RegisterScreen({ lang = 'en', onBack, onNavigateToLogin,
       });
 
       if (result.success) {
-        if (onRegisterComplete) {
-          onRegisterComplete(result.profile);
-        }
+        Alert.alert(
+          'Registration Successful 🎉',
+          'Your account has been created successfully! Please log in to continue.',
+          [
+            {
+              text: 'Log In',
+              onPress: () => {
+                if (onNavigateToLogin) {
+                  onNavigateToLogin();
+                } else if (onRegisterComplete) {
+                  onRegisterComplete(result.profile);
+                }
+              },
+            },
+          ],
+          { cancelable: false }
+        );
       } else {
         const friendlyMsg = getFriendlyError(result.error);
         Alert.alert('Registration Failed', friendlyMsg);
@@ -905,14 +916,14 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 
-  /* VISUAL ROLE SELECTOR GRID — 4 ROLES in 2×2 */
+  /* VISUAL ROLE SELECTOR GRID — 3 ROLES in 1 ROW */
   rolesGridContainer: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    justifyContent: 'space-between',
     gap: 8,
   },
   roleGridCard: {
-    width: '47%',
+    flex: 1,
     backgroundColor: THEME.cardBg,
     borderRadius: 12,
     borderWidth: 1.5,
