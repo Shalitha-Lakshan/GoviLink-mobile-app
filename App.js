@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
   Text,
@@ -13,6 +13,14 @@ import {
   FlatList,
   Alert,
 } from 'react-native';
+import * as SplashScreen from 'expo-splash-screen';
+import SplashScreenComponent from './components/SplashScreen';
+import LanguageSelectionScreen from './components/LanguageSelectionScreen';
+
+// Keep the native splash screen visible while JS resources are initializing
+SplashScreen.preventAutoHideAsync().catch(() => {
+  /* reload or environment fallback */
+});
 
 // ----------------------------------------------------
 // GOVILINK DESIGN SYSTEM & BRAND COLOR PALETTE
@@ -248,6 +256,8 @@ const SAMPLE_PRODUCE = [
 ];
 
 export default function App() {
+  const [isSplashVisible, setIsSplashVisible] = useState(true);
+  const [hasSelectedLanguage, setHasSelectedLanguage] = useState(false);
   const [lang, setLang] = useState('en'); // 'en' | 'si' | 'ta'
   const [currentRole, setCurrentRole] = useState('buyer'); // 'buyer' | 'farmer' | 'admin' | 'driver'
   const [selectedCategory, setSelectedCategory] = useState(0);
@@ -255,6 +265,17 @@ export default function App() {
   const [selectedItem, setSelectedItem] = useState(null);
   const [orderQty, setOrderQty] = useState(5);
   const [showOrderModal, setShowOrderModal] = useState(false);
+
+  useEffect(() => {
+    async function hideNativeSplash() {
+      try {
+        await SplashScreen.hideAsync();
+      } catch (e) {
+        // Native splash already hidden or unavailable
+      }
+    }
+    hideNativeSplash();
+  }, []);
 
   const t = TRANSLATIONS[lang];
 
@@ -282,6 +303,21 @@ export default function App() {
     );
   };
 
+  if (isSplashVisible) {
+    return <SplashScreenComponent onFinish={() => setIsSplashVisible(false)} />;
+  }
+
+  if (!hasSelectedLanguage) {
+    return (
+      <LanguageSelectionScreen
+        onSelectLanguage={(selectedLang) => {
+          setLang(selectedLang);
+          setHasSelectedLanguage(true);
+        }}
+      />
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.navy} />
@@ -291,9 +327,11 @@ export default function App() {
       {/* ---------------------------------------------------- */}
       <View style={styles.headerBar}>
         <View style={styles.brandContainer}>
-          <View style={styles.logoBadge}>
-            <Text style={styles.logoBadgeText}>G</Text>
-          </View>
+          <Image
+            source={require('./assets/splash-icon.png')}
+            style={styles.headerLogoBadge}
+            resizeMode="contain"
+          />
           <View>
             <View style={styles.brandTitleRow}>
               <Text style={styles.brandTitleNavy}>Govi</Text>
@@ -649,19 +687,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  logoBadge: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: COLORS.emerald,
-    justifyContent: 'center',
-    alignItems: 'center',
+  headerLogoBadge: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#FFFFFF',
     marginRight: 10,
-  },
-  logoBadgeText: {
-    color: '#FFF',
-    fontWeight: '900',
-    fontSize: 22,
   },
   brandTitleRow: {
     flexDirection: 'row',
