@@ -1,7 +1,8 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { initializeFirestore, getFirestore } from 'firebase/firestore';
-import { initializeAuth, getAuth, getReactNativePersistence } from 'firebase/auth';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { initializeAuth, getReactNativePersistence, getAuth } from 'firebase/auth';
+import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 
 // ----------------------------------------------------
 // GOVILINK FIREBASE CONFIGURATION
@@ -17,34 +18,32 @@ const firebaseConfig = {
   measurementId: "G-7NTBHN1DSW"
 };
 
-// Initialize Firebase App singleton safely for React Native
-export const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+// 1. App initialization (Singleton check)
+const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
-// Initialize Firestore with Long-Polling enabled (bypasses proxy/firewall WebSockets blocks)
-let dbInstance;
+// 2. Firestore initialization
+let db;
 try {
-  dbInstance = initializeFirestore(app, {
+  db = initializeFirestore(app, {
     experimentalForceLongPolling: true,
   });
-} catch (e) {
-  dbInstance = getFirestore(app);
+} catch (_e) {
+  db = getFirestore(app);
 }
 
-export const db = dbInstance;
-
-// Lazy auth getter to prevent top-level bundle evaluation component registration errors
-let _auth = null;
-export const getFirebaseAuth = () => {
-  if (!_auth) {
-    try {
-      _auth = initializeAuth(app, {
-        persistence: getReactNativePersistence(AsyncStorage),
-      });
-    } catch (e) {
-      _auth = getAuth(app);
-    }
+// 3. Auth initialization (Safe across Web and Native platforms)
+let auth;
+if (Platform.OS === 'web' || typeof getReactNativePersistence !== 'function') {
+  auth = getAuth(app);
+} else {
+  try {
+    auth = initializeAuth(app, {
+      persistence: getReactNativePersistence(ReactNativeAsyncStorage)
+    });
+  } catch (_e) {
+    auth = getAuth(app);
   }
-  return _auth;
-};
+}
 
+export { app, db, auth };
 export default app;

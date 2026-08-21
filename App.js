@@ -11,19 +11,25 @@ import {
   Modal,
   FlatList,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import * as SplashScreen from 'expo-splash-screen';
 import SplashScreenComponent from './components/SplashScreen';
 import LanguageSelectionScreen from './components/LanguageSelectionScreen';
 import LoginScreen from './components/LoginScreen';
 import RegisterScreen from './components/RegisterScreen';
-import { 
-  subscribeToProduceListings, 
-  placeOrderInFirestore, 
+import {
+  subscribeToProduceListings,
+  placeOrderInFirestore,
   subscribeToOrders,
-  addProduceListing 
+  addProduceListing,
+  logoutUser,
+  getUserProfile,
 } from './services/firebaseDatabase';
+import { AuthProvider } from './context/AuthContext';
+import { onAuthStateChanged } from 'firebase/auth';
+import { auth } from './firebaseConfig';
 
 
 // Keep the native splash screen visible while JS resources are initializing
@@ -247,18 +253,32 @@ const SAMPLE_PRODUCE = [
   },
 ];
 
-export default function App() {
+// Helper: map Firestore role string to internal dashboard role
+const mapRoleToDashboard = (role) => {
+  switch (role) {
+    case 'farmer': return 'farmer';
+    case 'buyer': return 'buyer';
+    case 'cooperative_admin': return 'admin';
+    case 'driver': return 'driver';
+    default: return 'buyer';
+  }
+};
+
+function AppInner() {
   const [isSplashVisible, setIsSplashVisible] = useState(true);
-  const [authScreen, setAuthScreen] = useState('language'); // 'language' | 'login' | 'register' | 'authenticated'
+  // 'checking' while onAuthStateChanged runs, then 'language'|'login'|'register'|'authenticated'
+  const [authScreen, setAuthScreen] = useState('checking');
   const [userProfile, setUserProfile] = useState(null);
   const [lang, setLang] = useState('en'); // 'en' | 'si' | 'ta'
   const [currentRole, setCurrentRole] = useState('buyer'); // 'buyer' | 'farmer' | 'admin' | 'driver'
   const [selectedCategory, setSelectedCategory] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedItem, setSelectedItem] = useState(null);
+  const [showOrderModal, setShowOrderModal] = useState(false);
   const [orderQty, setOrderQty] = useState(5);
   const [produceListings, setProduceListings] = useState(SAMPLE_PRODUCE);
   const [ordersList, setOrdersList] = useState([]);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   useEffect(() => {
     async function hideNativeSplash() {
@@ -284,9 +304,34 @@ export default function App() {
       }
     });
 
+    // --------------------------------------------------------
+    // AUTH STATE LISTENER — restores session on app restart
+    // --------------------------------------------------------
+    const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        // User is signed in — fetch their Firestore profile
+        const result = await getUserProfile(firebaseUser.uid);
+        if (result.success) {
+          const profile = result.profile;
+          setUserProfile(profile);
+          setCurrentRole(mapRoleToDashboard(profile.role));
+          setAuthScreen('authenticated');
+        } else {
+          // Auth OK but no Firestore doc — go to login so user can re-authenticate
+          setUserProfile(null);
+          setAuthScreen('language');
+        }
+      } else {
+        // Not signed in
+        setUserProfile(null);
+        setAuthScreen('language');
+      }
+    });
+
     return () => {
       unsubscribeProduce();
       unsubscribeOrders();
+      unsubscribeAuth();
     };
   }, []);
 
@@ -340,8 +385,27 @@ export default function App() {
   };
 
 
+  const handleLogout = async () => {
+    setIsLoggingOut(true);
+    await logoutUser();
+    setUserProfile(null);
+    setCurrentRole('buyer');
+    setIsLoggingOut(false);
+    setAuthScreen('language');
+  };
+
   if (isSplashVisible) {
     return <SplashScreenComponent onFinish={() => setIsSplashVisible(false)} />;
+  }
+
+  // While onAuthStateChanged is determining auth state, show a loading screen
+  if (authScreen === 'checking') {
+    return (
+      <SafeAreaView style={[styles.safeArea, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color="#2ECC71" />
+        <Text style={{ color: '#B0BEC5', marginTop: 12, fontSize: 14 }}>Loading GoviLink...</Text>
+      </SafeAreaView>
+    );
   }
 
   if (authScreen === 'language') {
@@ -363,7 +427,7 @@ export default function App() {
         onNavigateToRegister={() => setAuthScreen('register')}
         onLoginSuccess={(profile) => {
           setUserProfile(profile);
-          if (profile?.role) setCurrentRole(profile.role);
+          setCurrentRole(mapRoleToDashboard(profile?.role));
           setAuthScreen('authenticated');
         }}
       />
@@ -378,7 +442,7 @@ export default function App() {
         onNavigateToLogin={() => setAuthScreen('login')}
         onRegisterComplete={(profile) => {
           setUserProfile(profile);
-          if (profile?.role) setCurrentRole(profile.role);
+          setCurrentRole(mapRoleToDashboard(profile?.role));
           setAuthScreen('authenticated');
         }}
       />
@@ -408,53 +472,40 @@ export default function App() {
           </View>
         </View>
 
-        {/* LANGUAGE SWITCHER BUTTONS */}
-        <View style={styles.langSelector}>
-          {['en', 'si', 'ta'].map((l) => (
-            <TouchableOpacity
-              key={l}
-              onPress={() => setLang(l)}
-              style={[
-                styles.langBtn,
-                lang === l && styles.langBtnActive,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.langBtnText,
-                  lang === l && styles.langBtnTextActive,
-                ]}
-              >
-                {l.toUpperCase()}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+        {/* LOGOUT BUTTON */}
+        <TouchableOpacity
+          onPress={handleLogout}
+          disabled={isLoggingOut}
+          style={styles.logoutBtn}
+          activeOpacity={0.75}
+        >
+          {isLoggingOut
+            ? <ActivityIndicator size="small" color="#FFFFFF" />
+            : <Text style={styles.logoutBtnText}>Logout</Text>
+          }
+        </TouchableOpacity>
       </View>
 
       {/* ---------------------------------------------------- */}
-      {/* ROLE SWITCHER TABS                                   */}
+      {/* ROLE INDICATOR BAR — shows user's assigned role (read-only) */}
       {/* ---------------------------------------------------- */}
       <View style={styles.roleTabsContainer}>
-        {['buyer', 'farmer', 'driver'].map((role) => (
-          <TouchableOpacity
-            key={role}
-            onPress={() => setCurrentRole(role)}
-            style={[
-              styles.roleTab,
-              currentRole === role && styles.roleTabActive,
-            ]}
-          >
-            <Text
-              style={[
-                styles.roleTabText,
-                currentRole === role && styles.roleTabTextActive,
-              ]}
-            >
-              {t.roles[role]}
+        <View style={styles.roleIndicatorRow}>
+          <Text style={styles.roleIndicatorLabel}>Role:</Text>
+          <View style={styles.roleIndicatorBadge}>
+            <Text style={styles.roleIndicatorText}>
+              {currentRole === 'farmer' && '🧑‍🌾 Farmer'}
+              {currentRole === 'buyer' && '🛒 Buyer'}
+              {currentRole === 'admin' && '🏢 Cooperative Admin'}
+              {currentRole === 'driver' && '🚛 Delivery Driver'}
             </Text>
-          </TouchableOpacity>
-        ))}
+          </View>
+          {userProfile?.fullName ? (
+            <Text style={styles.roleWelcomeText} numberOfLines={1}>
+              Hi, {userProfile.fullName.split(' ')[0]}!
+            </Text>
+          ) : null}
+        </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -598,20 +649,20 @@ export default function App() {
         {/* ==================================================== */}
         {currentRole === 'admin' && (
           <View>
-            <Text style={styles.sectionHeader}>{t.adminView.logisticsTitle}</Text>
+            <Text style={styles.sectionHeader}>Cooperative Dashboard 🏢</Text>
 
             <View style={styles.statsRow}>
               <View style={[styles.statCard, { borderLeftColor: COLORS.warning }]}>
                 <Text style={styles.statVal}>5</Text>
-                <Text style={styles.statLabel}>{t.adminView.pendingTransports}</Text>
+                <Text style={styles.statLabel}>Pending Transports</Text>
               </View>
               <View style={[styles.statCard, { borderLeftColor: COLORS.emerald }]}>
                 <Text style={styles.statVal}>12</Text>
-                <Text style={styles.statLabel}>{t.adminView.activeFleet}</Text>
+                <Text style={styles.statLabel}>Active Fleet</Text>
               </View>
               <View style={[styles.statCard, { borderLeftColor: COLORS.navy }]}>
                 <Text style={styles.statVal}>18</Text>
-                <Text style={styles.statLabel}>{t.adminView.completedDeliveries}</Text>
+                <Text style={styles.statLabel}>Completed Today</Text>
               </View>
             </View>
 
@@ -621,7 +672,7 @@ export default function App() {
                 Assign pending farmer pickup requests to available cooperative lorries and drivers.
               </Text>
               <View style={styles.actionBtnPrimary}>
-                <Text style={styles.actionBtnPrimaryText}>{t.adminView.assignDriverBtn}</Text>
+                <Text style={styles.actionBtnPrimaryText}>Assign Driver</Text>
               </View>
             </TouchableOpacity>
           </View>
@@ -733,6 +784,19 @@ export default function App() {
   );
 }
 
+// -------------------------------------------------------
+// ROOT EXPORT — wraps AppInner with AuthProvider
+// -------------------------------------------------------
+export default function App() {
+  return (
+    <SafeAreaProvider>
+      <AuthProvider>
+        <AppInner />
+      </AuthProvider>
+    </SafeAreaProvider>
+  );
+}
+
 // ----------------------------------------------------
 // STYLESHEET DEFINITIONS
 // ----------------------------------------------------
@@ -779,57 +843,56 @@ const styles = StyleSheet.create({
     color: '#B0BEC5',
     marginTop: 1,
   },
-  langSelector: {
-    flexDirection: 'row',
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    borderRadius: 16,
-    padding: 3,
+  logoutBtn: {
+    backgroundColor: 'rgba(231, 76, 60, 0.85)',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    minWidth: 64,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  langBtn: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  langBtnActive: {
-    backgroundColor: COLORS.emerald,
-  },
-  langBtnText: {
-    color: '#CFD8DC',
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  langBtnTextActive: {
-    color: '#FFF',
-    fontWeight: 'bold',
+  logoutBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
   },
 
-  // Role Tab Bar
+  // Role Indicator Bar
   roleTabsContainer: {
-    flexDirection: 'row',
     backgroundColor: COLORS.navy,
-    paddingHorizontal: 8,
+    paddingHorizontal: 16,
     paddingBottom: 10,
+    paddingTop: 6,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.1)',
   },
-  roleTab: {
-    flex: 1,
-    paddingVertical: 8,
+  roleIndicatorRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 8,
-    marginHorizontal: 2,
   },
-  roleTabActive: {
-    backgroundColor: COLORS.emerald,
-  },
-  roleTabText: {
+  roleIndicatorLabel: {
     color: '#90A4AE',
     fontSize: 12,
     fontWeight: '600',
+    marginRight: 8,
   },
-  roleTabTextActive: {
+  roleIndicatorBadge: {
+    backgroundColor: COLORS.emerald,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  roleIndicatorText: {
     color: '#FFFFFF',
-    fontWeight: 'bold',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  roleWelcomeText: {
+    color: '#B0BEC5',
+    fontSize: 12,
+    marginLeft: 10,
+    flex: 1,
   },
 
   scrollContent: {

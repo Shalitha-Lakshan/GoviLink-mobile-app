@@ -9,13 +9,13 @@ import {
   SafeAreaView,
   StatusBar,
   Modal,
+  Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   Keyboard,
 } from 'react-native';
-import { saveUserToFirestore } from '../services/firebaseDatabase';
-
+import { registerWithFirebase } from '../services/firebaseDatabase';
 
 // ----------------------------------------------------
 // MODERN FINTECH DESIGN TOKENS & COLOR PALETTE
@@ -63,6 +63,13 @@ const BuyerIcon = ({ color = THEME.primary }) => (
   <View style={styles.roleIconBox} pointerEvents="none">
     <View style={[styles.basketHandle, { borderColor: color }]} />
     <View style={[styles.basketBody, { borderColor: color }]} />
+  </View>
+);
+
+const AdminIcon = ({ color = THEME.primary }) => (
+  <View style={styles.roleIconBox} pointerEvents="none">
+    <View style={[styles.adminHead, { backgroundColor: color }]} />
+    <View style={[styles.adminBody, { borderColor: color }]} />
   </View>
 );
 
@@ -117,25 +124,25 @@ const DISTRICTS = [
   { id: 'gampaha', nameEn: 'Gampaha', nameSi: 'ගම්පහ', nameTa: 'கம்பஹா' },
   { id: 'kalutara', nameEn: 'Kalutara', nameSi: 'කළුතර', nameTa: 'களுத்துறை' },
   { id: 'kandy', nameEn: 'Kandy', nameSi: 'මහනුවර', nameTa: 'கண்டி' },
-  { id: 'matale', nameEn: 'Matale', nameSi: 'මාතලේ', nameTa: 'මාத்தளை' },
+  { id: 'matale', nameEn: 'Matale', nameSi: 'මාතලේ', nameTa: 'மாத்தளை' },
   { id: 'nuwara_eliya', nameEn: 'Nuwara Eliya', nameSi: 'නුවරඑළිය', nameTa: 'நுவரெலியா' },
   { id: 'galle', nameEn: 'Galle', nameSi: 'ගාල්ල', nameTa: 'காலி' },
-  { id: 'matara', nameEn: 'Matara', nameSi: 'මාතර', nameTa: 'මාத்தறை' },
+  { id: 'matara', nameEn: 'Matara', nameSi: 'මාතර', nameTa: 'மாத்தறை' },
   { id: 'hambantota', nameEn: 'Hambantota', nameSi: 'හම්බන්තොට', nameTa: 'ஹம்பாந்தோட்டை' },
   { id: 'jaffna', nameEn: 'Jaffna', nameSi: 'යාපනය', nameTa: 'யாழ்ப்பாணம்' },
-  { id: 'kilinochchi', nameEn: 'Kilinochchi', nameSi: 'කිලිනොච්චිය', nameTa: 'கிளிநොச்சி' },
+  { id: 'kilinochchi', nameEn: 'Kilinochchi', nameSi: 'කිලිනොච්චිය', nameTa: 'கிளிநோச்சி' },
   { id: 'mannar', nameEn: 'Mannar', nameSi: 'මන්නාරම', nameTa: 'மன்னார்' },
   { id: 'vavuniya', nameEn: 'Vavuniya', nameSi: 'වවුනියාව', nameTa: 'வவுனியா' },
   { id: 'mullaitivu', nameEn: 'Mullaitivu', nameSi: 'මුලතිව්', nameTa: 'முல்லைத்தீவு' },
   { id: 'batticaloa', nameEn: 'Batticaloa', nameSi: 'මඩකලපුව', nameTa: 'மட்டக்களப்பு' },
-  { id: 'ampara', nameEn: 'Ampara', nameSi: 'අම්පාර', nameTa: 'அம்பාறை' },
+  { id: 'ampara', nameEn: 'Ampara', nameSi: 'අම්පාර', nameTa: 'அம்பாறை' },
   { id: 'trincomalee', nameEn: 'Trincomalee', nameSi: 'ත්‍රිකුණාමලය', nameTa: 'திருகோணமலை' },
   { id: 'kurunegala', nameEn: 'Kurunegala', nameSi: 'කුරුණෑගල', nameTa: 'குருநாகல்' },
-  { id: 'puttalam', nameEn: 'Puttalam', nameSi: 'පුත්තලම', nameTa: 'පුත්තළම්' },
-  { id: 'anuradhapura', nameEn: 'Anuradhapura', nameSi: 'අනුරාධපුරය', nameTa: 'அනුராதபுரம்' },
+  { id: 'puttalam', nameEn: 'Puttalam', nameSi: 'පුත්තලම', nameTa: 'புத்தளம்' },
+  { id: 'anuradhapura', nameEn: 'Anuradhapura', nameSi: 'අනුරාධපුරය', nameTa: 'அனுராதபுரம்' },
   { id: 'polonnaruwa', nameEn: 'Polonnaruwa', nameSi: 'පොළොන්නරුව', nameTa: 'பொலன்னறுவை' },
   { id: 'badulla', nameEn: 'Badulla', nameSi: 'බදුල්ල', nameTa: 'பதுளை' },
-  { id: 'monaragala', nameEn: 'Monaragala', nameSi: 'මොනරාගල', nameTa: 'மொණරාගල' },
+  { id: 'monaragala', nameEn: 'Monaragala', nameSi: 'මොනරාගල', nameTa: 'மொணராகல' },
   { id: 'ratnapura', nameEn: 'Ratnapura', nameSi: 'රත්නපුරය', nameTa: 'இரத்தினபுரி' },
   { id: 'kegalle', nameEn: 'Kegalle', nameSi: 'කෑගල්ල', nameTa: 'கேகாலை' },
 ];
@@ -149,6 +156,8 @@ const TRANSLATIONS = {
     subtitle: 'Sign up to access GoviLink marketplace & logistics',
     nameLabel: 'Full Name',
     namePlaceholder: 'Sunil Perera',
+    emailLabel: 'Email Address',
+    emailPlaceholder: 'user@govilink.lk',
     phoneLabel: 'Mobile Number',
     phonePlaceholder: '771234567',
     passwordLabel: 'Password',
@@ -162,6 +171,7 @@ const TRANSLATIONS = {
     roles: [
       { id: 'farmer', iconComponent: FarmerIcon, label: 'Farmer' },
       { id: 'buyer', iconComponent: BuyerIcon, label: 'Buyer' },
+      { id: 'cooperative_admin', iconComponent: AdminIcon, label: 'Co-op Admin' },
       { id: 'driver', iconComponent: DriverIcon, label: 'Driver' },
     ],
     submitBtn: 'Create Account',
@@ -169,6 +179,8 @@ const TRANSLATIONS = {
     loginLink: 'Log In',
     errors: {
       nameRequired: 'Please enter your full name',
+      emailRequired: 'Please enter your email address',
+      emailInvalid: 'Enter a valid email address',
       phoneInvalid: 'Enter a valid Sri Lankan mobile number (e.g. 0771234567 or +94771234567)',
       passwordRequired: 'Please enter a password',
       passwordStrength: 'Password must be at least 8 characters with 1 number & 1 symbol (e.g. Pass123!)',
@@ -183,6 +195,8 @@ const TRANSLATIONS = {
     subtitle: 'ගොවි ලින්ක් වෙළඳපොළ සහ ප්‍රවාහන සේවයට පිවිසීමට ලියාපදිංචි වන්න',
     nameLabel: 'සම්පූර්ණ නම',
     namePlaceholder: 'සුනිල් පෙරේරා',
+    emailLabel: 'විද්‍යුත් තැපෑල',
+    emailPlaceholder: 'user@govilink.lk',
     phoneLabel: 'දුරකථන අංකය',
     phonePlaceholder: '0771234567',
     passwordLabel: 'මුරපදය',
@@ -196,6 +210,7 @@ const TRANSLATIONS = {
     roles: [
       { id: 'farmer', iconComponent: FarmerIcon, label: 'ගොවියා' },
       { id: 'buyer', iconComponent: BuyerIcon, label: 'ගණුදෙනුකරු' },
+      { id: 'cooperative_admin', iconComponent: AdminIcon, label: 'සමිති පරිපාලක' },
       { id: 'driver', iconComponent: DriverIcon, label: 'රියදුරු' },
     ],
     submitBtn: 'ගිණුම සාදන්න',
@@ -203,6 +218,8 @@ const TRANSLATIONS = {
     loginLink: 'ඇතුළු වන්න',
     errors: {
       nameRequired: 'කරුණාකර ඔබේ සම්පූර්ණ නම ඇතුළත් කරන්න',
+      emailRequired: 'කරුණාකර ඔබේ විද්‍යුත් තැපෑල ඇතුළත් කරන්න',
+      emailInvalid: 'නිවැරදි විද්‍යුත් තැපැල් ලිපිනයක් ඇතුළත් කරන්න',
       phoneInvalid: 'නිවැරදි ශ්‍රී ලංකා දුරකථන අංකයක් ඇතුළත් කරන්න (උදා: 0771234567)',
       passwordRequired: 'කරුණාකර මුරපදයක් ඇතුළත් කරන්න',
       passwordStrength: 'මුරපදය අවම වශයෙන් අක්ෂර 8ක්, අංක 1ක් සහ සංකේත 1ක් විය යුතුය',
@@ -217,6 +234,8 @@ const TRANSLATIONS = {
     subtitle: 'கொவி லிங்க் சந்தையை அணுக உங்கள் விவரங்களை உள்ளிடவும்',
     nameLabel: 'முழு பெயர்',
     namePlaceholder: 'சுனில் பெரேரா',
+    emailLabel: 'மின்னஞ்சல் முகவரி',
+    emailPlaceholder: 'user@govilink.lk',
     phoneLabel: 'தொடர்பு எண்',
     phonePlaceholder: '0771234567',
     passwordLabel: 'கடவுச்சொல்',
@@ -230,6 +249,7 @@ const TRANSLATIONS = {
     roles: [
       { id: 'farmer', iconComponent: FarmerIcon, label: 'விவசாயி' },
       { id: 'buyer', iconComponent: BuyerIcon, label: 'கொள்முதல் செய்பவர்' },
+      { id: 'cooperative_admin', iconComponent: AdminIcon, label: 'கூட்டுறவு நிர்வாகி' },
       { id: 'driver', iconComponent: DriverIcon, label: 'ஓட்டுநர்' },
     ],
     submitBtn: 'கணக்கை உருவாக்கவும்',
@@ -237,6 +257,8 @@ const TRANSLATIONS = {
     loginLink: 'உள்நுழையவும்',
     errors: {
       nameRequired: 'தயவுசெய்து உங்கள் முழு பெயரை உள்ளிடவும்',
+      emailRequired: 'தயவுசெய்து உங்கள் மின்னஞ்சலை உள்ளிடவும்',
+      emailInvalid: 'செல்லுபடியாகும் மின்னஞ்சலை உள்ளிடவும்',
       phoneInvalid: 'செல்லுபடியாகும் இலங்கை மொபைல் எண்ணை உள்ளிடவும் (எ.கா. 0771234567)',
       passwordRequired: 'தயவுசெய்து கடவுச்சொல்லை உள்ளிடவும்',
       passwordStrength: 'கடவுச்சொல் குறைந்தபட்சம் 8 எழுத்துக்கள், 1 எண் மற்றும் 1 குறியீட்டைக் கொண்டிருக்க வேண்டும்',
@@ -248,10 +270,27 @@ const TRANSLATIONS = {
   },
 };
 
+// Helper: map Firebase error codes to user-friendly messages
+const getFriendlyError = (errorCode) => {
+  switch (errorCode) {
+    case 'auth/email-already-in-use':
+      return 'This email is already registered.';
+    case 'auth/invalid-email':
+      return 'The email address is not valid.';
+    case 'auth/weak-password':
+      return 'Password is too weak. Please use at least 6 characters.';
+    case 'auth/network-request-failed':
+      return 'Network error. Please check your internet connection.';
+    default:
+      return 'Registration failed. Please try again.';
+  }
+};
+
 export default function RegisterScreen({ lang = 'en', onBack, onNavigateToLogin, onRegisterComplete }) {
   const t = TRANSLATIONS[lang] || TRANSLATIONS.en;
 
   const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -266,7 +305,7 @@ export default function RegisterScreen({ lang = 'en', onBack, onNavigateToLogin,
 
   // SRI LANKAN MOBILE NUMBER REGEX (+9477xxxxxxx, 077xxxxxxx, 77xxxxxxx)
   const SL_PHONE_REGEX = /^(?:\+94|0)?7[0-9]{8}$/;
-  
+  const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   // PASSWORD STRENGTH REGEX (min 8 chars, 1 number, 1 symbol)
   const PASSWORD_STRENGTH_REGEX = /^(?=.*[0-9])(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]).{8,}$/;
 
@@ -292,6 +331,13 @@ export default function RegisterScreen({ lang = 'en', onBack, onNavigateToLogin,
 
     if (!fullName.trim()) {
       newErrors.fullName = t.errors.nameRequired;
+    }
+
+    const cleanEmail = email.trim();
+    if (!cleanEmail) {
+      newErrors.email = t.errors.emailRequired;
+    } else if (!EMAIL_REGEX.test(cleanEmail)) {
+      newErrors.email = t.errors.emailInvalid;
     }
 
     const cleanPhone = phone.replace(/[\s-]/g, '');
@@ -325,19 +371,31 @@ export default function RegisterScreen({ lang = 'en', onBack, onNavigateToLogin,
 
   const handleSubmit = async () => {
     Keyboard.dismiss();
-    if (validateForm()) {
-      setIsSubmitting(true);
-      const profile = {
+    if (!validateForm()) return;
+
+    setIsSubmitting(true);
+    try {
+      const result = await registerWithFirebase({
         fullName: fullName.trim(),
-        phone: phone.trim(),
-        district: selectedDistrict,
+        email: email.trim().toLowerCase(),
+        phoneNumber: phone.trim(),
+        password,
         role: selectedRole,
-      };
-      await saveUserToFirestore(profile);
-      setIsSubmitting(false);
-      if (onRegisterComplete) {
-        onRegisterComplete(profile);
+        district: selectedDistrict,
+      });
+
+      if (result.success) {
+        if (onRegisterComplete) {
+          onRegisterComplete(result.profile);
+        }
+      } else {
+        const friendlyMsg = getFriendlyError(result.error);
+        Alert.alert('Registration Failed', friendlyMsg);
       }
+    } catch (e) {
+      Alert.alert('Error', 'An unexpected error occurred. Please try again.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -396,6 +454,27 @@ export default function RegisterScreen({ lang = 'en', onBack, onNavigateToLogin,
                 />
               </View>
               {errors.fullName && <Text style={styles.errorText}>{errors.fullName}</Text>}
+            </View>
+
+            {/* EMAIL INPUT */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>{t.emailLabel}</Text>
+              <View style={[styles.inputContainer, errors.email && styles.inputContainerError]}>
+                <TextInput
+                  style={styles.textInput}
+                  placeholder={t.emailPlaceholder}
+                  placeholderTextColor={THEME.textMuted}
+                  selectionColor={THEME.primary}
+                  value={email}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  onChangeText={(text) => {
+                    setEmail(text);
+                    if (errors.email) setErrors((prev) => ({ ...prev, email: null }));
+                  }}
+                />
+              </View>
+              {errors.email && <Text style={styles.errorText}>{errors.email}</Text>}
             </View>
 
             {/* PHONE NUMBER INPUT (WITH SRI LANKA COUNTRY CODE BADGE) */}
@@ -498,7 +577,7 @@ export default function RegisterScreen({ lang = 'en', onBack, onNavigateToLogin,
               {errors.district && <Text style={styles.errorText}>{errors.district}</Text>}
             </View>
 
-            {/* VISUAL ROLE SELECTOR (CLEAN VECTOR ICONS, ZERO EMOJIS) */}
+            {/* VISUAL ROLE SELECTOR (4 ROLES) */}
             <View style={styles.inputGroup}>
               <Text style={styles.label}>{t.roleLabel}</Text>
               <View style={styles.rolesGridContainer}>
@@ -527,7 +606,7 @@ export default function RegisterScreen({ lang = 'en', onBack, onNavigateToLogin,
                           styles.roleLabelText,
                           isSelected && styles.roleLabelTextActive,
                         ]}
-                        numberOfLines={1}
+                        numberOfLines={2}
                       >
                         {item.label}
                       </Text>
@@ -826,14 +905,14 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 
-  /* VISUAL ROLE SELECTOR GRID (PURE VECTOR ICONS, ZERO EMOJIS) */
+  /* VISUAL ROLE SELECTOR GRID — 4 ROLES in 2×2 */
   rolesGridContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexWrap: 'wrap',
     gap: 8,
   },
   roleGridCard: {
-    flex: 1,
+    width: '47%',
     backgroundColor: THEME.cardBg,
     borderRadius: 12,
     borderWidth: 1.5,
@@ -906,6 +985,22 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 2,
   },
+  // Admin icon (person with clipboard)
+  adminHead: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    position: 'absolute',
+    top: 1,
+  },
+  adminBody: {
+    width: 16,
+    height: 10,
+    borderRadius: 4,
+    borderWidth: 2,
+    position: 'absolute',
+    bottom: 1,
+  },
   truckCabin: {
     width: 22,
     height: 12,
@@ -931,7 +1026,7 @@ const styles = StyleSheet.create({
     right: 5,
   },
   roleLabelText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
     color: THEME.textDark,
     textAlign: 'center',

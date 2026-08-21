@@ -1,19 +1,18 @@
-import { 
-  collection, 
-  addDoc, 
-  onSnapshot, 
-  query, 
-  orderBy, 
+import {
+  collection,
+  addDoc,
+  onSnapshot,
   serverTimestamp,
   doc,
   setDoc,
-  getDocs
+  getDoc,
 } from 'firebase/firestore';
-import { 
-  signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword 
+import {
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signOut as firebaseSignOut,
 } from 'firebase/auth';
-import { db, getFirebaseAuth } from '../firebaseConfig';
+import { db, auth } from '../firebaseConfig';
 
 // Default Sri Lanka Context Produce Data for Initial Firestore Seeding
 const INITIAL_PRODUCE = [
@@ -48,7 +47,7 @@ const INITIAL_PRODUCE = [
   {
     nameEn: 'Keeri Samba Rice',
     nameSi: 'කීරි සම්බා සහල්',
-    nameTa: 'කீரி සම්බා அரிசி',
+    nameTa: 'கீரி சம்பா அரிசி',
     category: 'Rice & Grains',
     price: 260,
     unitEn: 'kg',
@@ -74,6 +73,10 @@ const INITIAL_PRODUCE = [
     image: 'https://images.unsplash.com/photo-1509358271058-acd05cc93898?w=400&q=80',
   },
 ];
+
+// -------------------------------------------------------
+// PRODUCE LISTINGS
+// -------------------------------------------------------
 
 /**
  * Real-time listener for Produce Marketplace Listings in Firestore
@@ -119,6 +122,10 @@ export const addProduceListing = async (produceData) => {
   }
 };
 
+// -------------------------------------------------------
+// ORDERS
+// -------------------------------------------------------
+
 /**
  * Place a new Order in Firestore
  */
@@ -127,7 +134,7 @@ export const placeOrderInFirestore = async (orderData) => {
     const ordersRef = collection(db, 'orders');
     const docRef = await addDoc(ordersRef, {
       ...orderData,
-      status: 'PENDING', // PENDING -> PICKED_UP -> IN_TRANSIT -> DELIVERED
+      status: 'PENDING',
       createdAt: serverTimestamp(),
     });
     return { success: true, id: docRef.id };
@@ -154,58 +161,136 @@ export const subscribeToOrders = (onUpdate) => {
   });
 };
 
+// -------------------------------------------------------
+// USER PROFILE
+// -------------------------------------------------------
+
 /**
- * Save user profile data to Firestore users collection
+ * Get user profile from Firestore users/{uid}
  */
-export const saveUserToFirestore = async (userData) => {
+export const getUserProfile = async (uid) => {
   try {
-    const usersRef = collection(db, 'users');
-    const docRef = await addDoc(usersRef, {
-      ...userData,
-      createdAt: serverTimestamp(),
-    });
-    return { success: true, id: docRef.id };
+    const userDocRef = doc(db, 'users', uid);
+    const userDocSnap = await getDoc(userDocRef);
+    if (userDocSnap.exists()) {
+      return { success: true, profile: userDocSnap.data() };
+    }
+    return { success: false, error: 'User profile not found in Firestore.' };
   } catch (error) {
-    console.error('Error saving user profile to Firestore:', error);
+    console.error('Error fetching user profile:', error);
     return { success: false, error: error.message };
   }
 };
 
-/**
- * Sign In User with Firebase Authentication & Firestore User Record
- */
-export const loginWithFirebase = async (email, password) => {
-  try {
-    const auth = getFirebaseAuth();
-    const userCredential = await signInWithEmailAndPassword(auth, email, password);
-    return { success: true, user: userCredential.user };
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
-};
+// -------------------------------------------------------
+// AUTHENTICATION
+// -------------------------------------------------------
 
 /**
- * Register User with Firebase Authentication & Save Profile to Firestore
+ * Register User with Firebase Authentication & Save Profile to Firestore.
+ * NEVER stores the password in Firestore.
+ *
+ * @param {object} userData
+ * @param {string} userData.fullName
+ * @param {string} userData.email
+ * @param {string} userData.phoneNumber
+ * @param {string} userData.password       (used for Firebase Auth only, never stored in Firestore)
+ * @param {string} userData.role           ('farmer' | 'buyer' | 'cooperative_admin' | 'driver')
+ * @param {object} [userData.district]     optional district object
  */
 export const registerWithFirebase = async (userData) => {
   try {
-    const auth = getFirebaseAuth();
-    const { email, password, fullName, role, phone } = userData;
+    const { email, password, fullName, phoneNumber, role, district } = userData;
+
+    // 1. Create Firebase Auth account
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     const user = userCredential.user;
 
-    // Save profile details to Firestore users collection
-    await setDoc(doc(db, 'users', user.uid), {
+    // 2. Build Firestore profile — password is NOT included
+    const profile = {
       uid: user.uid,
-      fullName,
-      email,
-      phone,
+      fullName: fullName.trim(),
+      email: email.trim().toLowerCase(),
+      phoneNumber: phoneNumber.trim(),
       role: role || 'buyer',
+      ...(district ? { district } : {}),
       createdAt: serverTimestamp(),
-    });
+      updatedAt: serverTimestamp(),
+    };
 
-    return { success: true, user };
+    // 3. Write to users/{uid}
+    await setDoc(doc(db, 'users', user.uid), profile);
+
+    return { success: true, user, profile };
   } catch (error) {
+    console.error('Registration error:', error);
+    return { success: false, error: error.code || error.message };
+  }
+};
+
+/**
+ * Sign In User with Firebase Authentication, then fetch Firestore profile.
+ *
+ * @param {string} email
+ * @param {string} password
+ */
+export const loginWithFirebase = async (email, password) => {
+  try {
+    // 1. Firebase Auth sign-in
+    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    const user = userCredential.user;
+
+    // 2. Fetch Firestore profile
+    const profileResult = await getUserProfile(user.uid);
+
+    if (!profileResult.success) {
+      // Auth succeeded but Firestore doc is missing — handle safely
+      console.warn('Firebase Auth OK but Firestore profile missing for uid:', user.uid);
+      return {
+        success: true,
+        user,
+        profile: {
+          uid: user.uid,
+          email: user.email,
+          fullName: '',
+          phoneNumber: '',
+          role: 'buyer',
+        },
+      };
+    }
+
+    return { success: true, user, profile: profileResult.profile };
+  } catch (error) {
+    console.error('Login error:', error);
+    return { success: false, error: error.code || error.message };
+  }
+};
+
+/**
+ * Sign out the current user
+ */
+export const logoutUser = async () => {
+  try {
+    await firebaseSignOut(auth);
+    return { success: true };
+  } catch (error) {
+    console.error('Logout error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Legacy — kept for backward compatibility
+export const saveUserToFirestore = async (userData) => {
+  if (!userData.uid) return { success: false, error: 'No uid provided' };
+  try {
+    await setDoc(doc(db, 'users', userData.uid), {
+      ...userData,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    return { success: true };
+  } catch (error) {
+    console.error('Error saving user profile to Firestore:', error);
     return { success: false, error: error.message };
   }
 };
