@@ -16,6 +16,7 @@ import {
 import * as SplashScreen from 'expo-splash-screen';
 import SplashScreenComponent from './components/SplashScreen';
 import LanguageSelectionScreen from './components/LanguageSelectionScreen';
+import LoginScreen from './components/LoginScreen';
 import RegisterScreen from './components/RegisterScreen';
 
 // Keep the native splash screen visible while JS resources are initializing
@@ -241,8 +242,7 @@ const SAMPLE_PRODUCE = [
 
 export default function App() {
   const [isSplashVisible, setIsSplashVisible] = useState(true);
-  const [hasSelectedLanguage, setHasSelectedLanguage] = useState(false);
-  const [isRegistered, setIsRegistered] = useState(false);
+  const [authScreen, setAuthScreen] = useState('language'); // 'language' | 'login' | 'register' | 'authenticated'
   const [userProfile, setUserProfile] = useState(null);
   const [lang, setLang] = useState('en'); // 'en' | 'si' | 'ta'
   const [currentRole, setCurrentRole] = useState('buyer'); // 'buyer' | 'farmer' | 'admin' | 'driver'
@@ -293,26 +293,42 @@ export default function App() {
     return <SplashScreenComponent onFinish={() => setIsSplashVisible(false)} />;
   }
 
-  if (!hasSelectedLanguage) {
+  if (authScreen === 'language') {
     return (
       <LanguageSelectionScreen
         onSelectLanguage={(selectedLang) => {
           setLang(selectedLang);
-          setHasSelectedLanguage(true);
+          setAuthScreen('login');
         }}
       />
     );
   }
 
-  if (!isRegistered) {
+  if (authScreen === 'login') {
+    return (
+      <LoginScreen
+        lang={lang}
+        onBackToLang={() => setAuthScreen('language')}
+        onNavigateToRegister={() => setAuthScreen('register')}
+        onLoginSuccess={(profile) => {
+          setUserProfile(profile);
+          if (profile?.role) setCurrentRole(profile.role);
+          setAuthScreen('authenticated');
+        }}
+      />
+    );
+  }
+
+  if (authScreen === 'register') {
     return (
       <RegisterScreen
         lang={lang}
-        onBack={() => setHasSelectedLanguage(false)}
+        onBack={() => setAuthScreen('login')}
+        onNavigateToLogin={() => setAuthScreen('login')}
         onRegisterComplete={(profile) => {
           setUserProfile(profile);
-          setCurrentRole(profile.role);
-          setIsRegistered(true);
+          if (profile?.role) setCurrentRole(profile.role);
+          setAuthScreen('authenticated');
         }}
       />
     );
