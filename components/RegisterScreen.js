@@ -15,6 +15,8 @@ import {
   Keyboard,
   TouchableWithoutFeedback,
 } from 'react-native';
+import { saveUserToFirestore } from '../services/firebaseDatabase';
+
 
 // ----------------------------------------------------
 // MODERN FINTECH DESIGN TOKENS & COLOR PALETTE
@@ -323,23 +325,21 @@ export default function RegisterScreen({ lang = 'en', onBack, onNavigateToLogin,
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     Keyboard.dismiss();
     if (validateForm()) {
       setIsSubmitting(true);
-      setTimeout(() => {
-        setIsSubmitting(false);
-        const profile = {
-          fullName: fullName.trim(),
-          phone: phone.trim(),
-          password: password,
-          district: selectedDistrict,
-          role: selectedRole,
-        };
-        if (onRegisterComplete) {
-          onRegisterComplete(profile);
-        }
-      }, 800);
+      const profile = {
+        fullName: fullName.trim(),
+        phone: phone.trim(),
+        district: selectedDistrict,
+        role: selectedRole,
+      };
+      await saveUserToFirestore(profile);
+      setIsSubmitting(false);
+      if (onRegisterComplete) {
+        onRegisterComplete(profile);
+      }
     }
   };
 

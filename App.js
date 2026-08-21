@@ -7,17 +7,24 @@ import {
   TouchableOpacity,
   TextInput,
   Image,
-  SafeAreaView,
   StatusBar,
   Modal,
   FlatList,
   Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import * as SplashScreen from 'expo-splash-screen';
 import SplashScreenComponent from './components/SplashScreen';
 import LanguageSelectionScreen from './components/LanguageSelectionScreen';
 import LoginScreen from './components/LoginScreen';
 import RegisterScreen from './components/RegisterScreen';
+import { 
+  subscribeToProduceListings, 
+  placeOrderInFirestore, 
+  subscribeToOrders,
+  addProduceListing 
+} from './services/firebaseDatabase';
+
 
 // Keep the native splash screen visible while JS resources are initializing
 SplashScreen.preventAutoHideAsync().catch(() => {
@@ -250,7 +257,8 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedItem, setSelectedItem] = useState(null);
   const [orderQty, setOrderQty] = useState(5);
-  const [showOrderModal, setShowOrderModal] = useState(false);
+  const [produceListings, setProduceListings] = useState(SAMPLE_PRODUCE);
+  const [ordersList, setOrdersList] = useState([]);
 
   useEffect(() => {
     async function hideNativeSplash() {
@@ -261,33 +269,76 @@ export default function App() {
       }
     }
     hideNativeSplash();
+
+    // Subscribe to Firestore real-time produce collection
+    const unsubscribeProduce = subscribeToProduceListings((items) => {
+      if (items && items.length > 0) {
+        setProduceListings(items);
+      }
+    });
+
+    // Subscribe to Firestore real-time orders collection
+    const unsubscribeOrders = subscribeToOrders((orders) => {
+      if (orders) {
+        setOrdersList(orders);
+      }
+    });
+
+    return () => {
+      unsubscribeProduce();
+      unsubscribeOrders();
+    };
   }, []);
 
   const t = TRANSLATIONS[lang];
 
   // Helper for localized produce name
   const getProduceName = (item) => {
-    if (lang === 'si') return item.nameSi;
-    if (lang === 'ta') return item.nameTa;
+    if (!item) return '';
+    if (lang === 'si') return item.nameSi || item.nameEn;
+    if (lang === 'ta') return item.nameTa || item.nameEn;
     return item.nameEn;
   };
 
   // Helper for localized unit
   const getProduceUnit = (item) => {
-    if (lang === 'si') return item.unitSi;
-    if (lang === 'ta') return item.unitTa;
+    if (!item) return '';
+    if (lang === 'si') return item.unitSi || item.unitEn;
+    if (lang === 'ta') return item.unitTa || item.unitEn;
     return item.unitEn;
   };
 
-  const handlePlaceOrder = () => {
+  const handlePlaceOrder = async () => {
     setShowOrderModal(false);
+    if (!selectedItem) return;
+
     const itemTitle = getProduceName(selectedItem);
-    Alert.alert(
-      'Order Placed! 🌾',
-      `Successfully ordered ${orderQty} ${getProduceUnit(selectedItem)} of ${itemTitle}.\nFarmer and Transport team notified.`,
-      [{ text: 'OK' }]
-    );
+    
+    // Save order directly into Firestore orders collection
+    const orderData = {
+      produceId: selectedItem.id,
+      produceName: itemTitle,
+      qty: orderQty,
+      unit: getProduceUnit(selectedItem),
+      totalPrice: (selectedItem.price || 0) * orderQty,
+      farmerName: selectedItem.farmerName || 'Local Farmer',
+      location: selectedItem.location || 'Sri Lanka',
+      buyerName: userProfile?.fullName || 'GoviLink Buyer',
+      buyerPhone: userProfile?.phone || '',
+    };
+
+    const res = await placeOrderInFirestore(orderData);
+    if (res.success) {
+      Alert.alert(
+        'Order Placed in Firestore! 🌾🔥',
+        `Successfully saved order for ${orderQty} ${getProduceUnit(selectedItem)} of ${itemTitle} in your Firebase Database.\nFarmer & Driver synced live.`,
+        [{ text: 'OK' }]
+      );
+    } else {
+      Alert.alert('Order Error', `Could not save order: ${res.error}`);
+    }
   };
+
 
   if (isSplashVisible) {
     return <SplashScreenComponent onFinish={() => setIsSplashVisible(false)} />;
@@ -450,7 +501,7 @@ export default function App() {
             <Text style={styles.sectionHeader}>{t.buyerView.featuredTitle}</Text>
 
             {/* Marketplace Produce Cards */}
-            {SAMPLE_PRODUCE.filter((item) =>
+            {produceListings.filter((item) =>
               getProduceName(item).toLowerCase().includes(searchQuery.toLowerCase())
             ).map((item) => (
               <View key={item.id} style={styles.produceCard}>
@@ -522,7 +573,7 @@ export default function App() {
             </TouchableOpacity>
 
             <Text style={styles.sectionHeader}>{t.farmerView.myListings}</Text>
-            {SAMPLE_PRODUCE.map((item) => (
+            {produceListings.map((item) => (
               <View key={item.id} style={styles.farmerListingItem}>
                 <Image source={{ uri: item.image }} style={styles.farmerThumb} />
                 <View style={{ flex: 1 }}>
