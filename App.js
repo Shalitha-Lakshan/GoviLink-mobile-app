@@ -16,6 +16,7 @@ import {
 import * as SplashScreen from 'expo-splash-screen';
 import SplashScreenComponent from './components/SplashScreen';
 import LanguageSelectionScreen from './components/LanguageSelectionScreen';
+import RegisterScreen from './components/RegisterScreen';
 
 // Keep the native splash screen visible while JS resources are initializing
 SplashScreen.preventAutoHideAsync().catch(() => {
@@ -50,7 +51,6 @@ const TRANSLATIONS = {
     roles: {
       buyer: 'Buyer 🛒',
       farmer: 'Farmer 🧑‍🌾',
-      admin: 'Co-op Admin 🏛️',
       driver: 'Driver 🚛',
     },
     categories: ['All', 'Vegetables', 'Fruits', 'Rice & Grains', 'Spices'],
@@ -70,13 +70,6 @@ const TRANSLATIONS = {
       farmerLabel: 'Farmer:',
       locationLabel: 'Location:',
       inStock: 'In Stock',
-    },
-    adminView: {
-      logisticsTitle: 'Cooperative Logistics Control',
-      pendingTransports: 'Transport Requests',
-      activeFleet: 'Active Drivers',
-      completedDeliveries: 'Completed Today',
-      assignDriverBtn: 'Assign Transport & Driver',
     },
     driverView: {
       deliveryTitle: 'Assigned Delivery Routes',
@@ -98,7 +91,6 @@ const TRANSLATIONS = {
     roles: {
       buyer: 'ගණුදෙනුකරු 🛒',
       farmer: 'ගොවියා 🧑‍🌾',
-      admin: 'සමුපකාර පරිපාලක 🏛️',
       driver: 'රියදුරු 🚛',
     },
     categories: ['සියල්ල', 'එළවළු', 'පලතුරු', 'ධාන්‍ය', 'කුළුබඩු'],
@@ -118,13 +110,6 @@ const TRANSLATIONS = {
       farmerLabel: 'ගොවියා:',
       locationLabel: 'ස්ථානය:',
       inStock: 'තොග ඇත',
-    },
-    adminView: {
-      logisticsTitle: 'සමුපකාර ප්‍රවාහන කළමනාකරණය',
-      pendingTransports: 'ප්‍රවාහන ඉල්ලීම්',
-      activeFleet: 'ක්‍රියාකාරී රියදුරන්',
-      completedDeliveries: 'අද නිමකළ බෙදාහැරීම්',
-      assignDriverBtn: 'රියදුරු සහ වාහන පවරන්න',
     },
     driverView: {
       deliveryTitle: 'පවරන ලද බෙදාහැරීම් මඟ',
@@ -146,7 +131,6 @@ const TRANSLATIONS = {
     roles: {
       buyer: 'கொள்முதல் செய்பவர் 🛒',
       farmer: 'விவசாயி 🧑‍🌾',
-      admin: 'கூட்டுறவு நிர்வாகி 🏛️',
       driver: 'ஓட்டுநர் 🚛',
     },
     categories: ['அனைத்தும்', 'காய்கறிகள்', 'பழங்கள்', 'தானியங்கள்', 'மசாலா'],
@@ -258,6 +242,8 @@ const SAMPLE_PRODUCE = [
 export default function App() {
   const [isSplashVisible, setIsSplashVisible] = useState(true);
   const [hasSelectedLanguage, setHasSelectedLanguage] = useState(false);
+  const [isRegistered, setIsRegistered] = useState(false);
+  const [userProfile, setUserProfile] = useState(null);
   const [lang, setLang] = useState('en'); // 'en' | 'si' | 'ta'
   const [currentRole, setCurrentRole] = useState('buyer'); // 'buyer' | 'farmer' | 'admin' | 'driver'
   const [selectedCategory, setSelectedCategory] = useState(0);
@@ -318,6 +304,20 @@ export default function App() {
     );
   }
 
+  if (!isRegistered) {
+    return (
+      <RegisterScreen
+        lang={lang}
+        onBack={() => setHasSelectedLanguage(false)}
+        onRegisterComplete={(profile) => {
+          setUserProfile(profile);
+          setCurrentRole(profile.role);
+          setIsRegistered(true);
+        }}
+      />
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.navy} />
@@ -369,7 +369,7 @@ export default function App() {
       {/* ROLE SWITCHER TABS                                   */}
       {/* ---------------------------------------------------- */}
       <View style={styles.roleTabsContainer}>
-        {['buyer', 'farmer', 'admin', 'driver'].map((role) => (
+        {['buyer', 'farmer', 'driver'].map((role) => (
           <TouchableOpacity
             key={role}
             onPress={() => setCurrentRole(role)}
