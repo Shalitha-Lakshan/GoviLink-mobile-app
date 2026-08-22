@@ -8,12 +8,14 @@ import {
   ScrollView,
   SafeAreaView,
   StatusBar,
+  Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   Keyboard,
   Image,
 } from 'react-native';
+import { loginWithFirebase } from '../services/firebaseDatabase';
 
 // ----------------------------------------------------
 // MODERN FINTECH DESIGN TOKENS & COLOR PALETTE
@@ -77,8 +79,8 @@ const TRANSLATIONS = {
   en: {
     title: 'Welcome Back',
     subtitle: 'Log in to your GoviLink account to continue',
-    identifierLabel: 'Email or Mobile Number',
-    identifierPlaceholder: '771234567 or user@govilink.lk',
+    emailLabel: 'Email Address',
+    emailPlaceholder: 'user@govilink.lk',
     passwordLabel: 'Password',
     passwordPlaceholder: 'Enter your password',
     forgotPassword: 'Forgot Password?',
@@ -86,8 +88,7 @@ const TRANSLATIONS = {
     noAccountText: "Don't have an account?",
     registerLink: 'Register',
     errors: {
-      identifierRequired: 'Please enter your email or mobile number',
-      phoneInvalid: 'Enter a valid Sri Lankan mobile number (e.g. 0771234567 or +94771234567)',
+      emailRequired: 'Please enter your email address',
       emailInvalid: 'Enter a valid email address',
       passwordRequired: 'Please enter your password',
     },
@@ -95,8 +96,8 @@ const TRANSLATIONS = {
   si: {
     title: 'ආයුබෝවන්',
     subtitle: 'කරුණාකර ඔබේ ගොවි ලින්ක් ගිණුමට ඇතුළු වන්න',
-    identifierLabel: 'විද්‍යුත් තැපෑල හෝ දුරකථන අංකය',
-    identifierPlaceholder: '0771234567 හෝ user@govilink.lk',
+    emailLabel: 'විද්‍යුත් තැපෑල',
+    emailPlaceholder: 'user@govilink.lk',
     passwordLabel: 'මුරපදය',
     passwordPlaceholder: 'ඔබේ මුරපදය ඇතුළත් කරන්න',
     forgotPassword: 'මුරපදය අමතක වුනාද?',
@@ -104,60 +105,68 @@ const TRANSLATIONS = {
     noAccountText: 'තවම ගිණුමක් නැද්ද?',
     registerLink: 'ලියාපදිංචි වන්න',
     errors: {
-      identifierRequired: 'කරුණාකර විද්‍යුත් තැපෑල හෝ දුරකථන අංකය ඇතුළත් කරන්න',
-      phoneInvalid: 'නිවැරදි ශ්‍රී ලංකා දුරකථන අංකයක් ඇතුළත් කරන්න (උදා: 0771234567)',
+      emailRequired: 'කරුණාකර ඔබේ විද්‍යුත් තැපෑල ඇතුළත් කරන්න',
       emailInvalid: 'නිවැරදි විද්‍යුත් තැපැල් ලිපිනයක් ඇතුළත් කරන්න',
       passwordRequired: 'කරුණාකර මුරපදය ඇතුළත් කරන්න',
     },
   },
   ta: {
     title: 'மீண்டும் வருக',
-    subtitle: 'தொடර உங்கள் கொவி லிங்க் கணக்கில் உள்நுழையவும்',
-    identifierLabel: 'மின்னஞ்சல் அல்லது தொடர்பு எண்',
-    identifierPlaceholder: '0771234567 அல்லது user@govilink.lk',
-    passwordLabel: 'கடவுச்சොல்',
+    subtitle: 'தொடர உங்கள் கொவி லிங்க் கணக்கில் உள்நுழையவும்',
+    emailLabel: 'மின்னஞ்சல் முகவரி',
+    emailPlaceholder: 'user@govilink.lk',
+    passwordLabel: 'கடவுச்சொல்',
     passwordPlaceholder: 'உங்கள் கடவுச்சொல்லை உள்ளிடவும்',
     forgotPassword: 'கடவுச்சொல்லை மறந்துவிட்டீர்களா?',
     submitBtn: 'உள்நுழையவும்',
     noAccountText: 'கணக்கு இல்லையா?',
     registerLink: 'பதிவு செய்யவும்',
     errors: {
-      identifierRequired: 'தயவுசெய்து உங்கள் மின்னஞ்சல் அல்லது தொடர்பு எண்ணை உள்ளிடவும்',
-      phoneInvalid: 'செல்லுபடியாகும் இலங்கை மொபைல் எண்ணை உள்ளிடவும் (எ.கா. 0771234567)',
+      emailRequired: 'தயவுசெய்து உங்கள் மின்னஞ்சலை உள்ளிடவும்',
       emailInvalid: 'செல்லுபடியாகும் மின்னஞ்சலை உள்ளிடவும்',
       passwordRequired: 'தயவுசெய்து உங்கள் கடவுச்சொல்லை உள்ளிடவும்',
     },
   },
 };
 
+// Helper: map Firebase error codes to user-friendly messages
+const getFriendlyLoginError = (errorCode) => {
+  switch (errorCode) {
+    case 'auth/invalid-credential':
+    case 'auth/wrong-password':
+    case 'auth/user-not-found':
+    case 'auth/invalid-email':
+      return 'Invalid email or password.';
+    case 'auth/user-disabled':
+      return 'This account has been disabled. Please contact support.';
+    case 'auth/too-many-requests':
+      return 'Too many failed attempts. Please try again later.';
+    case 'auth/network-request-failed':
+      return 'Network error. Please check your internet connection.';
+    default:
+      return 'Invalid email or password.';
+  }
+};
+
 export default function LoginScreen({ lang = 'en', onBackToLang, onNavigateToRegister, onLoginSuccess }) {
   const t = TRANSLATIONS[lang] || TRANSLATIONS.en;
 
-  const [identifier, setIdentifier] = useState('');
+  const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
 
-  // SRI LANKAN MOBILE NUMBER REGEX (+9477xxxxxxx, 077xxxxxxx, 77xxxxxxx)
-  const SL_PHONE_REGEX = /^(?:\+94|0)?7[0-9]{8}$/;
-  const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
   const validateForm = () => {
     let newErrors = {};
-    const cleanId = identifier.trim();
+    const cleanEmail = email.trim();
 
-    if (!cleanId) {
-      newErrors.identifier = t.errors.identifierRequired;
-    } else {
-      const isDigitsOnly = /^[0-9+]+$/.test(cleanId);
-      if (isDigitsOnly) {
-        if (!SL_PHONE_REGEX.test(cleanId)) {
-          newErrors.identifier = t.errors.phoneInvalid;
-        }
-      } else if (!EMAIL_REGEX.test(cleanId)) {
-        newErrors.identifier = t.errors.emailInvalid;
-      }
+    if (!cleanEmail) {
+      newErrors.email = t.errors.emailRequired;
+    } else if (!EMAIL_REGEX.test(cleanEmail)) {
+      newErrors.email = t.errors.emailInvalid;
     }
 
     if (!password) {
@@ -168,21 +177,26 @@ export default function LoginScreen({ lang = 'en', onBackToLang, onNavigateToReg
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     Keyboard.dismiss();
-    if (validateForm()) {
-      setIsSubmitting(true);
-      setTimeout(() => {
-        setIsSubmitting(false);
-        const userProfile = {
-          fullName: 'GoviLink User',
-          phone: identifier.trim(),
-          role: 'buyer',
-        };
+    if (!validateForm()) return;
+
+    setIsSubmitting(true);
+    try {
+      const result = await loginWithFirebase(email.trim().toLowerCase(), password);
+
+      if (result.success) {
         if (onLoginSuccess) {
-          onLoginSuccess(userProfile);
+          onLoginSuccess(result.profile);
         }
-      }, 800);
+      } else {
+        const friendlyMsg = getFriendlyLoginError(result.error);
+        Alert.alert('Login Failed', friendlyMsg);
+      }
+    } catch (e) {
+      Alert.alert('Error', 'An unexpected error occurred. Please try again.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -225,26 +239,26 @@ export default function LoginScreen({ lang = 'en', onBackToLang, onNavigateToReg
 
           {/* FORM FIELDS */}
           <View style={styles.formSection}>
-            {/* EMAIL / PHONE INPUT */}
+            {/* EMAIL INPUT */}
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>{t.identifierLabel}</Text>
-              <View style={[styles.inputContainer, errors.identifier && styles.inputContainerError]}>
+              <Text style={styles.label}>{t.emailLabel}</Text>
+              <View style={[styles.inputContainer, errors.email && styles.inputContainerError]}>
                 <UserIcon color={THEME.textMuted} />
                 <TextInput
                   style={styles.textInput}
-                  placeholder={t.identifierPlaceholder}
+                  placeholder={t.emailPlaceholder}
                   placeholderTextColor={THEME.textMuted}
                   selectionColor={THEME.primary}
-                  value={identifier}
+                  value={email}
                   autoCapitalize="none"
                   keyboardType="email-address"
                   onChangeText={(text) => {
-                    setIdentifier(text);
-                    if (errors.identifier) setErrors((prev) => ({ ...prev, identifier: null }));
+                    setEmail(text);
+                    if (errors.email) setErrors((prev) => ({ ...prev, email: null }));
                   }}
                 />
               </View>
-              {errors.identifier && <Text style={styles.errorText}>{errors.identifier}</Text>}
+              {errors.email && <Text style={styles.errorText}>{errors.email}</Text>}
             </View>
 
             {/* PASSWORD INPUT */}
