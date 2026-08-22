@@ -148,40 +148,6 @@ const TRANSLATIONS = {
   },
 };
 
-// Default mock trips for driver if orders collection is new
-const DEFAULT_DRIVER_LOADS = [
-  {
-    id: 'trip_nuwara_eliya_01',
-    produceName: 'Fresh Nuwara Eliya Carrots (450 kg)',
-    qty: 450,
-    unit: 'kg',
-    farmerName: 'Bandara Farm (Saman Bandara)',
-    farmerPhone: '0771234567',
-    pickupLocation: 'Bandara Farm, Blackpool, Nuwara Eliya',
-    buyerName: 'Cargills FoodCity Central Hub',
-    buyerPhone: '0112345678',
-    deliveryAddress: 'Main Distribution Hub, Colombo 03',
-    totalPrice: 18500,
-    status: 'IN_TRANSIT',
-    specialNotes: 'Perishable cold-chain load. Maintain ventilated cargo tarpaulin.',
-  },
-  {
-    id: 'trip_dambulla_02',
-    produceName: 'Dry Cured Red Shallots & Onions (800 kg)',
-    qty: 800,
-    unit: 'kg',
-    farmerName: 'Dambulla Agro Co-op',
-    farmerPhone: '0719876543',
-    pickupLocation: 'Dambulla Dedicated Economic Centre',
-    buyerName: 'Pettah Wholesale Merchant Union',
-    buyerPhone: '0774433221',
-    deliveryAddress: '4th Cross Street, Pettah, Colombo 11',
-    totalPrice: 24000,
-    status: 'READY_FOR_PICKUP',
-    specialNotes: 'Moisture sensitive produce. Keep dry at all times.',
-  },
-];
-
 export default function DriverHomeScreen({
   userProfile,
   lang = 'en',
@@ -195,29 +161,34 @@ export default function DriverHomeScreen({
 
   const t = TRANSLATIONS[lang] || TRANSLATIONS.en;
 
-  // Merge real orders from Firestore with default driver loads if needed
+  // Real orders from Firestore mapped for Driver logistics view
   const realOrdersForDriver = ordersList.map((o) => ({
     id: o.id,
-    produceName: `${o.produceName} (${o.qty} ${o.unit || 'kg'})`,
+    produceName: `${o.produceName || 'Produce Batch'} (${o.qty || 0} ${o.unit || 'kg'})`,
     qty: o.qty,
     unit: o.unit || 'kg',
     farmerName: o.farmerName || 'GoviLink Farmer',
-    farmerPhone: o.farmerPhone || '0770000000',
+    farmerPhone: o.farmerPhone || '',
     pickupLocation: o.pickupLocation || o.location || 'Farm Origin',
     buyerName: o.buyerName || 'GoviLink Buyer',
-    buyerPhone: o.buyerPhone || '0771112222',
-    deliveryAddress: o.deliveryAddress || 'Central Market, Colombo',
-    totalPrice: o.logisticsFee || 3500,
-    status: o.status || 'READY_FOR_PICKUP',
+    buyerPhone: o.buyerPhone || '',
+    deliveryAddress: o.deliveryAddress || 'Delivery Destination',
+    totalPrice: o.logisticsFee || 350,
+    status: o.status || 'PENDING',
     specialNotes: o.deliveryNotes || 'Standard agricultural transport safety handling.',
   }));
 
-  const allDriverTrips = realOrdersForDriver.length > 0 ? realOrdersForDriver : DEFAULT_DRIVER_LOADS;
+  const allDriverTrips = realOrdersForDriver;
 
   const activeDeliveries = allDriverTrips.filter(
     (trip) => trip.status === 'READY_FOR_PICKUP' || trip.status === 'IN_TRANSIT' || trip.status === 'ACCEPTED'
   );
   const completedDeliveries = allDriverTrips.filter((trip) => trip.status === 'DELIVERED');
+
+  const totalDriverEarnings = completedDeliveries.reduce(
+    (sum, trip) => sum + (Number(trip.totalPrice) || 0),
+    0
+  );
 
   const handleTripProgression = async (trip) => {
     let nextStatus = '';
@@ -230,14 +201,11 @@ export default function DriverHomeScreen({
     if (!nextStatus) return;
 
     setUpdatingTripId(trip.id);
-    if (!trip.id.startsWith('trip_')) {
+    if (trip.id) {
       await updateOrderStatus(trip.id, nextStatus, {
         driverName: userProfile?.fullName || 'Assigned Driver',
         driverPhone: userProfile?.phoneNumber || '',
       });
-    } else {
-      // Local mock state feedback
-      trip.status = nextStatus;
     }
     setUpdatingTripId(null);
 
@@ -335,19 +303,19 @@ export default function DriverHomeScreen({
 
           <View style={[styles.kpiCard, { borderLeftColor: THEME.emerald }]}>
             <Text style={styles.kpiIcon}>✅</Text>
-            <Text style={styles.kpiValue}>{completedDeliveries.length + 3}</Text>
+            <Text style={styles.kpiValue}>{completedDeliveries.length}</Text>
             <Text style={styles.kpiLabel}>{t.stats.completedToday}</Text>
           </View>
 
           <View style={[styles.kpiCard, { borderLeftColor: THEME.navy }]}>
             <Text style={styles.kpiIcon}>💰</Text>
-            <Text style={styles.kpiValue}>{t.currency} 28,500</Text>
+            <Text style={styles.kpiValue}>{t.currency} {totalDriverEarnings.toLocaleString()}</Text>
             <Text style={styles.kpiLabel}>{t.stats.estEarnings}</Text>
           </View>
 
           <View style={[styles.kpiCard, { borderLeftColor: THEME.purple }]}>
             <Text style={styles.kpiIcon}>⭐</Text>
-            <Text style={styles.kpiValue}>4.9 / 5.0</Text>
+            <Text style={styles.kpiValue}>5.0 / 5.0</Text>
             <Text style={styles.kpiLabel}>{t.stats.rating}</Text>
           </View>
         </View>
@@ -368,7 +336,7 @@ export default function DriverHomeScreen({
             onPress={() => setActiveTab('available')}
           >
             <Text style={[styles.tabText, activeTab === 'available' && styles.tabTextActive]}>
-              📦 {t.tabs.available} (2)
+              📦 {t.tabs.available} ({allDriverTrips.length})
             </Text>
           </TouchableOpacity>
         </View>

@@ -100,7 +100,7 @@ export default function AdminHomeScreen({
 
           <View style={[styles.kpiCard, { borderLeftColor: THEME.emerald }]}>
             <Text style={styles.kpiIcon}>🚛</Text>
-            <Text style={styles.kpiValue}>14</Text>
+            <Text style={styles.kpiValue}>0</Text>
             <Text style={styles.kpiLabel}>Active Co-op Lorries</Text>
           </View>
 
@@ -112,7 +112,7 @@ export default function AdminHomeScreen({
 
           <View style={[styles.kpiCard, { borderLeftColor: THEME.info }]}>
             <Text style={styles.kpiIcon}>📦</Text>
-            <Text style={styles.kpiValue}>{ordersList.length + 8}</Text>
+            <Text style={styles.kpiValue}>{ordersList.length}</Text>
             <Text style={styles.kpiLabel}>Total Orders Synced</Text>
           </View>
         </View>
