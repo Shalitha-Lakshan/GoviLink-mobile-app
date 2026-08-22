@@ -21,7 +21,6 @@ import {
   subscribeToOrders,
   logoutUser,
   getUserProfile,
-  DEFAULT_PRODUCE_LISTINGS,
 } from './services/firebaseDatabase';
 import { AuthProvider } from './context/AuthContext';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -179,8 +178,8 @@ function AppInner() {
     );
   }
 
-  // Effective produce list (merged or fallback)
-  const activeProduce = produceListings.length > 0 ? produceListings : DEFAULT_PRODUCE_LISTINGS;
+  // Real produce list from Firestore
+  const activeProduce = produceListings;
 
   // ----------------------------------------------------
   // ROLE-BASED HOMEPAGE ROUTING

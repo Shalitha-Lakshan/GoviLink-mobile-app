@@ -206,20 +206,20 @@ export default function FarmerHomeScreen({
 
   const t = TRANSLATIONS[lang] || TRANSLATIONS.en;
 
-  // Filter listings for this farmer or display active listings
+  // Filter listings for this farmer
   const myProduce = produceListings.filter(
     (item) => !item.farmerId || item.farmerId === userProfile?.uid || item.farmerName?.includes(userProfile?.fullName || 'Farmer')
   );
-  const displayListings = myProduce.length > 0 ? myProduce : produceListings;
+  const displayListings = myProduce;
 
   // Real-time calculations
   const pendingOrders = ordersList.filter((o) => o.status === 'PENDING' || !o.status);
   const inTransitOrders = ordersList.filter((o) => o.status === 'IN_TRANSIT' || o.status === 'READY_FOR_PICKUP');
   
-  // Calculate total earnings from orders or default
+  // Calculate total earnings strictly from real orders
   const totalSalesCalculated = ordersList
     .filter((o) => o.status !== 'CANCELLED')
-    .reduce((sum, o) => sum + (Number(o.totalPrice) || 0), 45000);
+    .reduce((sum, o) => sum + (Number(o.totalPrice) || 0), 0);
 
   const handleCreateProduce = async () => {
     if (!formNameEn.trim()) {
@@ -280,7 +280,7 @@ export default function FarmerHomeScreen({
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
-            if (item.id && !item.id.startsWith('sample_')) {
+            if (item.id) {
               await deleteProduceListing(item.id);
             }
             Alert.alert('Listing Removed', 'Produce was removed from marketplace.');
