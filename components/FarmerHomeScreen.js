@@ -18,6 +18,7 @@ import {
   deleteProduceListing,
   updateOrderStatus,
 } from '../services/firebaseDatabase';
+import AddProduceScreen from './AddProduceScreen';
 
 // ----------------------------------------------------
 // COLOR TOKENS
@@ -191,6 +192,7 @@ export default function FarmerHomeScreen({
   onChangeLanguage,
 }) {
   const [activeTab, setActiveTab] = useState('listings'); // 'listings' | 'orders'
+  const [showAddProduceScreen, setShowAddProduceScreen] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [updatingOrderId, setUpdatingOrderId] = useState(null);
@@ -303,6 +305,17 @@ export default function FarmerHomeScreen({
     }
   };
 
+  if (showAddProduceScreen) {
+    return (
+      <AddProduceScreen
+        userProfile={userProfile}
+        lang={lang}
+        onBack={() => setShowAddProduceScreen(false)}
+        onProduceAdded={() => setShowAddProduceScreen(false)}
+      />
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="light-content" backgroundColor={THEME.navy} />
@@ -388,7 +401,7 @@ export default function FarmerHomeScreen({
         <TouchableOpacity
           style={styles.addListingBanner}
           activeOpacity={0.85}
-          onPress={() => setShowAddModal(true)}
+          onPress={() => setShowAddProduceScreen(true)}
         >
           <View style={styles.addIconCircle}>
             <Text style={styles.addPlusText}>+</Text>
@@ -595,138 +608,6 @@ export default function FarmerHomeScreen({
           </View>
         )}
       </ScrollView>
-
-      {/* ============================================== */}
-      {/* MODAL: + ADD PRODUCE LISTING FORM              */}
-      {/* ============================================== */}
-      <Modal visible={showAddModal} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalSheet}>
-            <View style={styles.modalHeader}>
-              <View>
-                <Text style={styles.modalHeaderTitle}>{t.modal.title}</Text>
-                <Text style={styles.modalHeaderSub}>{t.modal.subtitle}</Text>
-              </View>
-              <TouchableOpacity onPress={() => setShowAddModal(false)} style={styles.modalCloseCircle}>
-                <Text style={{ fontSize: 18, color: THEME.textMuted }}>✕</Text>
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
-              {/* Category Selector */}
-              <Text style={styles.inputLabel}>{t.modal.categoryLabel}</Text>
-              <View style={styles.categoryPickerRow}>
-                {CATEGORIES.map((cat) => (
-                  <TouchableOpacity
-                    key={cat}
-                    style={[
-                      styles.categoryPickerPill,
-                      formCategory === cat && styles.categoryPickerPillActive,
-                    ]}
-                    onPress={() => setFormCategory(cat)}
-                  >
-                    <Text
-                      style={[
-                        styles.categoryPickerPillText,
-                        formCategory === cat && styles.categoryPickerPillTextActive,
-                      ]}
-                    >
-                      {cat}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              {/* Crop Name English */}
-              <Text style={styles.inputLabel}>{t.modal.nameEnLabel} *</Text>
-              <TextInput
-                style={styles.modalInput}
-                placeholder={t.modal.nameEnPlaceholder}
-                placeholderTextColor={THEME.textMuted}
-                value={formNameEn}
-                onChangeText={setFormNameEn}
-              />
-
-              {/* Crop Name Sinhala */}
-              <Text style={styles.inputLabel}>{t.modal.nameSiLabel}</Text>
-              <TextInput
-                style={styles.modalInput}
-                placeholder={t.modal.nameSiPlaceholder}
-                placeholderTextColor={THEME.textMuted}
-                value={formNameSi}
-                onChangeText={setFormNameSi}
-              />
-
-              {/* Price & Stock Row */}
-              <View style={{ flexDirection: 'row', gap: 12 }}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.inputLabel}>{t.modal.priceLabel} *</Text>
-                  <TextInput
-                    style={styles.modalInput}
-                    placeholder="340.00"
-                    placeholderTextColor={THEME.textMuted}
-                    keyboardType="numeric"
-                    value={formPrice}
-                    onChangeText={setFormPrice}
-                  />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.inputLabel}>{t.modal.stockLabel} *</Text>
-                  <TextInput
-                    style={styles.modalInput}
-                    placeholder="500"
-                    placeholderTextColor={THEME.textMuted}
-                    keyboardType="numeric"
-                    value={formStock}
-                    onChangeText={setFormStock}
-                  />
-                </View>
-              </View>
-
-              {/* Location & Grade */}
-              <Text style={styles.inputLabel}>{t.modal.locationLabel}</Text>
-              <TextInput
-                style={styles.modalInput}
-                placeholder="Nuwara Eliya"
-                placeholderTextColor={THEME.textMuted}
-                value={formLocation}
-                onChangeText={setFormLocation}
-              />
-
-              <Text style={styles.inputLabel}>{t.modal.gradeLabel}</Text>
-              <TextInput
-                style={styles.modalInput}
-                placeholder="Grade A Export Quality Fresh Harvest"
-                placeholderTextColor={THEME.textMuted}
-                value={formGrade}
-                onChangeText={setFormGrade}
-              />
-
-              {/* Actions */}
-              <View style={styles.modalActionsRow}>
-                <TouchableOpacity
-                  style={styles.modalCancelBtn}
-                  onPress={() => setShowAddModal(false)}
-                >
-                  <Text style={styles.modalCancelBtnText}>{t.modal.cancelBtn}</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.modalSubmitBtn}
-                  disabled={isSubmitting}
-                  onPress={handleCreateProduce}
-                >
-                  {isSubmitting ? (
-                    <ActivityIndicator size="small" color="#FFFFFF" />
-                  ) : (
-                    <Text style={styles.modalSubmitBtnText}>{t.modal.submitBtn}</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
