@@ -6,6 +6,8 @@ import {
   doc,
   setDoc,
   getDoc,
+  updateDoc,
+  deleteDoc,
 } from 'firebase/firestore';
 import {
   signInWithEmailAndPassword,
@@ -13,6 +15,107 @@ import {
   signOut as firebaseSignOut,
 } from 'firebase/auth';
 import { db, auth } from '../firebaseConfig';
+
+// -------------------------------------------------------
+// DEFAULT SAMPLE PRODUCE (Used when Firestore collection is empty)
+// -------------------------------------------------------
+export const DEFAULT_PRODUCE_LISTINGS = [
+  {
+    id: 'sample_1',
+    nameEn: 'Fresh Nuwara Eliya Carrots',
+    nameSi: 'නුවරඑළිය නැවුම් කැරට්',
+    nameTa: 'நுவரெலியா கேரட்',
+    category: 'Vegetables',
+    price: 340,
+    unitEn: 'kg',
+    unitSi: 'කි.ග්‍රෑ.',
+    unitTa: 'கிலோ',
+    stockQty: 500,
+    farmerName: 'Bandara Farm (Saman Bandara)',
+    farmerId: 'sample_farmer_1',
+    location: 'Nuwara Eliya',
+    district: 'nuwara_eliya',
+    grade: 'Grade A Export Quality',
+    image: 'https://images.unsplash.com/photo-1598170845058-32b9d6a5da37?auto=format&fit=crop&w=600&q=80',
+    description: 'Crisp, organically cultivated mountain highland carrots harvested yesterday morning.',
+  },
+  {
+    id: 'sample_2',
+    nameEn: 'Organic Red Onions (Rathu Lunu)',
+    nameSi: 'දේශීය රතු ළුණු',
+    nameTa: 'சிவப்பு வெங்காயம்',
+    category: 'Vegetables',
+    price: 480,
+    unitEn: 'kg',
+    unitSi: 'කි.ග්‍රෑ.',
+    unitTa: 'கிலோ',
+    stockQty: 850,
+    farmerName: 'Dambulla Agro Co-op (Kamal Silva)',
+    farmerId: 'sample_farmer_2',
+    location: 'Dambulla, Matale',
+    district: 'matale',
+    grade: 'Medium Dry Cured',
+    image: 'https://images.unsplash.com/photo-1618512496248-a07fe83aa8cb?auto=format&fit=crop&w=600&q=80',
+    description: 'Sun-dried high-pungency red shallots sourced directly from dry zone growers.',
+  },
+  {
+    id: 'sample_3',
+    nameEn: 'Keeri Samba Raw Rice',
+    nameSi: 'කීරි සම්බා සහල්',
+    nameTa: 'கீரி சம்பா அரிசி',
+    category: 'Rice & Grains',
+    price: 260,
+    unitEn: 'kg',
+    unitSi: 'කි.ග්‍රෑ.',
+    unitTa: 'கிலோ',
+    stockQty: 2400,
+    farmerName: 'Rajarata Paddy Mill (Nihal Jayasuriya)',
+    farmerId: 'sample_farmer_3',
+    location: 'Polonnaruwa',
+    district: 'polonnaruwa',
+    grade: 'Premium Polished 25kg Bags',
+    image: 'https://images.unsplash.com/photo-1586201375761-83865001e31c?auto=format&fit=crop&w=600&q=80',
+    description: 'Aromatic, fine-grain single-origin Mahaweli irrigated Keeri Samba.',
+  },
+  {
+    id: 'sample_4',
+    nameEn: 'Ambul Banana Fresh Bunch',
+    nameSi: 'ඇඹුල් කෙසෙල්',
+    nameTa: 'ஆம்புல் வாழைப்பழம்',
+    category: 'Fruits',
+    price: 210,
+    unitEn: 'kg',
+    unitSi: 'කි.ග්‍රෑ.',
+    unitTa: 'கிலோ',
+    stockQty: 320,
+    farmerName: 'Southern Green Orchards',
+    farmerId: 'sample_farmer_4',
+    location: 'Embilipitiya, Ratnapura',
+    district: 'ratnapura',
+    grade: 'Naturally Ripened',
+    image: 'https://images.unsplash.com/photo-1571771894821-ce9b6c11b08e?auto=format&fit=crop&w=600&q=80',
+    description: 'Sweet and tangy sweet-banana bunches, free from chemical accelerators.',
+  },
+  {
+    id: 'sample_5',
+    nameEn: 'Pure Ceylon Alba Cinnamon',
+    nameSi: 'සැබෑ කුරුඳු පොතු',
+    nameTa: 'இலங்கை இலவங்கப்பட்டை',
+    category: 'Spices',
+    price: 3400,
+    unitEn: 'kg',
+    unitSi: 'කි.ග්‍රෑ.',
+    unitTa: 'கிலோ',
+    stockQty: 75,
+    farmerName: 'Matara Spice Collective',
+    farmerId: 'sample_farmer_5',
+    location: 'Mirissa, Matara',
+    district: 'matara',
+    grade: 'Alba Grade Hand-Rolled',
+    image: 'https://images.unsplash.com/photo-1509358271058-acd22cc93898?auto=format&fit=crop&w=600&q=80',
+    description: 'Finest slender quills with high eugenol fragrance from Southern coastal groves.',
+  },
+];
 
 // -------------------------------------------------------
 // PRODUCE LISTINGS
@@ -44,10 +147,42 @@ export const addProduceListing = async (produceData) => {
     const docRef = await addDoc(produceRef, {
       ...produceData,
       createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
     });
     return { success: true, id: docRef.id };
   } catch (error) {
     console.error('Error adding produce to Firestore:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Update an existing produce listing
+ */
+export const updateProduceListing = async (produceId, updatedData) => {
+  try {
+    const produceDocRef = doc(db, 'produce', produceId);
+    await updateDoc(produceDocRef, {
+      ...updatedData,
+      updatedAt: serverTimestamp(),
+    });
+    return { success: true };
+  } catch (error) {
+    console.error('Error updating produce:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Delete a produce listing
+ */
+export const deleteProduceListing = async (produceId) => {
+  try {
+    const produceDocRef = doc(db, 'produce', produceId);
+    await deleteDoc(produceDocRef);
+    return { success: true };
+  } catch (error) {
+    console.error('Error deleting produce:', error);
     return { success: false, error: error.message };
   }
 };
@@ -66,10 +201,29 @@ export const placeOrderInFirestore = async (orderData) => {
       ...orderData,
       status: 'PENDING',
       createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
     });
     return { success: true, id: docRef.id };
   } catch (error) {
     console.error('Error placing order in Firestore:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Update order status (e.g. PENDING -> ACCEPTED -> IN_TRANSIT -> DELIVERED)
+ */
+export const updateOrderStatus = async (orderId, newStatus, extraData = {}) => {
+  try {
+    const orderDocRef = doc(db, 'orders', orderId);
+    await updateDoc(orderDocRef, {
+      status: newStatus,
+      ...extraData,
+      updatedAt: serverTimestamp(),
+    });
+    return { success: true };
+  } catch (error) {
+    console.error('Error updating order status in Firestore:', error);
     return { success: false, error: error.message };
   }
 };
