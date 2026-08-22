@@ -11,9 +11,8 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  Image,
   Keyboard,
-  TouchableWithoutFeedback,
+  Image,
 } from 'react-native';
 
 // ----------------------------------------------------
@@ -35,10 +34,10 @@ const THEME = {
 };
 
 // ----------------------------------------------------
-// PURE VECTOR ICONS (NO EMOJIS)
+// TOP-LEVEL PURE VECTOR ICONS (DEFINED OUTSIDE COMPONENT TO PREVENT REMOUNTS)
 // ----------------------------------------------------
 const EyeIcon = ({ visible }) => (
-  <View style={styles.eyeVectorOuter}>
+  <View style={styles.eyeVectorOuter} pointerEvents="none">
     {visible ? (
       <View style={styles.eyeVectorPupil} />
     ) : (
@@ -51,21 +50,21 @@ const EyeIcon = ({ visible }) => (
 );
 
 const UserIcon = ({ color = THEME.textMuted }) => (
-  <View style={styles.iconBox}>
+  <View style={styles.iconBox} pointerEvents="none">
     <View style={[styles.userHead, { backgroundColor: color }]} />
     <View style={[styles.userBody, { backgroundColor: color }]} />
   </View>
 );
 
 const LockIcon = ({ color = THEME.textMuted }) => (
-  <View style={styles.iconBox}>
+  <View style={styles.iconBox} pointerEvents="none">
     <View style={[styles.lockArch, { borderColor: color }]} />
     <View style={[styles.lockBody, { backgroundColor: color }]} />
   </View>
 );
 
 const BackArrowIcon = ({ color = THEME.textDark }) => (
-  <View style={styles.backArrowBox}>
+  <View style={styles.backArrowBox} pointerEvents="none">
     <View style={[styles.arrowShaft, { backgroundColor: color }]} />
     <View style={[styles.arrowHead, { borderColor: color }]} />
   </View>
@@ -113,7 +112,7 @@ const TRANSLATIONS = {
   },
   ta: {
     title: 'மீண்டும் வருக',
-    subtitle: 'தொடர உங்கள் கொவி லிங்க் கணக்கில் உள்நுழையவும்',
+    subtitle: 'தொடර உங்கள் கொவி லிங்க் கணக்கில் உள்நுழையவும்',
     identifierLabel: 'மின்னஞ்சல் அல்லது தொடர்பு எண்',
     identifierPlaceholder: '0771234567 அல்லது user@govilink.lk',
     passwordLabel: 'கடவுச்சොல்',
@@ -137,7 +136,6 @@ export default function LoginScreen({ lang = 'en', onBackToLang, onNavigateToReg
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [focusedInput, setFocusedInput] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
 
@@ -189,13 +187,17 @@ export default function LoginScreen({ lang = 'en', onBackToLang, onNavigateToReg
   };
 
   return (
-    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-      <SafeAreaView style={styles.container}>
-        <StatusBar barStyle="dark-content" backgroundColor={THEME.bg} />
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor={THEME.bg} />
 
-        <KeyboardAvoidingView
-          style={{ flex: 1 }}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
           {/* TOP NAVBAR */}
           <View style={styles.navBar}>
@@ -210,119 +212,99 @@ export default function LoginScreen({ lang = 'en', onBackToLang, onNavigateToReg
             <View style={{ width: 40 }} />
           </View>
 
-          <ScrollView
-            contentContainerStyle={styles.scrollContent}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-          >
-            {/* BRAND EMBLEM & HEADER */}
-            <View style={styles.headerSection}>
-              <Image
-                source={require('../assets/splash-icon.png')}
-                style={styles.logoBadge}
-                resizeMode="contain"
-              />
-              <Text style={styles.titleText}>{t.title}</Text>
-              <Text style={styles.subtitleText}>{t.subtitle}</Text>
-            </View>
+          {/* BRAND EMBLEM & HEADER */}
+          <View style={styles.headerSection}>
+            <Image
+              source={require('../assets/splash-icon.png')}
+              style={styles.logoBadge}
+              resizeMode="contain"
+            />
+            <Text style={styles.titleText}>{t.title}</Text>
+            <Text style={styles.subtitleText}>{t.subtitle}</Text>
+          </View>
 
-            {/* FORM FIELDS */}
-            <View style={styles.formSection}>
-              {/* EMAIL / PHONE INPUT */}
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>{t.identifierLabel}</Text>
-                <View
-                  style={[
-                    styles.inputContainer,
-                    focusedInput === 'identifier' && styles.inputContainerFocused,
-                    errors.identifier && styles.inputContainerError,
-                  ]}
-                >
-                  <UserIcon color={focusedInput === 'identifier' ? THEME.primary : THEME.textMuted} />
-                  <TextInput
-                    style={styles.textInput}
-                    placeholder={t.identifierPlaceholder}
-                    placeholderTextColor={THEME.textMuted}
-                    value={identifier}
-                    autoCapitalize="none"
-                    keyboardType="email-address"
-                    onFocus={() => setFocusedInput('identifier')}
-                    onBlur={() => setFocusedInput(null)}
-                    onChangeText={(text) => {
-                      setIdentifier(text);
-                      if (errors.identifier) setErrors({ ...errors, identifier: null });
-                    }}
-                  />
-                </View>
-                {errors.identifier && <Text style={styles.errorText}>{errors.identifier}</Text>}
+          {/* FORM FIELDS */}
+          <View style={styles.formSection}>
+            {/* EMAIL / PHONE INPUT */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>{t.identifierLabel}</Text>
+              <View style={[styles.inputContainer, errors.identifier && styles.inputContainerError]}>
+                <UserIcon color={THEME.textMuted} />
+                <TextInput
+                  style={styles.textInput}
+                  placeholder={t.identifierPlaceholder}
+                  placeholderTextColor={THEME.textMuted}
+                  selectionColor={THEME.primary}
+                  value={identifier}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  onChangeText={(text) => {
+                    setIdentifier(text);
+                    if (errors.identifier) setErrors((prev) => ({ ...prev, identifier: null }));
+                  }}
+                />
               </View>
+              {errors.identifier && <Text style={styles.errorText}>{errors.identifier}</Text>}
+            </View>
 
-              {/* PASSWORD INPUT */}
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>{t.passwordLabel}</Text>
-                <View
-                  style={[
-                    styles.inputContainer,
-                    focusedInput === 'password' && styles.inputContainerFocused,
-                    errors.password && styles.inputContainerError,
-                  ]}
+            {/* PASSWORD INPUT */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>{t.passwordLabel}</Text>
+              <View style={[styles.inputContainer, errors.password && styles.inputContainerError]}>
+                <LockIcon color={THEME.textMuted} />
+                <TextInput
+                  style={styles.textInput}
+                  placeholder={t.passwordPlaceholder}
+                  placeholderTextColor={THEME.textMuted}
+                  selectionColor={THEME.primary}
+                  secureTextEntry={!showPassword}
+                  value={password}
+                  onChangeText={(text) => {
+                    setPassword(text);
+                    if (errors.password) setErrors((prev) => ({ ...prev, password: null }));
+                  }}
+                />
+                <TouchableOpacity
+                  onPress={() => setShowPassword(!showPassword)}
+                  style={styles.eyeBtn}
+                  activeOpacity={0.7}
                 >
-                  <LockIcon color={focusedInput === 'password' ? THEME.primary : THEME.textMuted} />
-                  <TextInput
-                    style={styles.textInput}
-                    placeholder={t.passwordPlaceholder}
-                    placeholderTextColor={THEME.textMuted}
-                    secureTextEntry={!showPassword}
-                    value={password}
-                    onFocus={() => setFocusedInput('password')}
-                    onBlur={() => setFocusedInput(null)}
-                    onChangeText={(text) => {
-                      setPassword(text);
-                      if (errors.password) setErrors({ ...errors, password: null });
-                    }}
-                  />
-                  <TouchableOpacity
-                    onPress={() => setShowPassword(!showPassword)}
-                    style={styles.eyeBtn}
-                    activeOpacity={0.7}
-                  >
-                    <EyeIcon visible={showPassword} />
-                  </TouchableOpacity>
-                </View>
-                {errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
+                  <EyeIcon visible={showPassword} />
+                </TouchableOpacity>
               </View>
-
-              {/* FORGOT PASSWORD LINK */}
-              <TouchableOpacity style={styles.forgotPassBtn} activeOpacity={0.7}>
-                <Text style={styles.forgotPassText}>{t.forgotPassword}</Text>
-              </TouchableOpacity>
-
-              {/* LOGIN BUTTON WITH LOADING SPINNER */}
-              <TouchableOpacity
-                activeOpacity={0.85}
-                disabled={isSubmitting}
-                style={[styles.ctaButton, isSubmitting && styles.ctaButtonDisabled]}
-                onPress={handleLogin}
-              >
-                {isSubmitting ? (
-                  <ActivityIndicator color="#FFFFFF" size="small" />
-                ) : (
-                  <Text style={styles.ctaButtonText}>{t.submitBtn}</Text>
-                )}
-              </TouchableOpacity>
+              {errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
             </View>
 
-            {/* BOTTOM REGISTRATION PROMPT */}
-            <View style={styles.bottomLinkContainer}>
-              <Text style={styles.bottomPromptText}>{t.noAccountText} </Text>
-              <TouchableOpacity onPress={onNavigateToRegister} activeOpacity={0.7}>
-                <Text style={styles.registerLinkText}>{t.registerLink}</Text>
-              </TouchableOpacity>
-            </View>
-          </ScrollView>
-        </KeyboardAvoidingView>
-      </SafeAreaView>
-    </TouchableWithoutFeedback>
+            {/* FORGOT PASSWORD LINK */}
+            <TouchableOpacity style={styles.forgotPassBtn} activeOpacity={0.7}>
+              <Text style={styles.forgotPassText}>{t.forgotPassword}</Text>
+            </TouchableOpacity>
+
+            {/* LOGIN BUTTON WITH LOADING SPINNER */}
+            <TouchableOpacity
+              activeOpacity={0.85}
+              disabled={isSubmitting}
+              style={[styles.ctaButton, isSubmitting && styles.ctaButtonDisabled]}
+              onPress={handleLogin}
+            >
+              {isSubmitting ? (
+                <ActivityIndicator color="#FFFFFF" size="small" />
+              ) : (
+                <Text style={styles.ctaButtonText}>{t.submitBtn}</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+
+          {/* BOTTOM REGISTRATION PROMPT */}
+          <View style={styles.bottomLinkContainer}>
+            <Text style={styles.bottomPromptText}>{t.noAccountText} </Text>
+            <TouchableOpacity onPress={onNavigateToRegister} activeOpacity={0.7}>
+              <Text style={styles.registerLinkText}>{t.registerLink}</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
@@ -337,8 +319,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
+    paddingHorizontal: 0,
     backgroundColor: THEME.bg,
+    marginBottom: 12,
   },
   backBtn: {
     width: 40,
@@ -376,10 +359,10 @@ const styles = StyleSheet.create({
     color: THEME.primary,
   },
   scrollContent: {
+    flexGrow: 1,
     paddingHorizontal: 24,
     paddingTop: 16,
-    paddingBottom: 50,
-    flexGrow: 1,
+    paddingBottom: 40,
   },
   headerSection: {
     alignItems: 'center',
@@ -426,14 +409,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     height: 52,
   },
-  inputContainerFocused: {
-    borderColor: THEME.borderActive,
-    shadowColor: THEME.primary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
   inputContainerError: {
     borderColor: THEME.danger,
   },
@@ -476,6 +451,9 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: THEME.textDark,
     fontWeight: '500',
+    height: 52,
+    paddingVertical: 8,
+    paddingHorizontal: 4,
   },
   eyeBtn: {
     paddingHorizontal: 8,

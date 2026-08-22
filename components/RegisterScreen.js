@@ -13,8 +13,9 @@ import {
   KeyboardAvoidingView,
   Platform,
   Keyboard,
-  TouchableWithoutFeedback,
 } from 'react-native';
+import { saveUserToFirestore } from '../services/firebaseDatabase';
+
 
 // ----------------------------------------------------
 // MODERN FINTECH DESIGN TOKENS & COLOR PALETTE
@@ -35,10 +36,10 @@ const THEME = {
 };
 
 // ----------------------------------------------------
-// PURE VECTOR ICONS (NO EMOJIS)
+// TOP-LEVEL PURE VECTOR ICONS (DEFINED OUTSIDE COMPONENT TO PREVENT REMOUNTS)
 // ----------------------------------------------------
 const EyeIcon = ({ visible }) => (
-  <View style={styles.eyeVectorOuter}>
+  <View style={styles.eyeVectorOuter} pointerEvents="none">
     {visible ? (
       <View style={styles.eyeVectorPupil} />
     ) : (
@@ -51,7 +52,7 @@ const EyeIcon = ({ visible }) => (
 );
 
 const FarmerIcon = ({ color = THEME.primary }) => (
-  <View style={styles.roleIconBox}>
+  <View style={styles.roleIconBox} pointerEvents="none">
     <View style={[styles.sproutStem, { backgroundColor: color }]} />
     <View style={[styles.leafLeft, { borderColor: color }]} />
     <View style={[styles.leafRight, { borderColor: color }]} />
@@ -59,14 +60,14 @@ const FarmerIcon = ({ color = THEME.primary }) => (
 );
 
 const BuyerIcon = ({ color = THEME.primary }) => (
-  <View style={styles.roleIconBox}>
+  <View style={styles.roleIconBox} pointerEvents="none">
     <View style={[styles.basketHandle, { borderColor: color }]} />
     <View style={[styles.basketBody, { borderColor: color }]} />
   </View>
 );
 
 const DriverIcon = ({ color = THEME.primary }) => (
-  <View style={styles.roleIconBox}>
+  <View style={styles.roleIconBox} pointerEvents="none">
     <View style={[styles.truckCabin, { borderColor: color }]} />
     <View style={[styles.truckWheelLeft, { backgroundColor: color }]} />
     <View style={[styles.truckWheelRight, { backgroundColor: color }]} />
@@ -74,35 +75,35 @@ const DriverIcon = ({ color = THEME.primary }) => (
 );
 
 const ChevronDownIcon = ({ color = THEME.textMuted }) => (
-  <View style={styles.chevronBox}>
+  <View style={styles.chevronBox} pointerEvents="none">
     <View style={[styles.chevronLeft, { backgroundColor: color }]} />
     <View style={[styles.chevronRight, { backgroundColor: color }]} />
   </View>
 );
 
 const SearchIcon = ({ color = THEME.textMuted }) => (
-  <View style={styles.searchIconBox}>
+  <View style={styles.searchIconBox} pointerEvents="none">
     <View style={[styles.searchRing, { borderColor: color }]} />
     <View style={[styles.searchHandle, { backgroundColor: color }]} />
   </View>
 );
 
 const CheckIcon = ({ color = THEME.primary }) => (
-  <View style={styles.checkIconBox}>
+  <View style={styles.checkIconBox} pointerEvents="none">
     <View style={[styles.checkStem, { backgroundColor: color }]} />
     <View style={[styles.checkBase, { backgroundColor: color }]} />
   </View>
 );
 
 const CloseIcon = ({ color = THEME.textMuted }) => (
-  <View style={styles.closeIconBox}>
+  <View style={styles.closeIconBox} pointerEvents="none">
     <View style={[styles.closeLine1, { backgroundColor: color }]} />
     <View style={[styles.closeLine2, { backgroundColor: color }]} />
   </View>
 );
 
 const BackArrowIcon = ({ color = THEME.textDark }) => (
-  <View style={styles.backArrowBox}>
+  <View style={styles.backArrowBox} pointerEvents="none">
     <View style={[styles.arrowShaft, { backgroundColor: color }]} />
     <View style={[styles.arrowHead, { borderColor: color }]} />
   </View>
@@ -116,21 +117,21 @@ const DISTRICTS = [
   { id: 'gampaha', nameEn: 'Gampaha', nameSi: 'ගම්පහ', nameTa: 'கம்பஹா' },
   { id: 'kalutara', nameEn: 'Kalutara', nameSi: 'කළුතර', nameTa: 'களுத்துறை' },
   { id: 'kandy', nameEn: 'Kandy', nameSi: 'මහනුවර', nameTa: 'கண்டி' },
-  { id: 'matale', nameEn: 'Matale', nameSi: 'මාතලේ', nameTa: 'மாத்தளை' },
+  { id: 'matale', nameEn: 'Matale', nameSi: 'මාතලේ', nameTa: 'මාத்தளை' },
   { id: 'nuwara_eliya', nameEn: 'Nuwara Eliya', nameSi: 'නුවරඑළිය', nameTa: 'நுவரெலியா' },
   { id: 'galle', nameEn: 'Galle', nameSi: 'ගාල්ල', nameTa: 'காலி' },
-  { id: 'matara', nameEn: 'Matara', nameSi: 'මාතර', nameTa: 'மாத்தறை' },
+  { id: 'matara', nameEn: 'Matara', nameSi: 'මාතර', nameTa: 'මාத்தறை' },
   { id: 'hambantota', nameEn: 'Hambantota', nameSi: 'හම්බන්තොට', nameTa: 'ஹம்பாந்தோட்டை' },
-  { id: 'jaffna', nameEn: 'Jaffna', nameSi: 'යාපනය', nameTa: 'யாழ்ப்பාணம்' },
+  { id: 'jaffna', nameEn: 'Jaffna', nameSi: 'යාපනය', nameTa: 'யாழ்ப்பாணம்' },
   { id: 'kilinochchi', nameEn: 'Kilinochchi', nameSi: 'කිලිනොච්චිය', nameTa: 'கிளிநොச்சி' },
   { id: 'mannar', nameEn: 'Mannar', nameSi: 'මන්නාරම', nameTa: 'மன்னார்' },
   { id: 'vavuniya', nameEn: 'Vavuniya', nameSi: 'වවුනියාව', nameTa: 'வவுனியா' },
-  { id: 'mullaitivu', nameEn: 'Mullaitivu', nameSi: 'මුලතිව්', nameTa: 'முல்லைத்தීவு' },
+  { id: 'mullaitivu', nameEn: 'Mullaitivu', nameSi: 'මුලතිව්', nameTa: 'முல்லைத்தீவு' },
   { id: 'batticaloa', nameEn: 'Batticaloa', nameSi: 'මඩකලපුව', nameTa: 'மட்டக்களப்பு' },
-  { id: 'ampara', nameEn: 'Ampara', nameSi: 'අම්පාර', nameTa: 'அம்பாறை' },
+  { id: 'ampara', nameEn: 'Ampara', nameSi: 'අම්පාර', nameTa: 'அம்பාறை' },
   { id: 'trincomalee', nameEn: 'Trincomalee', nameSi: 'ත්‍රිකුණාමලය', nameTa: 'திருகோணமலை' },
   { id: 'kurunegala', nameEn: 'Kurunegala', nameSi: 'කුරුණෑගල', nameTa: 'குருநாகல்' },
-  { id: 'puttalam', nameEn: 'Puttalam', nameSi: 'පුත්තලම', nameTa: 'புத்தளம்' },
+  { id: 'puttalam', nameEn: 'Puttalam', nameSi: 'පුත්තලම', nameTa: 'පුත්තළම්' },
   { id: 'anuradhapura', nameEn: 'Anuradhapura', nameSi: 'අනුරාධපුරය', nameTa: 'அනුராதபுரம்' },
   { id: 'polonnaruwa', nameEn: 'Polonnaruwa', nameSi: 'පොළොන්නරුව', nameTa: 'பொலன்னறுவை' },
   { id: 'badulla', nameEn: 'Badulla', nameSi: 'බදුල්ල', nameTa: 'பதுளை' },
@@ -260,7 +261,6 @@ export default function RegisterScreen({ lang = 'en', onBack, onNavigateToLogin,
   const [selectedRole, setSelectedRole] = useState('farmer');
   const [showDistrictModal, setShowDistrictModal] = useState(false);
   const [districtSearch, setDistrictSearch] = useState('');
-  const [focusedInput, setFocusedInput] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
 
@@ -323,23 +323,21 @@ export default function RegisterScreen({ lang = 'en', onBack, onNavigateToLogin,
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     Keyboard.dismiss();
     if (validateForm()) {
       setIsSubmitting(true);
-      setTimeout(() => {
-        setIsSubmitting(false);
-        const profile = {
-          fullName: fullName.trim(),
-          phone: phone.trim(),
-          password: password,
-          district: selectedDistrict,
-          role: selectedRole,
-        };
-        if (onRegisterComplete) {
-          onRegisterComplete(profile);
-        }
-      }, 800);
+      const profile = {
+        fullName: fullName.trim(),
+        phone: phone.trim(),
+        district: selectedDistrict,
+        role: selectedRole,
+      };
+      await saveUserToFirestore(profile);
+      setIsSubmitting(false);
+      if (onRegisterComplete) {
+        onRegisterComplete(profile);
+      }
     }
   };
 
@@ -352,13 +350,17 @@ export default function RegisterScreen({ lang = 'en', onBack, onNavigateToLogin,
   };
 
   return (
-    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-      <SafeAreaView style={styles.container}>
-        <StatusBar barStyle="dark-content" backgroundColor={THEME.bg} />
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor={THEME.bg} />
 
-        <KeyboardAvoidingView
-          style={{ flex: 1 }}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
           {/* TOP NAVBAR */}
           <View style={styles.navBar}>
@@ -369,298 +371,265 @@ export default function RegisterScreen({ lang = 'en', onBack, onNavigateToLogin,
             <View style={{ width: 40 }} />
           </View>
 
-          <ScrollView
-            contentContainerStyle={styles.scrollContent}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-          >
-            {/* HEADER TYPOGRAPHY */}
-            <View style={styles.headerSection}>
-              <Text style={styles.titleText}>{t.title}</Text>
-              <Text style={styles.subtitleText}>{t.subtitle}</Text>
+          {/* HEADER TYPOGRAPHY */}
+          <View style={styles.headerSection}>
+            <Text style={styles.titleText}>{t.title}</Text>
+            <Text style={styles.subtitleText}>{t.subtitle}</Text>
+          </View>
+
+          {/* FORM INPUTS */}
+          <View style={styles.formSection}>
+            {/* FULL NAME INPUT */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>{t.nameLabel}</Text>
+              <View style={[styles.inputContainer, errors.fullName && styles.inputContainerError]}>
+                <TextInput
+                  style={styles.textInput}
+                  placeholder={t.namePlaceholder}
+                  placeholderTextColor={THEME.textMuted}
+                  selectionColor={THEME.primary}
+                  value={fullName}
+                  onChangeText={(text) => {
+                    setFullName(text);
+                    if (errors.fullName) setErrors((prev) => ({ ...prev, fullName: null }));
+                  }}
+                />
+              </View>
+              {errors.fullName && <Text style={styles.errorText}>{errors.fullName}</Text>}
             </View>
 
-            {/* FORM INPUTS */}
-            <View style={styles.formSection}>
-              {/* FULL NAME INPUT */}
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>{t.nameLabel}</Text>
-                <View
-                  style={[
-                    styles.inputContainer,
-                    focusedInput === 'fullName' && styles.inputContainerFocused,
-                    errors.fullName && styles.inputContainerError,
-                  ]}
-                >
-                  <TextInput
-                    style={styles.textInput}
-                    placeholder={t.namePlaceholder}
-                    placeholderTextColor={THEME.textMuted}
-                    value={fullName}
-                    onFocus={() => setFocusedInput('fullName')}
-                    onBlur={() => setFocusedInput(null)}
-                    onChangeText={(text) => {
-                      setFullName(text);
-                      if (errors.fullName) setErrors({ ...errors, fullName: null });
-                    }}
-                  />
+            {/* PHONE NUMBER INPUT (WITH SRI LANKA COUNTRY CODE BADGE) */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>{t.phoneLabel}</Text>
+              <View style={[styles.inputContainer, errors.phone && styles.inputContainerError]}>
+                <View style={styles.countryBadge}>
+                  <Text style={styles.countryCodeText}>LK +94</Text>
                 </View>
-                {errors.fullName && <Text style={styles.errorText}>{errors.fullName}</Text>}
+                <View style={styles.dividerLine} />
+                <TextInput
+                  style={styles.textInput}
+                  placeholder={t.phonePlaceholder}
+                  placeholderTextColor={THEME.textMuted}
+                  selectionColor={THEME.primary}
+                  keyboardType="phone-pad"
+                  maxLength={10}
+                  value={phone}
+                  onChangeText={(text) => {
+                    setPhone(text);
+                    if (errors.phone) setErrors((prev) => ({ ...prev, phone: null }));
+                  }}
+                />
               </View>
+              {errors.phone && <Text style={styles.errorText}>{errors.phone}</Text>}
+            </View>
 
-              {/* PHONE NUMBER INPUT (WITH SRI LANKA COUNTRY CODE BADGE) */}
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>{t.phoneLabel}</Text>
-                <View
-                  style={[
-                    styles.inputContainer,
-                    focusedInput === 'phone' && styles.inputContainerFocused,
-                    errors.phone && styles.inputContainerError,
-                  ]}
-                >
-                  <View style={styles.countryBadge}>
-                    <Text style={styles.countryCodeText}>LK +94</Text>
-                  </View>
-                  <View style={styles.dividerLine} />
-                  <TextInput
-                    style={styles.textInput}
-                    placeholder={t.phonePlaceholder}
-                    placeholderTextColor={THEME.textMuted}
-                    keyboardType="phone-pad"
-                    maxLength={10}
-                    value={phone}
-                    onFocus={() => setFocusedInput('phone')}
-                    onBlur={() => setFocusedInput(null)}
-                    onChangeText={(text) => {
-                      setPhone(text);
-                      if (errors.phone) setErrors({ ...errors, phone: null });
-                    }}
-                  />
-                </View>
-                {errors.phone && <Text style={styles.errorText}>{errors.phone}</Text>}
-              </View>
-
-              {/* PASSWORD INPUT WITH VECTOR EYE TOGGLE */}
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>{t.passwordLabel}</Text>
-                <View
-                  style={[
-                    styles.inputContainer,
-                    focusedInput === 'password' && styles.inputContainerFocused,
-                    errors.password && styles.inputContainerError,
-                  ]}
-                >
-                  <TextInput
-                    style={styles.textInput}
-                    placeholder={t.passwordPlaceholder}
-                    placeholderTextColor={THEME.textMuted}
-                    secureTextEntry={!showPassword}
-                    value={password}
-                    onFocus={() => setFocusedInput('password')}
-                    onBlur={() => setFocusedInput(null)}
-                    onChangeText={(text) => {
-                      setPassword(text);
-                      if (errors.password) setErrors({ ...errors, password: null });
-                    }}
-                  />
-                  <TouchableOpacity
-                    onPress={() => setShowPassword(!showPassword)}
-                    style={styles.eyeBtn}
-                    activeOpacity={0.7}
-                  >
-                    <EyeIcon visible={showPassword} />
-                  </TouchableOpacity>
-                </View>
-                {errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
-              </View>
-
-              {/* CONFIRM PASSWORD INPUT WITH VECTOR EYE TOGGLE */}
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>{t.confirmPasswordLabel}</Text>
-                <View
-                  style={[
-                    styles.inputContainer,
-                    focusedInput === 'confirmPassword' && styles.inputContainerFocused,
-                    errors.confirmPassword && styles.inputContainerError,
-                  ]}
-                >
-                  <TextInput
-                    style={styles.textInput}
-                    placeholder={t.confirmPasswordPlaceholder}
-                    placeholderTextColor={THEME.textMuted}
-                    secureTextEntry={!showConfirmPassword}
-                    value={confirmPassword}
-                    onFocus={() => setFocusedInput('confirmPassword')}
-                    onBlur={() => setFocusedInput(null)}
-                    onChangeText={(text) => {
-                      setConfirmPassword(text);
-                      if (errors.confirmPassword) setErrors({ ...errors, confirmPassword: null });
-                    }}
-                  />
-                  <TouchableOpacity
-                    onPress={() => setShowConfirmPassword(!showConfirmPassword)}
-                    style={styles.eyeBtn}
-                    activeOpacity={0.7}
-                  >
-                    <EyeIcon visible={showConfirmPassword} />
-                  </TouchableOpacity>
-                </View>
-                {errors.confirmPassword && <Text style={styles.errorText}>{errors.confirmPassword}</Text>}
-              </View>
-
-              {/* DISTRICT SELECTION TRIGGER */}
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>{t.districtLabel}</Text>
+            {/* PASSWORD INPUT WITH VECTOR EYE TOGGLE */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>{t.passwordLabel}</Text>
+              <View style={[styles.inputContainer, errors.password && styles.inputContainerError]}>
+                <TextInput
+                  style={styles.textInput}
+                  placeholder={t.passwordPlaceholder}
+                  placeholderTextColor={THEME.textMuted}
+                  selectionColor={THEME.primary}
+                  secureTextEntry={!showPassword}
+                  value={password}
+                  onChangeText={(text) => {
+                    setPassword(text);
+                    if (errors.password) setErrors((prev) => ({ ...prev, password: null }));
+                  }}
+                />
                 <TouchableOpacity
+                  onPress={() => setShowPassword(!showPassword)}
+                  style={styles.eyeBtn}
                   activeOpacity={0.7}
-                  style={[styles.inputContainer, errors.district && styles.inputContainerError]}
-                  onPress={() => setShowDistrictModal(true)}
+                >
+                  <EyeIcon visible={showPassword} />
+                </TouchableOpacity>
+              </View>
+              {errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
+            </View>
+
+            {/* CONFIRM PASSWORD INPUT WITH VECTOR EYE TOGGLE */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>{t.confirmPasswordLabel}</Text>
+              <View style={[styles.inputContainer, errors.confirmPassword && styles.inputContainerError]}>
+                <TextInput
+                  style={styles.textInput}
+                  placeholder={t.confirmPasswordPlaceholder}
+                  placeholderTextColor={THEME.textMuted}
+                  selectionColor={THEME.primary}
+                  secureTextEntry={!showConfirmPassword}
+                  value={confirmPassword}
+                  onChangeText={(text) => {
+                    setConfirmPassword(text);
+                    if (errors.confirmPassword) setErrors((prev) => ({ ...prev, confirmPassword: null }));
+                  }}
+                />
+                <TouchableOpacity
+                  onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+                  style={styles.eyeBtn}
+                  activeOpacity={0.7}
+                >
+                  <EyeIcon visible={showConfirmPassword} />
+                </TouchableOpacity>
+              </View>
+              {errors.confirmPassword && <Text style={styles.errorText}>{errors.confirmPassword}</Text>}
+            </View>
+
+            {/* DISTRICT SELECTION TRIGGER */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>{t.districtLabel}</Text>
+              <TouchableOpacity
+                activeOpacity={0.7}
+                style={[styles.inputContainer, errors.district && styles.inputContainerError]}
+                onPress={() => setShowDistrictModal(true)}
+              >
+                <Text
+                  style={[
+                    styles.districtSelectText,
+                    !selectedDistrict && { color: THEME.textMuted },
+                  ]}
+                >
+                  {selectedDistrict ? getDistrictName(selectedDistrict) : t.districtPlaceholder}
+                </Text>
+                <ChevronDownIcon color={THEME.textMuted} />
+              </TouchableOpacity>
+              {errors.district && <Text style={styles.errorText}>{errors.district}</Text>}
+            </View>
+
+            {/* VISUAL ROLE SELECTOR (CLEAN VECTOR ICONS, ZERO EMOJIS) */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>{t.roleLabel}</Text>
+              <View style={styles.rolesGridContainer}>
+                {t.roles.map((item) => {
+                  const isSelected = selectedRole === item.id;
+                  const IconComponent = item.iconComponent;
+                  const iconColor = isSelected ? THEME.primary : THEME.textMuted;
+                  return (
+                    <TouchableOpacity
+                      key={item.id}
+                      activeOpacity={0.8}
+                      style={[
+                        styles.roleGridCard,
+                        isSelected && styles.roleGridCardActive,
+                      ]}
+                      onPress={() => {
+                        setSelectedRole(item.id);
+                        if (errors.role) setErrors((prev) => ({ ...prev, role: null }));
+                      }}
+                    >
+                      <View style={styles.roleIconWrapper}>
+                        <IconComponent color={iconColor} />
+                      </View>
+                      <Text
+                        style={[
+                          styles.roleLabelText,
+                          isSelected && styles.roleLabelTextActive,
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {item.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              {errors.role && <Text style={styles.errorText}>{errors.role}</Text>}
+            </View>
+
+            {/* CTA BUTTON WITH DYNAMIC LOADING SPINNER */}
+            <TouchableOpacity
+              activeOpacity={0.85}
+              disabled={isSubmitting}
+              style={[styles.ctaButton, isSubmitting && styles.ctaButtonDisabled]}
+              onPress={handleSubmit}
+            >
+              {isSubmitting ? (
+                <ActivityIndicator color="#FFFFFF" size="small" />
+              ) : (
+                <Text style={styles.ctaButtonText}>{t.submitBtn}</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+
+          {/* BOTTOM LOGIN PROMPT LINK */}
+          <View style={styles.bottomLinkContainer}>
+            <Text style={styles.bottomPromptText}>{t.alreadyHaveAccountText} </Text>
+            <TouchableOpacity onPress={handleBackPress} activeOpacity={0.7}>
+              <Text style={styles.loginLinkText}>{t.loginLink}</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+
+      {/* MINIMAL DISTRICT SEARCH MODAL SHEET */}
+      <Modal visible={showDistrictModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalSheet}>
+            <View style={styles.modalDragHandle} />
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>{t.districtLabel}</Text>
+              <TouchableOpacity
+                onPress={() => setShowDistrictModal(false)}
+                style={styles.modalCloseBtn}
+              >
+                <CloseIcon color={THEME.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            {/* SEARCH INPUT */}
+            <View style={styles.searchBox}>
+              <SearchIcon color={THEME.textMuted} />
+              <TextInput
+                style={styles.modalSearchInput}
+                placeholder={t.searchDistrictPlaceholder}
+                placeholderTextColor={THEME.textMuted}
+                selectionColor={THEME.primary}
+                value={districtSearch}
+                onChangeText={setDistrictSearch}
+              />
+              {districtSearch.length > 0 && (
+                <TouchableOpacity onPress={() => setDistrictSearch('')}>
+                  <CloseIcon color={THEME.textMuted} />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <ScrollView style={{ maxHeight: 380 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              {filteredDistricts.map((item) => (
+                <TouchableOpacity
+                  key={item.id}
+                  style={[
+                    styles.districtRow,
+                    selectedDistrict?.id === item.id && styles.districtRowActive,
+                  ]}
+                  onPress={() => {
+                    setSelectedDistrict(item);
+                    setShowDistrictModal(false);
+                    setDistrictSearch('');
+                    if (errors.district) setErrors((prev) => ({ ...prev, district: null }));
+                  }}
                 >
                   <Text
                     style={[
-                      styles.textInput,
-                      !selectedDistrict && { color: THEME.textMuted },
+                      styles.districtRowText,
+                      selectedDistrict?.id === item.id && styles.districtRowTextActive,
                     ]}
                   >
-                    {selectedDistrict ? getDistrictName(selectedDistrict) : t.districtPlaceholder}
+                    {getDistrictName(item)}
+                    {lang !== 'en' && ` (${item.nameEn})`}
                   </Text>
-                  <ChevronDownIcon color={THEME.textMuted} />
+                  {selectedDistrict?.id === item.id && (
+                    <CheckIcon color={THEME.primary} />
+                  )}
                 </TouchableOpacity>
-                {errors.district && <Text style={styles.errorText}>{errors.district}</Text>}
-              </View>
-
-              {/* VISUAL ROLE SELECTOR (CLEAN VECTOR ICONS, ZERO EMOJIS) */}
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>{t.roleLabel}</Text>
-                <View style={styles.rolesGridContainer}>
-                  {t.roles.map((item) => {
-                    const isSelected = selectedRole === item.id;
-                    const IconComponent = item.iconComponent;
-                    const iconColor = isSelected ? THEME.primary : THEME.textMuted;
-                    return (
-                      <TouchableOpacity
-                        key={item.id}
-                        activeOpacity={0.8}
-                        style={[
-                          styles.roleGridCard,
-                          isSelected && styles.roleGridCardActive,
-                        ]}
-                        onPress={() => {
-                          setSelectedRole(item.id);
-                          if (errors.role) setErrors({ ...errors, role: null });
-                        }}
-                      >
-                        <View style={styles.roleIconWrapper}>
-                          <IconComponent color={iconColor} />
-                        </View>
-                        <Text
-                          style={[
-                            styles.roleLabelText,
-                            isSelected && styles.roleLabelTextActive,
-                          ]}
-                          numberOfLines={1}
-                        >
-                          {item.label}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-                {errors.role && <Text style={styles.errorText}>{errors.role}</Text>}
-              </View>
-
-              {/* CTA BUTTON WITH DYNAMIC LOADING SPINNER */}
-              <TouchableOpacity
-                activeOpacity={0.85}
-                disabled={isSubmitting}
-                style={[styles.ctaButton, isSubmitting && styles.ctaButtonDisabled]}
-                onPress={handleSubmit}
-              >
-                {isSubmitting ? (
-                  <ActivityIndicator color="#FFFFFF" size="small" />
-                ) : (
-                  <Text style={styles.ctaButtonText}>{t.submitBtn}</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-
-            {/* BOTTOM LOGIN PROMPT LINK */}
-            <View style={styles.bottomLinkContainer}>
-              <Text style={styles.bottomPromptText}>{t.alreadyHaveAccountText} </Text>
-              <TouchableOpacity onPress={handleBackPress} activeOpacity={0.7}>
-                <Text style={styles.loginLinkText}>{t.loginLink}</Text>
-              </TouchableOpacity>
-            </View>
-          </ScrollView>
-        </KeyboardAvoidingView>
-
-        {/* MINIMAL DISTRICT SEARCH MODAL SHEET */}
-        <Modal visible={showDistrictModal} transparent animationType="slide">
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalSheet}>
-              <View style={styles.modalDragHandle} />
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>{t.districtLabel}</Text>
-                <TouchableOpacity
-                  onPress={() => setShowDistrictModal(false)}
-                  style={styles.modalCloseBtn}
-                >
-                  <CloseIcon color={THEME.textMuted} />
-                </TouchableOpacity>
-              </View>
-
-              {/* SEARCH INPUT */}
-              <View style={styles.searchBox}>
-                <SearchIcon color={THEME.textMuted} />
-                <TextInput
-                  style={styles.searchInput}
-                  placeholder={t.searchDistrictPlaceholder}
-                  placeholderTextColor={THEME.textMuted}
-                  value={districtSearch}
-                  onChangeText={setDistrictSearch}
-                />
-                {districtSearch.length > 0 && (
-                  <TouchableOpacity onPress={() => setDistrictSearch('')}>
-                    <CloseIcon color={THEME.textMuted} />
-                  </TouchableOpacity>
-                )}
-              </View>
-
-              <ScrollView style={{ maxHeight: 380 }} showsVerticalScrollIndicator={false}>
-                {filteredDistricts.map((item) => (
-                  <TouchableOpacity
-                    key={item.id}
-                    style={[
-                      styles.districtRow,
-                      selectedDistrict?.id === item.id && styles.districtRowActive,
-                    ]}
-                    onPress={() => {
-                      setSelectedDistrict(item);
-                      setShowDistrictModal(false);
-                      setDistrictSearch('');
-                      if (errors.district) setErrors({ ...errors, district: null });
-                    }}
-                  >
-                    <Text
-                      style={[
-                        styles.districtRowText,
-                        selectedDistrict?.id === item.id && styles.districtRowTextActive,
-                      ]}
-                    >
-                      {getDistrictName(item)}
-                      {lang !== 'en' && ` (${item.nameEn})`}
-                    </Text>
-                    {selectedDistrict?.id === item.id && (
-                      <CheckIcon color={THEME.primary} />
-                    )}
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
+              ))}
+            </ScrollView>
           </View>
-        </Modal>
-      </SafeAreaView>
-    </TouchableWithoutFeedback>
+        </View>
+      </Modal>
+    </SafeAreaView>
   );
 }
 
@@ -675,8 +644,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
+    paddingHorizontal: 0,
     backgroundColor: THEME.bg,
+    marginBottom: 12,
   },
   backBtn: {
     width: 40,
@@ -716,7 +686,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: 20,
     paddingTop: 12,
-    paddingBottom: 50,
+    paddingBottom: 60,
     flexGrow: 1,
   },
   headerSection: {
@@ -756,18 +726,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     height: 52,
   },
-  inputContainerFocused: {
-    borderColor: THEME.borderActive,
-    shadowColor: THEME.primary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
   inputContainerError: {
     borderColor: THEME.danger,
   },
   textInput: {
+    flex: 1,
+    fontSize: 15,
+    color: THEME.textDark,
+    fontWeight: '500',
+    height: 52,
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+  },
+  districtSelectText: {
     flex: 1,
     fontSize: 15,
     color: THEME.textDark,
@@ -1087,10 +1058,11 @@ const styles = StyleSheet.create({
     right: 0,
     transform: [{ rotate: '45deg' }],
   },
-  searchInput: {
+  modalSearchInput: {
     flex: 1,
     fontSize: 14,
     color: THEME.textDark,
+    height: 42,
   },
   closeIconBox: {
     width: 12,
