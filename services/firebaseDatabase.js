@@ -369,3 +369,70 @@ export const saveUserToFirestore = async (userData) => {
     return { success: false, error: error.message };
   }
 };
+
+// -------------------------------------------------------
+// BUYER CUSTOM PRODUCE REQUESTS (SPECIFIC AREA & DATE)
+// -------------------------------------------------------
+
+/**
+ * Submit a custom produce request from a buyer
+ */
+export const createBuyerCustomRequest = async (requestData) => {
+  try {
+    const requestsRef = collection(db, 'buyer_requests');
+    const docRef = await addDoc(requestsRef, {
+      ...requestData,
+      status: 'OPEN',
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    return { success: true, id: docRef.id };
+  } catch (error) {
+    console.error('Error creating buyer custom request:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Real-time listener for Buyer Custom Requests in Firestore
+ */
+export const subscribeToBuyerRequests = (onUpdate, buyerUid = null) => {
+  const requestsRef = collection(db, 'buyer_requests');
+
+  return onSnapshot(requestsRef, (snapshot) => {
+    let requests = snapshot.docs.map((docSnap) => ({
+      id: docSnap.id,
+      ...docSnap.data(),
+    }));
+
+    if (buyerUid) {
+      requests = requests.filter((r) => r.buyerUid === buyerUid);
+    }
+
+    // Sort newest first
+    requests.sort((a, b) => {
+      const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : (a.createdAt?.seconds ? a.createdAt.seconds * 1000 : 0);
+      const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : (b.createdAt?.seconds ? b.createdAt.seconds * 1000 : 0);
+      return timeB - timeA;
+    });
+
+    onUpdate(requests);
+  }, (error) => {
+    console.error('Firestore buyer requests subscription error:', error);
+  });
+};
+
+/**
+ * Delete or cancel a buyer custom request
+ */
+export const deleteBuyerRequest = async (requestId) => {
+  try {
+    const requestDocRef = doc(db, 'buyer_requests', requestId);
+    await deleteDoc(requestDocRef);
+    return { success: true };
+  } catch (error) {
+    console.error('Error deleting buyer request:', error);
+    return { success: false, error: error.message };
+  }
+};
+
