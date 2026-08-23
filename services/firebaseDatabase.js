@@ -14,12 +14,72 @@ import {
   createUserWithEmailAndPassword,
   signOut as firebaseSignOut,
 } from 'firebase/auth';
-import { db, auth } from '../firebaseConfig';
+import {
+  ref,
+  uploadBytes,
+  uploadString,
+  getDownloadURL,
+} from 'firebase/storage';
+import { db, auth, storage } from '../firebaseConfig';
 
 // -------------------------------------------------------
+// PRODUCE LISTINGS & IMAGE UPLOADS
 // -------------------------------------------------------
-// PRODUCE LISTINGS
-// -------------------------------------------------------
+
+/**
+ * Upload produce image to Firebase Storage (with base64 fallback)
+ * Ensures the image is hosted and accessible across all devices & users.
+ */
+export const uploadProduceImage = async (imageUri, produceId) => {
+  if (!imageUri) return null;
+
+  // 1. If already a remote web URL, keep as is
+  if (imageUri.startsWith('http://') || imageUri.startsWith('https://')) {
+    return imageUri;
+  }
+
+  const uniqueId = produceId || `produce_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+  const storagePath = `produce_images/${uniqueId}.jpg`;
+  const storageRef = ref(storage, storagePath);
+
+  // 2. Try uploading to Firebase Storage
+  try {
+    if (imageUri.startsWith('data:')) {
+      await uploadString(storageRef, imageUri, 'data_url');
+      const downloadURL = await getDownloadURL(storageRef);
+      return downloadURL;
+    } else {
+      const response = await fetch(imageUri);
+      const blob = await response.blob();
+      await uploadBytes(storageRef, blob, { contentType: 'image/jpeg' });
+      const downloadURL = await getDownloadURL(storageRef);
+      return downloadURL;
+    }
+  } catch (storageError) {
+    console.warn('Firebase Storage upload warning, using data URL fallback:', storageError);
+
+    // 3. Fallback: If it is already a base64 data URL, return it
+    if (imageUri.startsWith('data:')) {
+      return imageUri;
+    }
+
+    // 4. Convert local file:// URI to base64 data URL
+    try {
+      const response = await fetch(imageUri);
+      const blob = await response.blob();
+      const base64Data = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+      return base64Data;
+    } catch (fallbackError) {
+      console.error('Failed to convert image to fallback data URL:', fallbackError);
+      return imageUri;
+    }
+  }
+};
 
 /**
  * Real-time listener for Produce Marketplace Listings in Firestore
@@ -43,9 +103,15 @@ export const subscribeToProduceListings = (onUpdate) => {
  */
 export const addProduceListing = async (produceData) => {
   try {
+    let finalImageUrl = produceData.image;
+    if (finalImageUrl && !finalImageUrl.startsWith('http://') && !finalImageUrl.startsWith('https://')) {
+      finalImageUrl = await uploadProduceImage(finalImageUrl);
+    }
+
     const produceRef = collection(db, 'produce');
     const docRef = await addDoc(produceRef, {
       ...produceData,
+      image: finalImageUrl || produceData.image,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
@@ -61,9 +127,15 @@ export const addProduceListing = async (produceData) => {
  */
 export const updateProduceListing = async (produceId, updatedData) => {
   try {
+    let finalImageUrl = updatedData.image;
+    if (finalImageUrl && !finalImageUrl.startsWith('http://') && !finalImageUrl.startsWith('https://')) {
+      finalImageUrl = await uploadProduceImage(finalImageUrl, produceId);
+    }
+
     const produceDocRef = doc(db, 'produce', produceId);
     await updateDoc(produceDocRef, {
       ...updatedData,
+      image: finalImageUrl || updatedData.image,
       updatedAt: serverTimestamp(),
     });
     return { success: true };

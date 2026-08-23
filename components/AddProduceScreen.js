@@ -17,7 +17,7 @@ import {
   Pressable,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { addProduceListing } from '../services/firebaseDatabase';
+import { addProduceListing, updateProduceListing } from '../services/firebaseDatabase';
 
 // ----------------------------------------------------
 // THEME & COLOR PALETTE (MATCHING THE DESIGN SPEC)
@@ -37,66 +37,56 @@ const THEME = {
   borderActive: '#006837',
   error: '#EF4444',
   lightGreenBg: '#F0FDF4',
+  inputBg: '#FFFFFF',
 };
 
 const CATEGORIES = [
   'Vegetables',
   'Fruits',
-  'Rice & Grains',
+  'Grains',
   'Spices',
-  'Leafy Greens',
-  'Tubers & Roots',
-  'Tea & Coconut',
+  'Tea & Beverages',
+  'Coconut & Palm',
+  'Root Crops',
 ];
 
-const UNITS = ['Kg', 'g', 'Ton', 'Bunches', 'Units', 'Packs', 'Bags'];
+const UNITS = ['Kg', 'g', 'Bundles', 'Bags', 'Boxes', 'Units'];
 
 const DEFAULT_IMAGES = {
   Vegetables: 'https://images.unsplash.com/photo-1598170845058-32b9d6a5da37?auto=format&fit=crop&w=600&q=80',
   Fruits: 'https://images.unsplash.com/photo-1571771894821-ce9b6c11b08e?auto=format&fit=crop&w=600&q=80',
-  'Rice & Grains': 'https://images.unsplash.com/photo-1586201375761-83865001e31c?auto=format&fit=crop&w=600&q=80',
+  Grains: 'https://images.unsplash.com/photo-1586201375761-83865001e31c?auto=format&fit=crop&w=600&q=80',
   Spices: 'https://images.unsplash.com/photo-1509358271058-acd22cc93898?auto=format&fit=crop&w=600&q=80',
-  'Leafy Greens': 'https://images.unsplash.com/photo-1540420773420-3366772f4999?auto=format&fit=crop&w=600&q=80',
-  'Tubers & Roots': 'https://images.unsplash.com/photo-1518977676601-b53f82aba655?auto=format&fit=crop&w=600&q=80',
-  'Tea & Coconut': 'https://images.unsplash.com/photo-1576092768241-dec231879fc3?auto=format&fit=crop&w=600&q=80',
+  'Tea & Beverages': 'https://images.unsplash.com/photo-1576092768241-dec231879fc3?auto=format&fit=crop&w=600&q=80',
+  'Coconut & Palm': 'https://images.unsplash.com/photo-1589182373726-e4f658ab50f0?auto=format&fit=crop&w=600&q=80',
+  'Root Crops': 'https://images.unsplash.com/photo-1518977676601-b53f82aba655?auto=format&fit=crop&w=600&q=80',
 };
 
-// Pure Vector Back Arrow Icon
+// SVG-like Vector Icons using React Native Views
 const BackArrowIcon = () => (
-  <View style={styles.backArrowWrapper}>
+  <View style={styles.backIconWrap}>
+    <View style={styles.backArrowHead} />
     <View style={styles.backArrowStem} />
-    <View style={styles.backArrowHeadTop} />
-    <View style={styles.backArrowHeadBottom} />
   </View>
 );
 
-// Pure Vector Upload Image Icon
 const UploadImageIcon = () => (
   <View style={styles.uploadIconContainer}>
-    <View style={styles.uploadFrame}>
-      {/* Mountain peaks representation */}
-      <View style={styles.mountainLeft} />
-      <View style={styles.mountainRight} />
-    </View>
-    {/* Plus badge on top right */}
-    <View style={styles.uploadPlusBadge}>
-      <View style={styles.plusH} />
-      <View style={styles.plusV} />
-    </View>
+    <View style={styles.uploadMountain} />
+    <View style={styles.uploadSun} />
+    <View style={styles.uploadCornerFolder} />
   </View>
 );
 
-// Chevron Down Icon
 const ChevronDownIcon = () => (
-  <View style={styles.chevronWrapper}>
+  <View style={styles.chevronWrap}>
     <View style={styles.chevronLeft} />
     <View style={styles.chevronRight} />
   </View>
 );
 
-// Calendar Icon
 const CalendarIcon = () => (
-  <View style={styles.calendarWrapper}>
+  <View style={styles.calendarWrap}>
     <View style={styles.calendarBody}>
       <View style={styles.calendarHeader} />
       <View style={styles.calendarPinsRow}>
@@ -112,20 +102,24 @@ export default function AddProduceScreen({
   lang = 'en',
   onBack,
   onProduceAdded,
+  initialProduce = null,
 }) {
-  const [productName, setProductName] = useState('');
-  const [category, setCategory] = useState('');
-  const [quantity, setQuantity] = useState('');
-  const [unit, setUnit] = useState('Kg');
-  const [price, setPrice] = useState('');
+  const isEditing = Boolean(initialProduce && initialProduce.id);
+  const [productName, setProductName] = useState(() => initialProduce?.nameEn || initialProduce?.nameSi || '');
+  const [category, setCategory] = useState(() => initialProduce?.category || '');
+  const [quantity, setQuantity] = useState(() => (initialProduce?.stockQty != null ? String(initialProduce.stockQty) : ''));
+  const [unit, setUnit] = useState(() => initialProduce?.unitEn || 'Kg');
+  const [price, setPrice] = useState(() => (initialProduce?.price != null ? String(initialProduce.price) : ''));
   const [harvestDate, setHarvestDate] = useState(() => {
+    if (initialProduce?.harvestDate) return initialProduce.harvestDate;
     const today = new Date();
     const mm = String(today.getMonth() + 1).padStart(2, '0');
     const dd = String(today.getDate()).padStart(2, '0');
     const yyyy = today.getFullYear();
     return `${mm}/${dd}/${yyyy}`;
   });
-  const [selectedImage, setSelectedImage] = useState(null);
+  const [selectedImage, setSelectedImage] = useState(() => initialProduce?.image || null);
+  const [description, setDescription] = useState(() => initialProduce?.description || '');
 
   // Modals
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
@@ -284,10 +278,11 @@ export default function AddProduceScreen({
 
     const produceImageUrl =
       selectedImage ||
+      initialProduce?.image ||
       DEFAULT_IMAGES[category] ||
       DEFAULT_IMAGES.Vegetables;
 
-    const newProduce = {
+    const produceData = {
       nameEn: productName.trim(),
       nameSi: productName.trim(),
       nameTa: productName.trim(),
@@ -298,29 +293,39 @@ export default function AddProduceScreen({
       unitSi: unit === 'Kg' ? 'කි.ග්‍රෑ.' : unit,
       unitTa: unit === 'Kg' ? 'கிலோ' : unit,
       harvestDate: harvestDate || '',
-      location: userProfile?.district?.nameEn || 'Nuwara Eliya',
-      grade: 'Fresh Harvest',
-      farmerName: userProfile?.fullName || 'Verified Farmer',
-      farmerId: userProfile?.uid || 'farmer_uid',
-      farmerPhone: userProfile?.phoneNumber || '',
+      description: description.trim(),
+      location: initialProduce?.location || userProfile?.district?.nameEn || 'Nuwara Eliya',
+      grade: initialProduce?.grade || 'Fresh Harvest',
+      farmerName: userProfile?.fullName || initialProduce?.farmerName || 'Verified Farmer',
+      farmerId: userProfile?.uid || initialProduce?.farmerId || 'farmer_uid',
+      farmerPhone: userProfile?.phoneNumber || initialProduce?.farmerPhone || '',
       image: produceImageUrl,
     };
 
-    const res = await addProduceListing(newProduce);
+    let res;
+    if (isEditing) {
+      res = await updateProduceListing(initialProduce.id, produceData);
+    } else {
+      res = await addProduceListing(produceData);
+    }
     setIsSubmitting(false);
 
     if (res.success) {
-      Alert.alert('Success 🌱', 'Produce listing published successfully!', [
-        {
-          text: 'OK',
-          onPress: () => {
-            if (onProduceAdded) onProduceAdded();
-            else if (onBack) onBack();
+      Alert.alert(
+        'Success 🌱',
+        isEditing ? 'Produce listing updated successfully!' : 'Produce listing published successfully!',
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              if (onProduceAdded) onProduceAdded();
+              else if (onBack) onBack();
+            },
           },
-        },
-      ]);
+        ]
+      );
     } else {
-      Alert.alert('Publish Error', res.error || 'Failed to publish produce listing.');
+      Alert.alert('Error', res.error || `Failed to ${isEditing ? 'update' : 'publish'} produce listing.`);
     }
   };
 
@@ -355,7 +360,9 @@ export default function AddProduceScreen({
           showsVerticalScrollIndicator={false}
         >
           {/* PAGE TITLE */}
-          <Text style={styles.pageHeading}>ADD NEW PRODUCE</Text>
+          <Text style={styles.pageHeading}>
+            {isEditing ? 'EDIT PRODUCE DETAILS' : 'ADD NEW PRODUCE'}
+          </Text>
 
           {/* UPLOAD IMAGE BOX */}
           <TouchableOpacity
@@ -444,7 +451,7 @@ export default function AddProduceScreen({
           <View style={styles.formGroup}>
             <Text style={styles.label}>PRICE (PER UNIT)</Text>
             <View style={styles.priceInputContainer}>
-              <Text style={styles.currencyPrefix}>$</Text>
+              <Text style={styles.currencyPrefix}>Rs.</Text>
               <TextInput
                 style={styles.priceInput}
                 placeholder="0.00"
@@ -475,6 +482,21 @@ export default function AddProduceScreen({
               <CalendarIcon />
             </TouchableOpacity>
           </View>
+
+          {/* DESCRIPTION / NOTES */}
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>DESCRIPTION / NOTES</Text>
+            <TextInput
+              style={styles.textArea}
+              placeholder="e.g. Freshly hand-picked, organic grade, pesticide-free harvest."
+              placeholderTextColor={THEME.placeholder}
+              multiline
+              numberOfLines={3}
+              textAlignVertical="top"
+              value={description}
+              onChangeText={setDescription}
+            />
+          </View>
         </ScrollView>
 
         {/* BOTTOM ACTION BAR */}
@@ -488,7 +510,9 @@ export default function AddProduceScreen({
             {isSubmitting ? (
               <ActivityIndicator size="small" color="#FFFFFF" />
             ) : (
-              <Text style={styles.publishButtonText}>PUBLISH PRODUCT</Text>
+              <Text style={styles.publishButtonText}>
+                {isEditing ? 'SAVE CHANGES' : 'PUBLISH PRODUCT'}
+              </Text>
             )}
           </TouchableOpacity>
         </View>
@@ -931,6 +955,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     fontSize: 14,
     color: THEME.textDark,
+  },
+  textArea: {
+    height: 76,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.2,
+    borderColor: THEME.border,
+    borderRadius: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: THEME.textDark,
+    textAlignVertical: 'top',
   },
   dropdownButton: {
     height: 48,

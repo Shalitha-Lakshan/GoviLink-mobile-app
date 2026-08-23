@@ -327,7 +327,7 @@ export default function BuyerHomeScreen({
               }}
             >
               <Text style={styles.langPillText}>
-                {lang === 'en' ? 'සිං' : lang === 'si' ? 'தம' : 'EN'}
+                {lang === 'en' ? 'EN' : lang === 'si' ? 'සිං' : 'தம'}
               </Text>
             </TouchableOpacity>
           )}

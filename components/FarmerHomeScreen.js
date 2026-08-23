@@ -193,6 +193,7 @@ export default function FarmerHomeScreen({
 }) {
   const [activeTab, setActiveTab] = useState('listings'); // 'listings' | 'orders'
   const [showAddProduceScreen, setShowAddProduceScreen] = useState(false);
+  const [editingProduceItem, setEditingProduceItem] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [updatingOrderId, setUpdatingOrderId] = useState(null);
@@ -305,13 +306,20 @@ export default function FarmerHomeScreen({
     }
   };
 
-  if (showAddProduceScreen) {
+  if (showAddProduceScreen || editingProduceItem) {
     return (
       <AddProduceScreen
         userProfile={userProfile}
         lang={lang}
-        onBack={() => setShowAddProduceScreen(false)}
-        onProduceAdded={() => setShowAddProduceScreen(false)}
+        initialProduce={editingProduceItem}
+        onBack={() => {
+          setShowAddProduceScreen(false);
+          setEditingProduceItem(null);
+        }}
+        onProduceAdded={() => {
+          setShowAddProduceScreen(false);
+          setEditingProduceItem(null);
+        }}
       />
     );
   }
@@ -353,7 +361,7 @@ export default function FarmerHomeScreen({
               }}
             >
               <Text style={styles.langPillText}>
-                {lang === 'en' ? 'සිං' : lang === 'si' ? 'தம' : 'EN'}
+                {lang === 'en' ? 'EN' : lang === 'si' ? 'සිං' : 'தம'}
               </Text>
             </TouchableOpacity>
           )}
@@ -447,7 +455,12 @@ export default function FarmerHomeScreen({
               </View>
             ) : (
               displayListings.map((item) => (
-                <View key={item.id} style={styles.listingCard}>
+                <TouchableOpacity
+                  key={item.id}
+                  style={styles.listingCard}
+                  activeOpacity={0.85}
+                  onPress={() => setEditingProduceItem(item)}
+                >
                   <Image source={{ uri: item.image || DEFAULT_IMAGE_BY_CAT[item.category] }} style={styles.produceThumb} />
                   <View style={styles.produceInfo}>
                     <View style={styles.badgeRow}>
@@ -461,6 +474,12 @@ export default function FarmerHomeScreen({
                       {lang === 'si' ? item.nameSi || item.nameEn : item.nameEn}
                     </Text>
 
+                    {Boolean(item.description) && (
+                      <Text style={styles.produceDescriptionText} numberOfLines={2}>
+                        {item.description}
+                      </Text>
+                    )}
+
                     <Text style={styles.stockText}>
                       In Stock: <Text style={{ fontWeight: 'bold', color: THEME.textDark }}>{item.stockQty} {item.unitEn || 'kg'}</Text>
                     </Text>
@@ -471,15 +490,26 @@ export default function FarmerHomeScreen({
                         <Text style={styles.unitSub}> / {item.unitEn || 'kg'}</Text>
                       </Text>
 
-                      <TouchableOpacity
-                        style={styles.deleteBtn}
-                        onPress={() => handleDeleteProduce(item)}
-                      >
-                        <Text style={styles.deleteBtnText}>✕ {t.actions.delete}</Text>
-                      </TouchableOpacity>
+                      <View style={styles.cardActionsRow}>
+                        <TouchableOpacity
+                          style={styles.editBtn}
+                          onPress={() => setEditingProduceItem(item)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.editBtnText}>✏️ {t.actions.edit || 'Edit'}</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={styles.deleteBtn}
+                          onPress={() => handleDeleteProduce(item)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.deleteBtnText}>✕ {t.actions.delete}</Text>
+                        </TouchableOpacity>
+                      </View>
                     </View>
                   </View>
-                </View>
+                </TouchableOpacity>
               ))
             )}
           </View>
@@ -862,6 +892,13 @@ const styles = StyleSheet.create({
     color: THEME.textDark,
     marginVertical: 2,
   },
+  produceDescriptionText: {
+    fontSize: 11,
+    color: THEME.textMuted,
+    fontStyle: 'italic',
+    marginBottom: 4,
+    lineHeight: 15,
+  },
   stockText: {
     fontSize: 11,
     color: THEME.textMuted,
@@ -881,6 +918,24 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: 'normal',
     color: THEME.textMuted,
+  },
+  cardActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  editBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    borderRadius: 6,
+    marginRight: 6,
+  },
+  editBtnText: {
+    color: '#1D4ED8',
+    fontSize: 10,
+    fontWeight: '700',
   },
   deleteBtn: {
     paddingHorizontal: 8,

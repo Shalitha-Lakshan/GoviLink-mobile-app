@@ -1,6 +1,7 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { initializeFirestore, getFirestore } from 'firebase/firestore';
 import { initializeAuth, getReactNativePersistence, getAuth } from 'firebase/auth';
+import { getStorage } from 'firebase/storage';
 import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
@@ -45,5 +46,8 @@ if (Platform.OS === 'web' || typeof getReactNativePersistence !== 'function') {
   }
 }
 
-export { app, db, auth };
+// 4. Storage initialization
+const storage = getStorage(app);
+
+export { app, db, auth, storage };
 export default app;
