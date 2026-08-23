@@ -18,6 +18,7 @@ import {
   deleteProduceListing,
   updateOrderStatus,
 } from '../services/firebaseDatabase';
+import AddProduceScreen from './AddProduceScreen';
 
 // ----------------------------------------------------
 // COLOR TOKENS
@@ -191,6 +192,8 @@ export default function FarmerHomeScreen({
   onChangeLanguage,
 }) {
   const [activeTab, setActiveTab] = useState('listings'); // 'listings' | 'orders'
+  const [showAddProduceScreen, setShowAddProduceScreen] = useState(false);
+  const [editingProduceItem, setEditingProduceItem] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [updatingOrderId, setUpdatingOrderId] = useState(null);
@@ -303,6 +306,24 @@ export default function FarmerHomeScreen({
     }
   };
 
+  if (showAddProduceScreen || editingProduceItem) {
+    return (
+      <AddProduceScreen
+        userProfile={userProfile}
+        lang={lang}
+        initialProduce={editingProduceItem}
+        onBack={() => {
+          setShowAddProduceScreen(false);
+          setEditingProduceItem(null);
+        }}
+        onProduceAdded={() => {
+          setShowAddProduceScreen(false);
+          setEditingProduceItem(null);
+        }}
+      />
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="light-content" backgroundColor={THEME.navy} />
@@ -340,7 +361,7 @@ export default function FarmerHomeScreen({
               }}
             >
               <Text style={styles.langPillText}>
-                {lang === 'en' ? 'සිං' : lang === 'si' ? 'தம' : 'EN'}
+                {lang === 'en' ? 'EN' : lang === 'si' ? 'සිං' : 'தம'}
               </Text>
             </TouchableOpacity>
           )}
@@ -388,7 +409,7 @@ export default function FarmerHomeScreen({
         <TouchableOpacity
           style={styles.addListingBanner}
           activeOpacity={0.85}
-          onPress={() => setShowAddModal(true)}
+          onPress={() => setShowAddProduceScreen(true)}
         >
           <View style={styles.addIconCircle}>
             <Text style={styles.addPlusText}>+</Text>
@@ -434,7 +455,12 @@ export default function FarmerHomeScreen({
               </View>
             ) : (
               displayListings.map((item) => (
-                <View key={item.id} style={styles.listingCard}>
+                <TouchableOpacity
+                  key={item.id}
+                  style={styles.listingCard}
+                  activeOpacity={0.85}
+                  onPress={() => setEditingProduceItem(item)}
+                >
                   <Image source={{ uri: item.image || DEFAULT_IMAGE_BY_CAT[item.category] }} style={styles.produceThumb} />
                   <View style={styles.produceInfo}>
                     <View style={styles.badgeRow}>
@@ -448,6 +474,12 @@ export default function FarmerHomeScreen({
                       {lang === 'si' ? item.nameSi || item.nameEn : item.nameEn}
                     </Text>
 
+                    {Boolean(item.description) && (
+                      <Text style={styles.produceDescriptionText} numberOfLines={2}>
+                        {item.description}
+                      </Text>
+                    )}
+
                     <Text style={styles.stockText}>
                       In Stock: <Text style={{ fontWeight: 'bold', color: THEME.textDark }}>{item.stockQty} {item.unitEn || 'kg'}</Text>
                     </Text>
@@ -458,15 +490,26 @@ export default function FarmerHomeScreen({
                         <Text style={styles.unitSub}> / {item.unitEn || 'kg'}</Text>
                       </Text>
 
-                      <TouchableOpacity
-                        style={styles.deleteBtn}
-                        onPress={() => handleDeleteProduce(item)}
-                      >
-                        <Text style={styles.deleteBtnText}>✕ {t.actions.delete}</Text>
-                      </TouchableOpacity>
+                      <View style={styles.cardActionsRow}>
+                        <TouchableOpacity
+                          style={styles.editBtn}
+                          onPress={() => setEditingProduceItem(item)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.editBtnText}>✏️ {t.actions.edit || 'Edit'}</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={styles.deleteBtn}
+                          onPress={() => handleDeleteProduce(item)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.deleteBtnText}>✕ {t.actions.delete}</Text>
+                        </TouchableOpacity>
+                      </View>
                     </View>
                   </View>
-                </View>
+                </TouchableOpacity>
               ))
             )}
           </View>
@@ -595,138 +638,6 @@ export default function FarmerHomeScreen({
           </View>
         )}
       </ScrollView>
-
-      {/* ============================================== */}
-      {/* MODAL: + ADD PRODUCE LISTING FORM              */}
-      {/* ============================================== */}
-      <Modal visible={showAddModal} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalSheet}>
-            <View style={styles.modalHeader}>
-              <View>
-                <Text style={styles.modalHeaderTitle}>{t.modal.title}</Text>
-                <Text style={styles.modalHeaderSub}>{t.modal.subtitle}</Text>
-              </View>
-              <TouchableOpacity onPress={() => setShowAddModal(false)} style={styles.modalCloseCircle}>
-                <Text style={{ fontSize: 18, color: THEME.textMuted }}>✕</Text>
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
-              {/* Category Selector */}
-              <Text style={styles.inputLabel}>{t.modal.categoryLabel}</Text>
-              <View style={styles.categoryPickerRow}>
-                {CATEGORIES.map((cat) => (
-                  <TouchableOpacity
-                    key={cat}
-                    style={[
-                      styles.categoryPickerPill,
-                      formCategory === cat && styles.categoryPickerPillActive,
-                    ]}
-                    onPress={() => setFormCategory(cat)}
-                  >
-                    <Text
-                      style={[
-                        styles.categoryPickerPillText,
-                        formCategory === cat && styles.categoryPickerPillTextActive,
-                      ]}
-                    >
-                      {cat}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              {/* Crop Name English */}
-              <Text style={styles.inputLabel}>{t.modal.nameEnLabel} *</Text>
-              <TextInput
-                style={styles.modalInput}
-                placeholder={t.modal.nameEnPlaceholder}
-                placeholderTextColor={THEME.textMuted}
-                value={formNameEn}
-                onChangeText={setFormNameEn}
-              />
-
-              {/* Crop Name Sinhala */}
-              <Text style={styles.inputLabel}>{t.modal.nameSiLabel}</Text>
-              <TextInput
-                style={styles.modalInput}
-                placeholder={t.modal.nameSiPlaceholder}
-                placeholderTextColor={THEME.textMuted}
-                value={formNameSi}
-                onChangeText={setFormNameSi}
-              />
-
-              {/* Price & Stock Row */}
-              <View style={{ flexDirection: 'row', gap: 12 }}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.inputLabel}>{t.modal.priceLabel} *</Text>
-                  <TextInput
-                    style={styles.modalInput}
-                    placeholder="340.00"
-                    placeholderTextColor={THEME.textMuted}
-                    keyboardType="numeric"
-                    value={formPrice}
-                    onChangeText={setFormPrice}
-                  />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.inputLabel}>{t.modal.stockLabel} *</Text>
-                  <TextInput
-                    style={styles.modalInput}
-                    placeholder="500"
-                    placeholderTextColor={THEME.textMuted}
-                    keyboardType="numeric"
-                    value={formStock}
-                    onChangeText={setFormStock}
-                  />
-                </View>
-              </View>
-
-              {/* Location & Grade */}
-              <Text style={styles.inputLabel}>{t.modal.locationLabel}</Text>
-              <TextInput
-                style={styles.modalInput}
-                placeholder="Nuwara Eliya"
-                placeholderTextColor={THEME.textMuted}
-                value={formLocation}
-                onChangeText={setFormLocation}
-              />
-
-              <Text style={styles.inputLabel}>{t.modal.gradeLabel}</Text>
-              <TextInput
-                style={styles.modalInput}
-                placeholder="Grade A Export Quality Fresh Harvest"
-                placeholderTextColor={THEME.textMuted}
-                value={formGrade}
-                onChangeText={setFormGrade}
-              />
-
-              {/* Actions */}
-              <View style={styles.modalActionsRow}>
-                <TouchableOpacity
-                  style={styles.modalCancelBtn}
-                  onPress={() => setShowAddModal(false)}
-                >
-                  <Text style={styles.modalCancelBtnText}>{t.modal.cancelBtn}</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.modalSubmitBtn}
-                  disabled={isSubmitting}
-                  onPress={handleCreateProduce}
-                >
-                  {isSubmitting ? (
-                    <ActivityIndicator size="small" color="#FFFFFF" />
-                  ) : (
-                    <Text style={styles.modalSubmitBtnText}>{t.modal.submitBtn}</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -981,6 +892,13 @@ const styles = StyleSheet.create({
     color: THEME.textDark,
     marginVertical: 2,
   },
+  produceDescriptionText: {
+    fontSize: 11,
+    color: THEME.textMuted,
+    fontStyle: 'italic',
+    marginBottom: 4,
+    lineHeight: 15,
+  },
   stockText: {
     fontSize: 11,
     color: THEME.textMuted,
@@ -1000,6 +918,24 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: 'normal',
     color: THEME.textMuted,
+  },
+  cardActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  editBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    borderRadius: 6,
+    marginRight: 6,
+  },
+  editBtnText: {
+    color: '#1D4ED8',
+    fontSize: 10,
+    fontWeight: '700',
   },
   deleteBtn: {
     paddingHorizontal: 8,
