@@ -21,6 +21,13 @@
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "The app accesses your photos to allow you to select produce images.",
+          "cameraPermission": "The app accesses your camera to allow you to take photos of your produce."
+        }
       ]
     ],
     "ios": {
