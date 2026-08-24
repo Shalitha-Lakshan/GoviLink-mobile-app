@@ -499,4 +499,173 @@ export const acceptBuyerCustomRequest = async (requestData, farmerProfile) => {
   }
 };
 
+// -------------------------------------------------------
+// DRIVER FLEET & ASSIGNMENT MANAGEMENT
+// -------------------------------------------------------
+
+export const DEFAULT_COOP_DRIVERS = [
+  {
+    id: 'driver_default_1',
+    uid: 'driver_default_1',
+    fullName: 'Ruwan Perera',
+    phoneNumber: '077-1234567',
+    email: 'ruwan.driver@govilink.lk',
+    role: 'driver',
+    vehicleNumber: 'WP LH-4592 (4T Refrigerated Lorry)',
+    vehicleType: 'Refrigerated Truck',
+    district: { nameEn: 'Colombo', nameSi: 'කොළඹ', nameTa: 'கொழும்பு' },
+    rating: '4.9 ★',
+    tripsCompleted: 142,
+  },
+  {
+    id: 'driver_default_2',
+    uid: 'driver_default_2',
+    fullName: 'Kamal Silva',
+    phoneNumber: '071-9876543',
+    email: 'kamal.driver@govilink.lk',
+    role: 'driver',
+    vehicleNumber: 'CP ND-8812 (Dimo Batta 1.5T)',
+    vehicleType: 'Light Cargo Truck',
+    district: { nameEn: 'Kandy', nameSi: 'මහනුවර', nameTa: 'கண்டி' },
+    rating: '4.8 ★',
+    tripsCompleted: 98,
+  },
+  {
+    id: 'driver_default_3',
+    uid: 'driver_default_3',
+    fullName: 'Anura Bandara',
+    phoneNumber: '076-5544332',
+    email: 'anura.driver@govilink.lk',
+    role: 'driver',
+    vehicleNumber: 'NC LF-6231 (Isuzu ELF 3.5T)',
+    vehicleType: 'Medium Ag-Carrier',
+    district: { nameEn: 'Anuradhapura', nameSi: 'අනුරාධපුරය', nameTa: 'அனுராதபுரம்' },
+    rating: '5.0 ★',
+    tripsCompleted: 215,
+  },
+  {
+    id: 'driver_default_4',
+    uid: 'driver_default_4',
+    fullName: 'Sunil Jayawardena',
+    phoneNumber: '078-3322110',
+    email: 'sunil.driver@govilink.lk',
+    role: 'driver',
+    vehicleNumber: 'NW PJ-1904 (Covered Canopy 2T)',
+    vehicleType: 'Produce Carrier',
+    district: { nameEn: 'Kurunegala', nameSi: 'කුරුණෑගල', nameTa: 'குருநாகல்' },
+    rating: '4.7 ★',
+    tripsCompleted: 76,
+  },
+];
+
+/**
+ * Real-time listener for Registered Drivers in Firestore
+ * Merges with default co-op fleet roster to ensure immediate availability.
+ */
+export const subscribeToDrivers = (onUpdate) => {
+  const usersRef = collection(db, 'users');
+
+  return onSnapshot(usersRef, (snapshot) => {
+    const firestoreDrivers = [];
+    snapshot.docs.forEach((docSnap) => {
+      const data = docSnap.data();
+      if (data.role === 'driver') {
+        firestoreDrivers.push({
+          id: docSnap.id,
+          uid: docSnap.id,
+          fullName: data.fullName || 'Registered Driver',
+          phoneNumber: data.phoneNumber || '0770000000',
+          email: data.email || '',
+          role: 'driver',
+          vehicleNumber: data.vehicleNumber || 'Registered Transport Vehicle',
+          vehicleType: data.vehicleType || 'Logistics Vehicle',
+          district: data.district || { nameEn: 'Western Province', nameSi: 'බස්නාහිර', nameTa: 'மேற்கு' },
+          rating: data.rating || '5.0 ★',
+          tripsCompleted: data.tripsCompleted || 0,
+        });
+      }
+    });
+
+    // Merge: Put newly registered Firestore drivers first, then defaults that aren't duplicate
+    const registeredIds = new Set(firestoreDrivers.map((d) => d.uid || d.id));
+    const combined = [
+      ...firestoreDrivers,
+      ...DEFAULT_COOP_DRIVERS.filter((d) => !registeredIds.has(d.id)),
+    ];
+
+    onUpdate(combined);
+  }, (error) => {
+    console.error('Firestore drivers subscription error:', error);
+    // Fallback to default co-op drivers on error
+    onUpdate(DEFAULT_COOP_DRIVERS);
+  });
+};
+
+/**
+ * Determine driver availability against live orders list.
+ * A driver is BUSY (unavailable) if assigned to any order that is NOT yet DELIVERED or CANCELLED.
+ * Once confirmed as DELIVERED, the driver becomes available again.
+ */
+export const checkDriverAvailability = (driver, ordersList = []) => {
+  if (!driver) return { isAvailable: true, activeOrder: null };
+
+  const driverId = driver.uid || driver.id;
+  const driverName = (driver.fullName || '').toLowerCase().trim();
+
+  // Active statuses where driver is occupied
+  const occupiedStatuses = ['READY_FOR_PICKUP', 'IN_TRANSIT', 'ASSIGNED', 'ACCEPTED', 'PENDING'];
+
+  const activeOrder = ordersList.find((order) => {
+    const isThisDriver =
+      (order.driverId && order.driverId === driverId) ||
+      (order.driverName && order.driverName.toLowerCase().trim() === driverName);
+
+    if (!isThisDriver) return false;
+
+    const status = (order.status || '').toUpperCase();
+    // Driver is occupied if order is in progress and NOT delivered/cancelled
+    return status !== 'DELIVERED' && status !== 'CANCELLED' && occupiedStatuses.includes(status);
+  });
+
+  if (activeOrder) {
+    return {
+      isAvailable: false,
+      activeOrder,
+      reason: `Assigned to: ${activeOrder.produceName || 'Order'} (${activeOrder.status || 'In Transit'})`,
+    };
+  }
+
+  return { isAvailable: true, activeOrder: null };
+};
+
+/**
+ * Manually assign a driver to an order
+ */
+export const assignDriverToOrder = async (orderId, driver) => {
+  try {
+    const orderDocRef = doc(db, 'orders', orderId);
+    const driverId = driver.uid || driver.id;
+    const driverName = driver.fullName || 'Assigned Driver';
+    const driverPhone = driver.phoneNumber || '';
+    const driverVehicle = driver.vehicleNumber || 'GoviLink Transport Vehicle';
+
+    await updateDoc(orderDocRef, {
+      driverId: driverId,
+      driverName: driverName,
+      driverPhone: driverPhone,
+      driverVehicle: driverVehicle,
+      driverDistrict: driver.district?.nameEn || '',
+      status: 'READY_FOR_PICKUP',
+      assignedAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error('Error assigning driver to order:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+
 
