@@ -436,3 +436,67 @@ export const deleteBuyerRequest = async (requestId) => {
   }
 };
 
+/**
+ * Accept a buyer custom request by a farmer ("I'll Provide")
+ */
+export const acceptBuyerCustomRequest = async (requestData, farmerProfile) => {
+  try {
+    const requestId = requestData.id;
+    // 1. Update the buyer_requests doc
+    const requestDocRef = doc(db, 'buyer_requests', requestId);
+    await updateDoc(requestDocRef, {
+      status: 'ACCEPTED',
+      farmerUid: farmerProfile?.uid || '',
+      farmerName: farmerProfile?.fullName || 'Registered Farmer',
+      farmerPhone: farmerProfile?.phoneNumber || '',
+      farmerDistrict: farmerProfile?.district?.nameEn || '',
+      acceptedAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+
+    // 2. Create an associated Order in Firestore orders collection so both parties & drivers track it
+    const unitPrice = Number(requestData.targetPricePerUnit) || 0;
+    const qty = Number(requestData.quantity) || 1;
+    const subtotal = unitPrice * qty;
+    const logisticsFee = requestData.deliveryNeeded !== false ? 350 : 0;
+    const totalPrice = subtotal + logisticsFee;
+
+    const orderPayload = {
+      customRequestId: requestId,
+      produceName: requestData.cropName || 'Custom Harvest Order',
+      category: requestData.category || 'Vegetables',
+      qty: qty,
+      unit: requestData.unit || 'kg',
+      unitPrice: unitPrice,
+      subtotal: subtotal,
+      logisticsFee: logisticsFee,
+      totalPrice: totalPrice,
+      farmerName: farmerProfile?.fullName || 'Registered Farmer',
+      farmerId: farmerProfile?.uid || '',
+      farmerPhone: farmerProfile?.phoneNumber || '',
+      pickupLocation: farmerProfile?.district?.nameEn || requestData.targetDistrictName || 'Farm Origin',
+      buyerName: requestData.buyerName || 'Buyer',
+      buyerPhone: requestData.buyerPhone || '',
+      buyerUid: requestData.buyerUid || '',
+      deliveryAddress: requestData.deliveryAddress || 'Self-Pickup',
+      deliveryNeeded: requestData.deliveryNeeded !== false,
+      datePeriod: requestData.datePeriodDescription || `${requestData.requiredDateStart} to ${requestData.requiredDateEnd}`,
+      qualityGrade: requestData.qualityGrade || 'Grade A',
+      notes: requestData.notes || '',
+      isCustomRequest: true,
+      status: 'ACCEPTED',
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
+
+    const ordersRef = collection(db, 'orders');
+    const orderDocRef = await addDoc(ordersRef, orderPayload);
+
+    return { success: true, orderId: orderDocRef.id };
+  } catch (error) {
+    console.error('Error accepting buyer custom request:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+
