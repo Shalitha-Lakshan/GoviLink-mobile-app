@@ -372,3 +372,390 @@ export const saveUserToFirestore = async (userData) => {
     return { success: false, error: error.message };
   }
 };
+
+// -------------------------------------------------------
+// FLEET & DRIVERS MANAGEMENT
+// -------------------------------------------------------
+
+export const DEFAULT_COOP_DRIVERS = [
+  {
+    id: 'driver_default_1',
+    uid: 'driver_default_1',
+    fullName: 'Sunil Perera',
+    phoneNumber: '077 123 4567',
+    vehicleNumber: 'WP-CAB-4521',
+    vehicleType: 'lorry_heavy',
+    vehicleTypeLabel: 'Heavy Duty Truck (10T)',
+    capacity: 3500,
+    rating: '4.9',
+    district: { id: 'colombo', nameEn: 'Colombo', nameSi: 'කොළඹ', nameTa: 'கொழும்பு' },
+    isAvailable: true,
+  },
+  {
+    id: 'driver_default_2',
+    uid: 'driver_default_2',
+    fullName: 'Kasun Bandara',
+    phoneNumber: '071 987 6543',
+    vehicleNumber: 'CP-ND-8890',
+    vehicleType: 'refrigerated',
+    vehicleTypeLabel: 'Refrigerated Cold Chain Truck',
+    capacity: 2000,
+    rating: '5.0',
+    district: { id: 'kandy', nameEn: 'Kandy', nameSi: 'මහනුවර', nameTa: 'கண்டி' },
+    isAvailable: true,
+  },
+  {
+    id: 'driver_default_3',
+    uid: 'driver_default_3',
+    fullName: 'Nuwan Jayasinghe',
+    phoneNumber: '076 555 1234',
+    vehicleNumber: 'WP-LH-2311',
+    vehicleType: 'lorry_light',
+    vehicleTypeLabel: 'Light Truck (3.5T)',
+    capacity: 1500,
+    rating: '4.8',
+    district: { id: 'kurunegala', nameEn: 'Kurunegala', nameSi: 'කුරුණෑගල', nameTa: 'குருணாகல்' },
+    isAvailable: true,
+  },
+  {
+    id: 'driver_default_4',
+    uid: 'driver_default_4',
+    fullName: 'Kamal Fernando',
+    phoneNumber: '070 222 3344',
+    vehicleNumber: 'SP-DA-1092',
+    vehicleType: 'dimo_batta',
+    vehicleTypeLabel: 'Dimo Batta / Small Truck',
+    capacity: 800,
+    rating: '4.7',
+    district: { id: 'nuwara_eliya', nameEn: 'Nuwara Eliya', nameSi: 'නුවරඑළිය', nameTa: 'நுவரெலியா' },
+    isAvailable: true,
+  },
+];
+
+/**
+ * Check if a driver is currently busy with an active shipment
+ */
+export const checkDriverAvailability = (driver, ordersList = []) => {
+  if (!driver) return { isAvailable: false, activeOrder: null, reason: 'Driver not found' };
+  const driverId = driver.uid || driver.id;
+  const driverPhone = driver.phoneNumber;
+
+  const activeOrder = (ordersList || []).find((order) => {
+    const matchesDriver =
+      (order.driverId && order.driverId === driverId) ||
+      (order.driverPhone && driverPhone && order.driverPhone === driverPhone);
+    const isOngoing =
+      order.status === 'ACCEPTED' ||
+      order.status === 'ASSIGNED' ||
+      order.status === 'PICKED_UP' ||
+      order.status === 'IN_TRANSIT' ||
+      order.status === 'PENDING_DELIVERY';
+    return matchesDriver && isOngoing;
+  });
+
+  if (activeOrder) {
+    return {
+      isAvailable: false,
+      activeOrder,
+      reason: `Assigned: ${activeOrder.produceName || 'Produce shipment'} (${activeOrder.status || 'In Transit'})`,
+    };
+  }
+
+  return {
+    isAvailable: true,
+    activeOrder: null,
+    reason: null,
+  };
+};
+
+/**
+ * Real-time listener for Cooperative Fleet Drivers
+ */
+export const subscribeToDrivers = (onUpdate) => {
+  const usersRef = collection(db, 'users');
+  const driversQuery = query(usersRef, where('role', '==', 'driver'));
+
+  return onSnapshot(
+    driversQuery,
+    (snapshot) => {
+      const realDrivers = snapshot.docs.map((docSnap) => ({
+        id: docSnap.id,
+        uid: docSnap.id,
+        ...docSnap.data(),
+      }));
+
+      if (realDrivers.length > 0) {
+        onUpdate(realDrivers);
+      } else {
+        onUpdate(DEFAULT_COOP_DRIVERS);
+      }
+    },
+    (error) => {
+      console.warn('Firestore drivers subscription warning, using defaults:', error);
+      onUpdate(DEFAULT_COOP_DRIVERS);
+    }
+  );
+};
+
+/**
+ * Assign a driver to an order
+ */
+export const assignDriverToOrder = async (orderId, driver) => {
+  try {
+    const orderDocRef = doc(db, 'orders', orderId);
+    const driverPayload = {
+      driverId: driver.uid || driver.id,
+      driverName: driver.fullName,
+      driverPhone: driver.phoneNumber,
+      driverVehicle: driver.vehicleNumber || driver.plateNumber || driver.makeModel || 'Transport Vehicle',
+      driverVehicleType: driver.vehicleType || 'lorry',
+      status: 'IN_TRANSIT',
+      assignedAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
+    await updateDoc(orderDocRef, driverPayload);
+    return { success: true };
+  } catch (error) {
+    console.error('Error assigning driver to order:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// -------------------------------------------------------
+// BUYER CUSTOM PRODUCE REQUESTS
+// -------------------------------------------------------
+
+/**
+ * Real-time listener for Buyer Produce Requests
+ */
+export const subscribeToBuyerRequests = (onUpdate, buyerUid = null) => {
+  const requestsRef = collection(db, 'buyerRequests');
+
+  return onSnapshot(
+    requestsRef,
+    (snapshot) => {
+      let requests = snapshot.docs.map((docSnap) => ({
+        id: docSnap.id,
+        ...docSnap.data(),
+      }));
+
+      if (buyerUid) {
+        requests = requests.filter((r) => r.buyerUid === buyerUid || r.buyerId === buyerUid);
+      }
+
+      onUpdate(requests);
+    },
+    (error) => {
+      console.error('Firestore buyer requests subscription error:', error);
+      onUpdate([]);
+    }
+  );
+};
+
+/**
+ * Create a new Buyer Custom Produce Request
+ */
+export const createBuyerCustomRequest = async (requestData) => {
+  try {
+    const requestsRef = collection(db, 'buyerRequests');
+    const docRef = await addDoc(requestsRef, {
+      ...requestData,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    return { success: true, id: docRef.id };
+  } catch (error) {
+    console.error('Error creating buyer request:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Delete a Buyer Custom Request
+ */
+export const deleteBuyerRequest = async (requestId) => {
+  try {
+    const reqDocRef = doc(db, 'buyerRequests', requestId);
+    await deleteDoc(reqDocRef);
+    return { success: true };
+  } catch (error) {
+    console.error('Error deleting buyer request:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Farmer accepts a Buyer Custom Request -> Creates an active order
+ */
+export const acceptBuyerCustomRequest = async (request, farmerProfile) => {
+  try {
+    const ordersRef = collection(db, 'orders');
+    const newOrder = {
+      buyerId: request.buyerUid || request.buyerId || 'buyer',
+      buyerName: request.buyerName || 'GoviLink Buyer',
+      buyerPhone: request.buyerPhone || '',
+      farmerId: farmerProfile?.uid || 'farmer',
+      farmerName: farmerProfile?.fullName || 'GoviLink Farmer',
+      farmerPhone: farmerProfile?.phoneNumber || '',
+      produceName: request.cropName || request.cropTitle || 'Requested Produce',
+      qty: request.quantity || 1,
+      unit: request.unit || 'kg',
+      unitPrice: request.targetPricePerUnit || 0,
+      totalPrice: (Number(request.targetPricePerUnit) || 0) * (Number(request.quantity) || 1),
+      pickupLocation: farmerProfile?.district?.nameEn || 'Farmer Farm Origin',
+      deliveryAddress: request.deliveryAddress || 'Distribution Center',
+      status: 'PENDING',
+      notes: request.notes || '',
+      requestId: request.id,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
+    await addDoc(ordersRef, newOrder);
+
+    if (request.id) {
+      const reqDocRef = doc(db, 'buyerRequests', request.id);
+      await updateDoc(reqDocRef, {
+        status: 'FULFILLED',
+        fulfilledByFarmerId: farmerProfile?.uid,
+        fulfilledByFarmerName: farmerProfile?.fullName,
+        updatedAt: serverTimestamp(),
+      });
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error('Error accepting buyer custom request:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// -------------------------------------------------------
+// DRIVER VEHICLES MANAGEMENT
+// -------------------------------------------------------
+
+/**
+ * Real-time listener for Driver's registered vehicles
+ */
+export const subscribeToDriverVehicles = (driverUid, onUpdate) => {
+  if (!driverUid) {
+    onUpdate([]);
+    return () => {};
+  }
+  const vehiclesRef = collection(db, 'vehicles');
+  const q = query(vehiclesRef, where('driverUid', '==', driverUid));
+
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const vehicles = snapshot.docs.map((docSnap) => ({
+        id: docSnap.id,
+        ...docSnap.data(),
+      }));
+      onUpdate(vehicles);
+    },
+    (error) => {
+      console.warn('Firestore driver vehicles subscription error:', error);
+      onUpdate([]);
+    }
+  );
+};
+
+/**
+ * Add a new vehicle to driver's fleet
+ */
+export const addDriverVehicle = async (driverUid, vehicleData) => {
+  try {
+    let finalImageUrl = vehicleData.image;
+    if (finalImageUrl && !finalImageUrl.startsWith('http://') && !finalImageUrl.startsWith('https://')) {
+      finalImageUrl = await uploadProduceImage(finalImageUrl, `veh_${Date.now()}`);
+    }
+
+    const vehiclesRef = collection(db, 'vehicles');
+    const docRef = await addDoc(vehiclesRef, {
+      ...vehicleData,
+      image: finalImageUrl || vehicleData.image,
+      driverUid,
+      isActive: vehicleData.isActive || false,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    return { success: true, id: docRef.id, vehicle: { id: docRef.id, ...vehicleData, driverUid } };
+  } catch (error) {
+    console.error('Error adding vehicle:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+export const saveDriverVehicle = addDriverVehicle;
+
+/**
+ * Update an existing vehicle
+ */
+export const updateDriverVehicle = async (vehicleId, vehicleData, driverUid) => {
+  try {
+    let finalImageUrl = vehicleData.image;
+    if (finalImageUrl && !finalImageUrl.startsWith('http://') && !finalImageUrl.startsWith('https://')) {
+      finalImageUrl = await uploadProduceImage(finalImageUrl, vehicleId);
+    }
+
+    const vehicleDocRef = doc(db, 'vehicles', vehicleId);
+    await updateDoc(vehicleDocRef, {
+      ...vehicleData,
+      image: finalImageUrl || vehicleData.image,
+      ...(driverUid ? { driverUid } : {}),
+      updatedAt: serverTimestamp(),
+    });
+    return { success: true, vehicle: { id: vehicleId, ...vehicleData } };
+  } catch (error) {
+    console.error('Error updating vehicle:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Delete a driver's vehicle
+ */
+export const deleteDriverVehicle = async (vehicleId, driverUid) => {
+  try {
+    const vehicleDocRef = doc(db, 'vehicles', vehicleId);
+    await deleteDoc(vehicleDocRef);
+    return { success: true };
+  } catch (error) {
+    console.error('Error deleting vehicle:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Set active vehicle for dispatch
+ */
+export const setActiveDriverVehicle = async (driverUid, vehicleId) => {
+  try {
+    const vehiclesRef = collection(db, 'vehicles');
+    const q = query(vehiclesRef, where('driverUid', '==', driverUid));
+    const snap = await getDocs(q);
+
+    for (const d of snap.docs) {
+      await updateDoc(doc(db, 'vehicles', d.id), {
+        isActive: d.id === vehicleId,
+        updatedAt: serverTimestamp(),
+      });
+    }
+
+    const activeDocSnap = await getDoc(doc(db, 'vehicles', vehicleId));
+    if (activeDocSnap.exists()) {
+      const activeData = activeDocSnap.data();
+      await updateDoc(doc(db, 'users', driverUid), {
+        vehicleNumber: activeData.plateNumber,
+        vehicleType: activeData.vehicleType,
+        vehicle: activeData,
+        updatedAt: serverTimestamp(),
+      });
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error('Error setting active driver vehicle:', error);
+    return { success: false, error: error.message };
+  }
+};

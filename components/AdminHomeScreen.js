@@ -47,7 +47,7 @@ export default function AdminHomeScreen({
   ordersList = [],
   onChangeLanguage,
 }) {
-  const [driversList, setDriversList] = useState(DEFAULT_COOP_DRIVERS);
+  const [driversList, setDriversList] = useState(DEFAULT_COOP_DRIVERS || []);
   const [selectedDriversByOrder, setSelectedDriversByOrder] = useState({});
   const [assigningOrderId, setAssigningOrderId] = useState(null);
   const [activeFleetTab, setActiveFleetTab] = useState('orders'); // 'orders' | 'fleet'
@@ -55,7 +55,7 @@ export default function AdminHomeScreen({
   // Subscribe to real-time driver fleet
   useEffect(() => {
     const unsubscribe = subscribeToDrivers((drivers) => {
-      if (drivers && drivers.length > 0) {
+      if (Array.isArray(drivers) && drivers.length > 0) {
         setDriversList(drivers);
       }
     });
@@ -66,8 +66,8 @@ export default function AdminHomeScreen({
   }, []);
 
   // Compute fleet availability metrics
-  const evaluatedDrivers = driversList.map((driver) => {
-    const availability = checkDriverAvailability(driver, ordersList);
+  const evaluatedDrivers = (driversList || []).map((driver) => {
+    const availability = checkDriverAvailability(driver, ordersList || []);
     return {
       ...driver,
       isAvailable: availability.isAvailable,
@@ -80,7 +80,7 @@ export default function AdminHomeScreen({
   const busyDriversCount = evaluatedDrivers.length - availableDriversCount;
 
   // Filter orders needing driver assignment
-  const unassignedOrders = ordersList.filter(
+  const unassignedOrders = (ordersList || []).filter(
     (o) => !o.driverId && o.status !== 'DELIVERED' && o.status !== 'CANCELLED'
   );
   const assignedOrders = ordersList.filter(

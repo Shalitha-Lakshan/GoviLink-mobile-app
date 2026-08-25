@@ -57,8 +57,9 @@ export default function DriverAssignmentDropdown({
 
   // Compute availability for all drivers
   const evaluatedDrivers = useMemo(() => {
-    return drivers.map((driver) => {
-      const availability = checkDriverAvailability(driver, ordersList);
+    const list = Array.isArray(drivers) ? drivers : [];
+    return list.map((driver) => {
+      const availability = checkDriverAvailability(driver, ordersList || []);
       return {
         ...driver,
         isAvailable: availability.isAvailable,
