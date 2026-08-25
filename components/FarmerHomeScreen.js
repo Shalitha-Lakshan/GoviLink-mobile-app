@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
   Text,
@@ -17,7 +17,10 @@ import {
   addProduceListing,
   deleteProduceListing,
   updateOrderStatus,
+  subscribeToBuyerRequests,
+  acceptBuyerCustomRequest,
 } from '../services/firebaseDatabase';
+import AddProduceScreen from './AddProduceScreen';
 
 // ----------------------------------------------------
 // COLOR TOKENS
@@ -28,7 +31,7 @@ const THEME = {
   emeraldDark: '#15803D',
   emeraldLight: '#E8F5E9',
   accentLeaf: '#2ECC71',
-  bg: '#F4F7F6',
+  bg: '#F8FAFC',
   cardBg: '#FFFFFF',
   textDark: '#0F172A',
   textMuted: '#64748B',
@@ -39,6 +42,8 @@ const THEME = {
   dangerLight: '#FEE2E2',
   info: '#3B82F6',
   infoLight: '#DBEAFE',
+  purple: '#8B5CF6',
+  purpleLight: '#F3E8FF',
 };
 
 // ----------------------------------------------------
@@ -57,7 +62,40 @@ const TRANSLATIONS = {
     },
     tabs: {
       myListings: 'My Harvest Listings',
-      incomingOrders: 'Incoming Orders',
+      incomingOrders: 'Incoming Requests',
+      acceptedOrders: 'Accepted Orders',
+    },
+    acceptedOrders: {
+      sectionTitle: '✅ Accepted Harvest Orders',
+      sectionSub: 'Orders & commitments you agreed to supply',
+      emptyTitle: 'No accepted orders yet',
+      emptySub: 'When you accept custom requests or buyers place orders, they will appear here for delivery confirmation.',
+      confirmDeliveryTitle: 'Confirm Order Delivered',
+      confirmDeliveryMsg: 'Are you sure this harvest order has been delivered / received by the buyer?',
+      confirmDeliveryBtn: 'Confirm Delivered ✅',
+      deliveredStatus: 'Order Delivered & Completed ✅',
+      readyDriverBtn: 'Ready for delivary 📦',
+      waitingDriver: 'Awaiting Driver Pickup 🚛',
+      inTransit: 'In Transit with Driver 🚚',
+    },
+    customRequests: {
+      sectionTitle: '📢 Broadcasted Buyer Inquiries',
+      sectionSub: 'Buyers requesting specific produce by region & harvest window',
+      provideBtn: "I'll Provide 🌾",
+      providing: 'Accepting...',
+      targetDistrict: 'Target District:',
+      datePeriod: 'Required Period:',
+      targetPrice: 'Target Budget:',
+      quality: 'Grade:',
+      delivery: 'Delivery:',
+      doorstep: 'Doorstep Delivery 🚚',
+      selfPickup: 'Farm Self-Pickup 🚜',
+      confirmTitle: 'Provide this Harvest?',
+      confirmMsg: 'Do you want to commit to supplying this custom order for the buyer?',
+      successTitle: 'Harvest Request Accepted! 🌾',
+      successMsg: 'You have committed to supply this harvest. It has been moved to your active orders for dispatch!',
+      openBadge: '⏳ Open Inquiry',
+      noInquiries: 'No broadcasted buyer inquiries currently matching your region.',
     },
     actions: {
       addNewListing: '+ Add New Harvest Listing',
@@ -94,12 +132,45 @@ const TRANSLATIONS = {
     stats: {
       activeListings: 'සක්‍රිය අස්වැන්න',
       totalRevenue: 'ඇස්තමේන්තු ආදායම',
-      pendingOrders: 'ලැබුණු ඇණවුම්',
+      pendingOrders: 'ලැබුණු ඉල්ලුම්',
       dispatched: 'ප්‍රවාහනයේ පවතින',
     },
     tabs: {
-      myListings: 'මගේ අස්වැන්න ලැයිස්තුව',
-      incomingOrders: 'ලැබුණු ඇණවුම්',
+      myListings: 'මගේ අස්වැන්න',
+      incomingOrders: 'ලැබුණු ඉල්ලුම්',
+      acceptedOrders: 'භාරගත් ඇණවුම්',
+    },
+    acceptedOrders: {
+      sectionTitle: '✅ භාරගත් අස්වනු ඇණවුම්',
+      sectionSub: 'ඔබ සැපයීමට එකඟ වූ ඇණවුම් සහ ඉල්ලුම්',
+      emptyTitle: 'භාරගත් ඇණවුම් තවමත් නොමැත',
+      emptySub: 'ඔබ ඉල්ලුමක් භාරගත් පසු එය මෙහි දිස්වන අතර භාරදුන් බව තහවුරු කළ හැක.',
+      confirmDeliveryTitle: 'ඇණවුම භාරදුන් බව තහවුරු කිරීම',
+      confirmDeliveryMsg: 'මෙම අස්වනු ඇණවුම ගැනුම්කරු වෙත සාර්ථකව භාරදුන් බව තහවුරු කරනවාද?',
+      confirmDeliveryBtn: 'භාරදුන් බව තහවුරු කරන්න ✅',
+      deliveredStatus: 'සාර්ථකව භාරදුන්නා ✅',
+      readyDriverBtn: 'පැටවීමට සූදානම් 📦',
+      waitingDriver: 'රියදුරු පැමිණෙන තෙක් 🚛',
+      inTransit: 'ප්‍රවාහනයේ පවතී 🚚',
+    },
+    customRequests: {
+      sectionTitle: '📢 ගැනුම්කරුවන්ගේ විශේෂ අස්වනු ඉල්ලුම්',
+      sectionSub: 'ප්‍රදේශය සහ දින වකවානුව අනුව ගැනුම්කරුවන් ඉදිරිපත් කර ඇති ඉල්ලුම්',
+      provideBtn: 'මම සපයන්නම් 🌾',
+      providing: 'භාරගනිමින් පවතී...',
+      targetDistrict: 'අපේක්ෂිත ප්‍රදේශය:',
+      datePeriod: 'දින වකවානුව:',
+      targetPrice: 'බලාපොරොත්තු මිල:',
+      quality: 'තත්ත්ව ශ්‍රේණිය:',
+      delivery: 'ප්‍රවාහනය:',
+      doorstep: 'ප්‍රවාහන පහසුකම් අවශ්‍යයි 🚚',
+      selfPickup: 'ස්වයං ප්‍රවාහනය (ගොවිපලෙන්ම) 🚜',
+      confirmTitle: 'මෙම අස්වැන්න සැපයීමට ඔබ එකඟද?',
+      confirmMsg: 'ගැනුම්කරුගේ මෙම ඉල්ලුම සපුරාලීමට ඔබ කැපවීමට සූදානම්ද?',
+      successTitle: 'ඉල්ලුම සාර්ථකව භාරගත්තා! 🌾',
+      successMsg: 'ඔබ මෙම අස්වැන්න සැපයීමට එකඟ විය. එය ඔබගේ සක්‍රිය ඇණවුම් ලැයිස්තුවට එක් විය!',
+      openBadge: '⏳ විවෘත ඉල්ලුමක්',
+      noInquiries: 'දැනට නව විශේෂ ඉල්ලුම් කිසිවක් නොමැත.',
     },
     actions: {
       addNewListing: '+ අලුත් අස්වැන්නක් එක් කරන්න',
@@ -136,12 +207,45 @@ const TRANSLATIONS = {
     stats: {
       activeListings: 'செயலில் உள்ளவை',
       totalRevenue: 'வருவாய்',
-      pendingOrders: 'நிலுவை ஆர்டர்கள்',
+      pendingOrders: 'நிலுவை கோரிக்கைகள்',
       dispatched: 'விநியோகத்தில்',
     },
     tabs: {
       myListings: 'என் விளைச்சல்',
-      incomingOrders: 'வந்த ஆர்டர்கள்',
+      incomingOrders: 'வந்த கோரிக்கைகள்',
+      acceptedOrders: 'ஏற்றுக்கொண்டவை',
+    },
+    acceptedOrders: {
+      sectionTitle: '✅ ஏற்றுக்கொள்ளப்பட்ட ஆர்டர்கள்',
+      sectionSub: 'நீங்கள் வழங்க ஒப்புக்கொண்ட ஆர்டர்கள்',
+      emptyTitle: 'ஏற்றுக்கொண்ட ஆர்டர்கள் இல்லை',
+      emptySub: 'நீங்கள் கோரிக்கையை ஏற்றுக்கொண்டவுடன் இங்கே தோன்றும்.',
+      confirmDeliveryTitle: 'விநியோகத்தை உறுதிப்படுத்து',
+      confirmDeliveryMsg: 'இந்த ஆர்டர் வாங்குபவருக்கு வெற்றிகரமாக வழங்கப்பட்டதா?',
+      confirmDeliveryBtn: 'விநியோகத்தை உறுதிப்படுத்து ✅',
+      deliveredStatus: 'விநியோகம் முடிந்தது ✅',
+      readyDriverBtn: 'ஓட்டுநருக்கு தயார் 📦',
+      waitingDriver: 'ஓட்டுநருக்கு காத்திருக்கிறது 🚛',
+      inTransit: 'பயணத்தில் உள்ளது 🚚',
+    },
+    customRequests: {
+      sectionTitle: '📢 வாங்குபவர்களின் விசேட கோரிக்கைகள்',
+      sectionSub: 'பகுதி மற்றும் திகதி அடிப்படையிலான பயிர் கோரிக்கைகள்',
+      provideBtn: 'நான் வழங்குகிறேன் 🌾',
+      providing: 'ஏற்றுக்கொள்கிறது...',
+      targetDistrict: 'மாவட்டம்:',
+      datePeriod: 'திகதி காலம்:',
+      targetPrice: 'எதிர்பார்க்கப்படும் விலை:',
+      grade: 'தரம்:',
+      delivery: 'விநியோகம்:',
+      doorstep: 'விநியோகம் தேவை 🚚',
+      selfPickup: 'சுய போக்குவரத்து 🚜',
+      confirmTitle: 'இந்த விளைச்சலை வழங்க ஒப்புக்கொள்கிறீர்களா?',
+      confirmMsg: 'வாங்குபவருக்கு இந்த ஆர்டரை வழங்க விரும்புகிறீர்களா?',
+      successTitle: 'கோரிக்கை ஏற்றுக்கொள்ளப்பட்டது! 🌾',
+      successMsg: 'நீங்கள் இந்த ஆர்டரை வழங்க ஒப்புக்கொண்டுள்ளீர்கள்.',
+      openBadge: '⏳ திறந்த கோரிக்கை',
+      noInquiries: 'புதிய கோரிக்கைகள் எதுவும் இல்லை.',
     },
     actions: {
       addNewListing: '+ புதிய விளைச்சலைச் சேர்க்கவும்',
@@ -191,6 +295,10 @@ export default function FarmerHomeScreen({
   onChangeLanguage,
 }) {
   const [activeTab, setActiveTab] = useState('listings'); // 'listings' | 'orders'
+  const [customRequests, setCustomRequests] = useState([]);
+  const [providingRequestId, setProvidingRequestId] = useState(null);
+  const [showAddProduceScreen, setShowAddProduceScreen] = useState(false);
+  const [editingProduceItem, setEditingProduceItem] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [updatingOrderId, setUpdatingOrderId] = useState(null);
@@ -206,6 +314,20 @@ export default function FarmerHomeScreen({
 
   const t = TRANSLATIONS[lang] || TRANSLATIONS.en;
 
+  // Real-time listener for buyer custom produce requests
+  useEffect(() => {
+    const unsub = subscribeToBuyerRequests((requests) => {
+      setCustomRequests(requests || []);
+    });
+    return () => unsub && unsub();
+  }, []);
+
+  // Filter open custom requests broadcasted by buyers
+  const openCustomRequests = customRequests.filter(
+    (r) => r.status === 'OPEN' || !r.status
+  );
+
+  // Filter listings for this farmer or display active listings
   // Filter listings for this farmer
   const myProduce = produceListings.filter(
     (item) => !item.farmerId || item.farmerId === userProfile?.uid || item.farmerName?.includes(userProfile?.fullName || 'Farmer')
@@ -302,6 +424,91 @@ export default function FarmerHomeScreen({
     }
   };
 
+  const handleConfirmDelivered = (order) => {
+    Alert.alert(
+      t.acceptedOrders.confirmDeliveryTitle,
+      `${t.acceptedOrders.confirmDeliveryMsg}\n\n📦 ${order.produceName || 'Produce'} (${order.qty} ${order.unit || 'kg'})\n👤 Buyer: ${order.buyerName || 'Buyer'}\n📍 Delivery: ${order.deliveryAddress || 'Self-Pickup'}`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: t.acceptedOrders.confirmDeliveryBtn,
+          onPress: async () => {
+            await handleUpdateOrderStatus(order.id, 'DELIVERED');
+          },
+        },
+      ]
+    );
+  };
+
+  const handleProvideCustomRequest = (request) => {
+    const cropTitle = request.cropName || 'Harvest';
+    const districtDisplay =
+      lang === 'si'
+        ? request.targetDistrictName || request.targetDistrictEn || 'දිවයින පුරා'
+        : lang === 'ta'
+        ? request.targetDistrictName || request.targetDistrictEn || 'நாடு முழுவதும்'
+        : request.targetDistrictName || request.targetDistrictEn || 'Island-wide';
+    const areaDetail = request.specificArea ? ` (${request.specificArea})` : '';
+
+    Alert.alert(
+      t.customRequests.confirmTitle,
+      `${t.customRequests.confirmMsg}\n\n📦 ${request.quantity} ${request.unit || 'kg'} of ${cropTitle}\n📍 ${districtDisplay}${areaDetail}\n📅 ${request.datePeriodDescription || `${request.requiredDateStart} to ${request.requiredDateEnd}`}\n👤 Buyer: ${request.buyerName || 'GoviLink Buyer'}\n🚚 ${request.deliveryNeeded === false ? t.customRequests.selfPickup : t.customRequests.doorstep}`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: t.customRequests.provideBtn,
+          onPress: async () => {
+            setProvidingRequestId(request.id);
+            const res = await acceptBuyerCustomRequest(request, userProfile);
+            setProvidingRequestId(null);
+            if (res.success) {
+              Alert.alert(
+                t.customRequests.successTitle,
+                t.customRequests.successMsg,
+                [
+                  {
+                    text: 'View Accepted Orders',
+                    onPress: () => setActiveTab('accepted'),
+                  },
+                  { text: 'OK' },
+                ]
+              );
+            } else {
+              Alert.alert('Error', `Could not accept request: ${res.error}`);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // Filter accepted orders for this farmer
+  const myAcceptedOrders = ordersList.filter(
+    (o) =>
+      !o.farmerId ||
+      o.farmerId === userProfile?.uid ||
+      o.farmerName === userProfile?.fullName ||
+      o.farmerName?.includes(userProfile?.fullName || 'Farmer')
+  );
+
+  if (showAddProduceScreen || editingProduceItem) {
+    return (
+      <AddProduceScreen
+        userProfile={userProfile}
+        lang={lang}
+        initialProduce={editingProduceItem}
+        onBack={() => {
+          setShowAddProduceScreen(false);
+          setEditingProduceItem(null);
+        }}
+        onProduceAdded={() => {
+          setShowAddProduceScreen(false);
+          setEditingProduceItem(null);
+        }}
+      />
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="light-content" backgroundColor={THEME.navy} />
@@ -339,7 +546,7 @@ export default function FarmerHomeScreen({
               }}
             >
               <Text style={styles.langPillText}>
-                {lang === 'en' ? 'සිං' : lang === 'si' ? 'தம' : 'EN'}
+                {lang === 'en' ? 'EN' : lang === 'si' ? 'සිං' : 'தம'}
               </Text>
             </TouchableOpacity>
           )}
@@ -371,15 +578,15 @@ export default function FarmerHomeScreen({
           </View>
 
           <View style={[styles.kpiCard, { borderLeftColor: THEME.warning }]}>
-            <Text style={styles.kpiIcon}>⏳</Text>
-            <Text style={styles.kpiValue}>{pendingOrders.length}</Text>
-            <Text style={styles.kpiLabel}>{t.stats.pendingOrders}</Text>
+            <Text style={styles.kpiIcon}>📢</Text>
+            <Text style={styles.kpiValue}>{openCustomRequests.length}</Text>
+            <Text style={styles.kpiLabel}>{t.tabs.incomingOrders}</Text>
           </View>
 
           <View style={[styles.kpiCard, { borderLeftColor: THEME.info }]}>
-            <Text style={styles.kpiIcon}>🚛</Text>
-            <Text style={styles.kpiValue}>{inTransitOrders.length}</Text>
-            <Text style={styles.kpiLabel}>{t.stats.dispatched}</Text>
+            <Text style={styles.kpiIcon}>✅</Text>
+            <Text style={styles.kpiValue}>{myAcceptedOrders.length}</Text>
+            <Text style={styles.kpiLabel}>{t.tabs.acceptedOrders}</Text>
           </View>
         </View>
 
@@ -387,7 +594,7 @@ export default function FarmerHomeScreen({
         <TouchableOpacity
           style={styles.addListingBanner}
           activeOpacity={0.85}
-          onPress={() => setShowAddModal(true)}
+          onPress={() => setShowAddProduceScreen(true)}
         >
           <View style={styles.addIconCircle}>
             <Text style={styles.addPlusText}>+</Text>
@@ -399,14 +606,14 @@ export default function FarmerHomeScreen({
           <Text style={styles.addBannerArrow}>➔</Text>
         </TouchableOpacity>
 
-        {/* TAB SWITCHER: MY LISTINGS vs INCOMING ORDERS */}
+        {/* 3-TAB SWITCHER: MY LISTINGS vs INCOMING REQUESTS vs ACCEPTED ORDERS */}
         <View style={styles.tabContainer}>
           <TouchableOpacity
             style={[styles.tabBtn, activeTab === 'listings' && styles.tabBtnActive]}
             onPress={() => setActiveTab('listings')}
           >
-            <Text style={[styles.tabText, activeTab === 'listings' && styles.tabTextActive]}>
-              🌾 {t.tabs.myListings} ({displayListings.length})
+            <Text style={[styles.tabText, activeTab === 'listings' && styles.tabTextActive]} numberOfLines={1}>
+              🌾 {t.tabs.myListings}
             </Text>
           </TouchableOpacity>
 
@@ -414,8 +621,17 @@ export default function FarmerHomeScreen({
             style={[styles.tabBtn, activeTab === 'orders' && styles.tabBtnActive]}
             onPress={() => setActiveTab('orders')}
           >
-            <Text style={[styles.tabText, activeTab === 'orders' && styles.tabTextActive]}>
-              📦 {t.tabs.incomingOrders} {pendingOrders.length > 0 ? `(${pendingOrders.length} New)` : ''}
+            <Text style={[styles.tabText, activeTab === 'orders' && styles.tabTextActive]} numberOfLines={1}>
+              📢 {t.tabs.incomingOrders} {openCustomRequests.length > 0 ? `(${openCustomRequests.length})` : ''}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.tabBtn, activeTab === 'accepted' && styles.tabBtnActive]}
+            onPress={() => setActiveTab('accepted')}
+          >
+            <Text style={[styles.tabText, activeTab === 'accepted' && styles.tabTextActive]} numberOfLines={1}>
+              ✅ {t.tabs.acceptedOrders} ({myAcceptedOrders.length})
             </Text>
           </TouchableOpacity>
         </View>
@@ -433,7 +649,12 @@ export default function FarmerHomeScreen({
               </View>
             ) : (
               displayListings.map((item) => (
-                <View key={item.id} style={styles.listingCard}>
+                <TouchableOpacity
+                  key={item.id}
+                  style={styles.listingCard}
+                  activeOpacity={0.85}
+                  onPress={() => setEditingProduceItem(item)}
+                >
                   <Image source={{ uri: item.image || DEFAULT_IMAGE_BY_CAT[item.category] }} style={styles.produceThumb} />
                   <View style={styles.produceInfo}>
                     <View style={styles.badgeRow}>
@@ -447,6 +668,12 @@ export default function FarmerHomeScreen({
                       {lang === 'si' ? item.nameSi || item.nameEn : item.nameEn}
                     </Text>
 
+                    {Boolean(item.description) && (
+                      <Text style={styles.produceDescriptionText} numberOfLines={2}>
+                        {item.description}
+                      </Text>
+                    )}
+
                     <Text style={styles.stockText}>
                       In Stock: <Text style={{ fontWeight: 'bold', color: THEME.textDark }}>{item.stockQty} {item.unitEn || 'kg'}</Text>
                     </Text>
@@ -457,71 +684,250 @@ export default function FarmerHomeScreen({
                         <Text style={styles.unitSub}> / {item.unitEn || 'kg'}</Text>
                       </Text>
 
-                      <TouchableOpacity
-                        style={styles.deleteBtn}
-                        onPress={() => handleDeleteProduce(item)}
-                      >
-                        <Text style={styles.deleteBtnText}>✕ {t.actions.delete}</Text>
-                      </TouchableOpacity>
+                      <View style={styles.cardActionsRow}>
+                        <TouchableOpacity
+                          style={styles.editBtn}
+                          onPress={() => setEditingProduceItem(item)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.editBtnText}>✏️ {t.actions.edit || 'Edit'}</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={styles.deleteBtn}
+                          onPress={() => handleDeleteProduce(item)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.deleteBtnText}>✕ {t.actions.delete}</Text>
+                        </TouchableOpacity>
+                      </View>
                     </View>
                   </View>
-                </View>
+                </TouchableOpacity>
               ))
             )}
           </View>
         )}
 
         {/* ============================================== */}
-        {/* TAB CONTENT 2: INCOMING ORDERS FROM BUYERS     */}
+        {/* TAB CONTENT 2: INCOMING BUYER CUSTOM REQUESTS  */}
         {/* ============================================== */}
         {activeTab === 'orders' && (
           <View>
-            {ordersList.length === 0 ? (
-              <View style={styles.emptyCard}>
-                <Text style={styles.emptyIcon}>📦</Text>
-                <Text style={styles.emptyTitle}>No buyer orders yet</Text>
-                <Text style={styles.emptySubtitle}>When buyers place orders for your produce, they will appear here live with dispatch actions.</Text>
+            <View style={styles.sectionHeaderWrap}>
+              <Text style={styles.sectionHeaderTitle}>
+                {t.customRequests.sectionTitle} ({openCustomRequests.length})
+              </Text>
+              <Text style={styles.sectionHeaderSub}>
+                {t.customRequests.sectionSub}
+              </Text>
+            </View>
+
+            {openCustomRequests.length === 0 ? (
+              <View style={styles.emptyInquiryCard}>
+                <Text style={styles.emptyInquiryIcon}>📢</Text>
+                <Text style={styles.emptyInquiryText}>{t.customRequests.noInquiries}</Text>
               </View>
             ) : (
-              ordersList.map((order) => {
-                const status = order.status || 'PENDING';
-                const isPending = status === 'PENDING';
+              openCustomRequests.map((req) => {
+                const cropLower = (req.cropName || '').toLowerCase();
+                const cropEmoji = cropLower.includes('carrot')
+                  ? '🥕'
+                  : cropLower.includes('potato')
+                  ? '🥔'
+                  : cropLower.includes('leek')
+                  ? '🌱'
+                  : cropLower.includes('tomato')
+                  ? '🍅'
+                  : cropLower.includes('cabbage')
+                  ? '🥬'
+                  : cropLower.includes('rice')
+                  ? '🌾'
+                  : cropLower.includes('banana')
+                  ? '🍌'
+                  : cropLower.includes('papaya')
+                  ? '🍈'
+                  : cropLower.includes('cinnamon') || cropLower.includes('pepper')
+                  ? '🌿'
+                  : '🌱';
+
+                return (
+                  <View key={req.id} style={styles.inquiryCard}>
+                    {/* HEADER */}
+                    <View style={styles.inquiryHeaderRow}>
+                      <View style={styles.inquiryCropRow}>
+                        <Text style={styles.inquiryCropIcon}>{cropEmoji}</Text>
+                        <View>
+                          <Text style={styles.inquiryCropName}>{req.cropName}</Text>
+                          <Text style={styles.inquiryCategoryBadge}>🏷️ {req.category || 'Produce'}</Text>
+                        </View>
+                      </View>
+                      <View style={styles.inquiryStatusBadge}>
+                        <Text style={styles.inquiryStatusBadgeText}>{t.customRequests.openBadge}</Text>
+                      </View>
+                    </View>
+
+                    {/* INFO GRID */}
+                    <View style={styles.inquiryGrid}>
+                      <View style={styles.inquiryGridItem}>
+                        <Text style={styles.inquiryLabel}>⚖️ Quantity:</Text>
+                        <Text style={styles.inquiryValueHighlight}>
+                          {req.quantity} {req.unit || 'kg'}
+                        </Text>
+                      </View>
+
+                      <View style={styles.inquiryGridItem}>
+                        <Text style={styles.inquiryLabel}>📍 {t.customRequests.targetDistrict}</Text>
+                        <Text style={styles.inquiryValue} numberOfLines={1}>
+                          {req.targetDistrictName || req.targetDistrictEn || 'Island-wide'}
+                          {req.specificArea ? ` (${req.specificArea})` : ''}
+                        </Text>
+                      </View>
+
+                      <View style={styles.inquiryGridItem}>
+                        <Text style={styles.inquiryLabel}>📅 {t.customRequests.datePeriod}</Text>
+                        <Text style={styles.inquiryValue}>
+                          {req.datePeriodDescription || `${req.requiredDateStart} to ${req.requiredDateEnd}`}
+                        </Text>
+                      </View>
+
+                      {req.targetPricePerUnit ? (
+                        <View style={styles.inquiryGridItem}>
+                          <Text style={styles.inquiryLabel}>💰 {t.customRequests.targetPrice}</Text>
+                          <Text style={styles.inquiryValueHighlight}>
+                            Rs. {req.targetPricePerUnit} / {req.unit || 'kg'}
+                          </Text>
+                        </View>
+                      ) : null}
+
+                      {req.qualityGrade ? (
+                        <View style={styles.inquiryGridItem}>
+                          <Text style={styles.inquiryLabel}>✨ {t.customRequests.quality}</Text>
+                          <Text style={styles.inquiryValue} numberOfLines={1}>{req.qualityGrade}</Text>
+                        </View>
+                      ) : null}
+
+                      <View style={styles.inquiryGridItem}>
+                        <Text style={styles.inquiryLabel}>🚚 {t.customRequests.delivery}</Text>
+                        <Text style={styles.inquiryValue} numberOfLines={1}>
+                          {req.deliveryNeeded === false
+                            ? t.customRequests.selfPickup
+                            : `Doorstep: ${req.deliveryAddress || 'Central Destination'}`}
+                        </Text>
+                      </View>
+                    </View>
+
+                    {/* NOTES */}
+                    {Boolean(req.notes) && (
+                      <View style={styles.inquiryNotesBox}>
+                        <Text style={styles.inquiryNotesText}>📝 "{req.notes}"</Text>
+                      </View>
+                    )}
+
+                    {/* BUYER FOOTER & "I'LL PROVIDE" CTA */}
+                    <View style={styles.inquiryFooter}>
+                      <View style={styles.inquiryBuyerInfo}>
+                        <Text style={styles.inquiryBuyerName}>👤 {req.buyerName || 'Buyer'}</Text>
+                        {Boolean(req.buyerPhone) && (
+                          <Text style={styles.inquiryBuyerPhone}>📞 {req.buyerPhone}</Text>
+                        )}
+                      </View>
+
+                      <TouchableOpacity
+                        style={[
+                          styles.btnProvideAction,
+                          providingRequestId === req.id && { opacity: 0.6 },
+                        ]}
+                        disabled={providingRequestId === req.id}
+                        onPress={() => handleProvideCustomRequest(req)}
+                        activeOpacity={0.85}
+                      >
+                        {providingRequestId === req.id ? (
+                          <ActivityIndicator size="small" color="#FFFFFF" />
+                        ) : (
+                          <Text style={styles.btnProvideActionText}>
+                            {t.customRequests.provideBtn}
+                          </Text>
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                );
+              })
+            )}
+          </View>
+        )}
+
+        {/* ============================================== */}
+        {/* TAB CONTENT 3: ACCEPTED HARVEST ORDERS         */}
+        {/* ============================================== */}
+        {activeTab === 'accepted' && (
+          <View>
+            <View style={styles.sectionHeaderWrap}>
+              <Text style={styles.sectionHeaderTitle}>
+                {t.acceptedOrders.sectionTitle} ({myAcceptedOrders.length})
+              </Text>
+              <Text style={styles.sectionHeaderSub}>
+                {t.acceptedOrders.sectionSub}
+              </Text>
+            </View>
+
+            {myAcceptedOrders.length === 0 ? (
+              <View style={styles.emptyCard}>
+                <Text style={styles.emptyIcon}>📦</Text>
+                <Text style={styles.emptyTitle}>{t.acceptedOrders.emptyTitle}</Text>
+                <Text style={styles.emptySubtitle}>{t.acceptedOrders.emptySub}</Text>
+              </View>
+            ) : (
+              myAcceptedOrders.map((order) => {
+                const status = order.status || 'ACCEPTED';
                 const isAccepted = status === 'ACCEPTED';
                 const isReady = status === 'READY_FOR_PICKUP';
                 const isInTransit = status === 'IN_TRANSIT';
                 const isDelivered = status === 'DELIVERED';
 
                 return (
-                  <View key={order.id} style={styles.orderCard}>
+                  <View key={order.id} style={styles.acceptedOrderCard}>
+                    {/* CARD HEADER */}
                     <View style={styles.orderHeaderRow}>
-                      <View style={[
-                        styles.orderStatusPill,
-                        isPending && { backgroundColor: THEME.warningLight },
-                        (isAccepted || isReady) && { backgroundColor: THEME.infoLight },
-                        isInTransit && { backgroundColor: THEME.warningLight },
-                        isDelivered && { backgroundColor: THEME.emeraldLight },
-                      ]}>
-                        <Text style={[
-                          styles.orderStatusPillText,
-                          isPending && { color: THEME.warning },
-                          (isAccepted || isReady) && { color: THEME.info },
-                          isInTransit && { color: THEME.warning },
-                          isDelivered && { color: THEME.emerald },
-                        ]}>
-                          ● {status.replace(/_/g, ' ')}
+                      <View
+                        style={[
+                          styles.orderStatusPill,
+                          isAccepted && { backgroundColor: THEME.infoLight },
+                          isReady && { backgroundColor: THEME.purpleLight },
+                          isInTransit && { backgroundColor: THEME.warningLight },
+                          isDelivered && { backgroundColor: THEME.emeraldLight },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.orderStatusPillText,
+                            isAccepted && { color: THEME.info },
+                            isReady && { color: THEME.purple },
+                            isInTransit && { color: THEME.warning },
+                            isDelivered && { color: THEME.emerald },
+                          ]}
+                        >
+                          ● {status === 'ACCEPTED' ? 'ACCEPTED 👨‍🌾' : status.replace(/_/g, ' ')}
                         </Text>
                       </View>
                       <Text style={styles.orderDate}>
-                        Order #{order.id ? order.id.slice(-5).toUpperCase() : 'GL-01'}
+                        Order #{order.id ? order.id.slice(-6).toUpperCase() : 'GL-01'}
                       </Text>
                     </View>
 
-                    <Text style={styles.orderItemName}>{order.produceName || 'Fresh Harvest Crop'}</Text>
-                    
+                    {/* PRODUCE TITLE */}
+                    <Text style={styles.orderItemName}>
+                      {order.produceName || 'Fresh Harvest Crop'}
+                    </Text>
+
+                    {/* META GRID */}
                     <View style={styles.orderMetaGrid}>
                       <View style={styles.orderMetaItem}>
                         <Text style={styles.metaLabel}>Quantity</Text>
-                        <Text style={styles.metaValue}>{order.qty} {order.unit || 'kg'}</Text>
+                        <Text style={styles.metaValue}>
+                          {order.qty} {order.unit || 'kg'}
+                        </Text>
                       </View>
                       <View style={styles.orderMetaItem}>
                         <Text style={styles.metaLabel}>Total Value</Text>
@@ -531,58 +937,74 @@ export default function FarmerHomeScreen({
                       </View>
                       <View style={styles.orderMetaItem}>
                         <Text style={styles.metaLabel}>Buyer</Text>
-                        <Text style={styles.metaValue}>{order.buyerName || 'Buyer'}</Text>
+                        <Text style={styles.metaValue} numberOfLines={1}>
+                          {order.buyerName || 'Buyer'}
+                        </Text>
                       </View>
                     </View>
 
-                    {/* ACTION BUTTONS BASED ON CURRENT STATUS */}
-                    <View style={styles.orderActionRow}>
-                      {isPending && (
-                        <TouchableOpacity
-                          style={styles.btnPrimaryAction}
-                          disabled={updatingOrderId === order.id}
-                          onPress={() => handleUpdateOrderStatus(order.id, 'ACCEPTED')}
-                        >
-                          {updatingOrderId === order.id ? (
-                            <ActivityIndicator size="small" color="#FFF" />
-                          ) : (
-                            <Text style={styles.btnPrimaryActionText}>✓ {t.actions.acceptOrder}</Text>
+                    {/* LOCATION / DELIVERY ROW */}
+                    <View style={styles.orderLocationRow}>
+                      <Text style={styles.orderLocationText} numberOfLines={1}>
+                        {order.deliveryNeeded === false
+                          ? '🚜 Farm Self-Pickup by Buyer'
+                          : `🚚 Deliver to: ${order.deliveryAddress || 'Central Destination'}`}
+                      </Text>
+                      {Boolean(order.buyerPhone) && (
+                        <Text style={styles.orderPhoneText}>📞 {order.buyerPhone}</Text>
+                      )}
+                    </View>
+
+                    {Boolean(order.notes) && (
+                      <View style={styles.orderNotesMiniBox}>
+                        <Text style={styles.orderNotesMiniText}>📝 "{order.notes}"</Text>
+                      </View>
+                    )}
+
+                    {/* ACTION BUTTONS */}
+                    <View style={styles.acceptedOrderActionRow}>
+                      {!isDelivered ? (
+                        <>
+                          {/* CONFIRM DELIVERED BUTTON */}
+                          <TouchableOpacity
+                            style={[
+                              styles.btnDeliveredAction,
+                              updatingOrderId === order.id && { opacity: 0.6 },
+                            ]}
+                            disabled={updatingOrderId === order.id}
+                            onPress={() => handleConfirmDelivered(order)}
+                            activeOpacity={0.85}
+                          >
+                            {updatingOrderId === order.id ? (
+                              <ActivityIndicator size="small" color="#FFFFFF" />
+                            ) : (
+                              <Text style={styles.btnDeliveredActionText}>
+                                ✓ {t.acceptedOrders.confirmDeliveryBtn}
+                              </Text>
+                            )}
+                          </TouchableOpacity>
+
+                          {/* READY FOR DRIVER (IF STILL IN ACCEPTED STATE) */}
+                          {isAccepted && (
+                            <TouchableOpacity
+                              style={[
+                                styles.btnSecondaryAction,
+                                updatingOrderId === order.id && { opacity: 0.6 },
+                              ]}
+                              disabled={updatingOrderId === order.id}
+                              onPress={() => handleUpdateOrderStatus(order.id, 'READY_FOR_PICKUP')}
+                              activeOpacity={0.8}
+                            >
+                              <Text style={styles.btnSecondaryActionText}>
+                                📦 {t.acceptedOrders.readyDriverBtn}
+                              </Text>
+                            </TouchableOpacity>
                           )}
-                        </TouchableOpacity>
-                      )}
-
-                      {isAccepted && (
-                        <TouchableOpacity
-                          style={[styles.btnPrimaryAction, { backgroundColor: THEME.navy }]}
-                          disabled={updatingOrderId === order.id}
-                          onPress={() => handleUpdateOrderStatus(order.id, 'READY_FOR_PICKUP')}
-                        >
-                          {updatingOrderId === order.id ? (
-                            <ActivityIndicator size="small" color="#FFF" />
-                          ) : (
-                            <Text style={styles.btnPrimaryActionText}>📦 {t.actions.readyPickup}</Text>
-                          )}
-                        </TouchableOpacity>
-                      )}
-
-                      {isReady && (
-                        <View style={styles.statusInfoBox}>
-                          <Text style={styles.statusInfoText}>🚛 {t.actions.waitingDriver}</Text>
-                        </View>
-                      )}
-
-                      {isInTransit && (
-                        <View style={[styles.statusInfoBox, { backgroundColor: THEME.warningLight }]}>
-                          <Text style={[styles.statusInfoText, { color: THEME.warning }]}>
-                            🚚 {t.actions.inTransit}
-                          </Text>
-                        </View>
-                      )}
-
-                      {isDelivered && (
-                        <View style={[styles.statusInfoBox, { backgroundColor: THEME.emeraldLight }]}>
-                          <Text style={[styles.statusInfoText, { color: THEME.emerald }]}>
-                            ✅ {t.actions.delivered}
+                        </>
+                      ) : (
+                        <View style={styles.deliveredCompleteBadge}>
+                          <Text style={styles.deliveredCompleteBadgeText}>
+                            ✅ {t.acceptedOrders.deliveredStatus}
                           </Text>
                         </View>
                       )}
@@ -594,138 +1016,6 @@ export default function FarmerHomeScreen({
           </View>
         )}
       </ScrollView>
-
-      {/* ============================================== */}
-      {/* MODAL: + ADD PRODUCE LISTING FORM              */}
-      {/* ============================================== */}
-      <Modal visible={showAddModal} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalSheet}>
-            <View style={styles.modalHeader}>
-              <View>
-                <Text style={styles.modalHeaderTitle}>{t.modal.title}</Text>
-                <Text style={styles.modalHeaderSub}>{t.modal.subtitle}</Text>
-              </View>
-              <TouchableOpacity onPress={() => setShowAddModal(false)} style={styles.modalCloseCircle}>
-                <Text style={{ fontSize: 18, color: THEME.textMuted }}>✕</Text>
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
-              {/* Category Selector */}
-              <Text style={styles.inputLabel}>{t.modal.categoryLabel}</Text>
-              <View style={styles.categoryPickerRow}>
-                {CATEGORIES.map((cat) => (
-                  <TouchableOpacity
-                    key={cat}
-                    style={[
-                      styles.categoryPickerPill,
-                      formCategory === cat && styles.categoryPickerPillActive,
-                    ]}
-                    onPress={() => setFormCategory(cat)}
-                  >
-                    <Text
-                      style={[
-                        styles.categoryPickerPillText,
-                        formCategory === cat && styles.categoryPickerPillTextActive,
-                      ]}
-                    >
-                      {cat}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              {/* Crop Name English */}
-              <Text style={styles.inputLabel}>{t.modal.nameEnLabel} *</Text>
-              <TextInput
-                style={styles.modalInput}
-                placeholder={t.modal.nameEnPlaceholder}
-                placeholderTextColor={THEME.textMuted}
-                value={formNameEn}
-                onChangeText={setFormNameEn}
-              />
-
-              {/* Crop Name Sinhala */}
-              <Text style={styles.inputLabel}>{t.modal.nameSiLabel}</Text>
-              <TextInput
-                style={styles.modalInput}
-                placeholder={t.modal.nameSiPlaceholder}
-                placeholderTextColor={THEME.textMuted}
-                value={formNameSi}
-                onChangeText={setFormNameSi}
-              />
-
-              {/* Price & Stock Row */}
-              <View style={{ flexDirection: 'row', gap: 12 }}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.inputLabel}>{t.modal.priceLabel} *</Text>
-                  <TextInput
-                    style={styles.modalInput}
-                    placeholder="340.00"
-                    placeholderTextColor={THEME.textMuted}
-                    keyboardType="numeric"
-                    value={formPrice}
-                    onChangeText={setFormPrice}
-                  />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.inputLabel}>{t.modal.stockLabel} *</Text>
-                  <TextInput
-                    style={styles.modalInput}
-                    placeholder="500"
-                    placeholderTextColor={THEME.textMuted}
-                    keyboardType="numeric"
-                    value={formStock}
-                    onChangeText={setFormStock}
-                  />
-                </View>
-              </View>
-
-              {/* Location & Grade */}
-              <Text style={styles.inputLabel}>{t.modal.locationLabel}</Text>
-              <TextInput
-                style={styles.modalInput}
-                placeholder="Nuwara Eliya"
-                placeholderTextColor={THEME.textMuted}
-                value={formLocation}
-                onChangeText={setFormLocation}
-              />
-
-              <Text style={styles.inputLabel}>{t.modal.gradeLabel}</Text>
-              <TextInput
-                style={styles.modalInput}
-                placeholder="Grade A Export Quality Fresh Harvest"
-                placeholderTextColor={THEME.textMuted}
-                value={formGrade}
-                onChangeText={setFormGrade}
-              />
-
-              {/* Actions */}
-              <View style={styles.modalActionsRow}>
-                <TouchableOpacity
-                  style={styles.modalCancelBtn}
-                  onPress={() => setShowAddModal(false)}
-                >
-                  <Text style={styles.modalCancelBtnText}>{t.modal.cancelBtn}</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.modalSubmitBtn}
-                  disabled={isSubmitting}
-                  onPress={handleCreateProduce}
-                >
-                  {isSubmitting ? (
-                    <ActivityIndicator size="small" color="#FFFFFF" />
-                  ) : (
-                    <Text style={styles.modalSubmitBtnText}>{t.modal.submitBtn}</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -980,6 +1270,13 @@ const styles = StyleSheet.create({
     color: THEME.textDark,
     marginVertical: 2,
   },
+  produceDescriptionText: {
+    fontSize: 11,
+    color: THEME.textMuted,
+    fontStyle: 'italic',
+    marginBottom: 4,
+    lineHeight: 15,
+  },
   stockText: {
     fontSize: 11,
     color: THEME.textMuted,
@@ -999,6 +1296,24 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: 'normal',
     color: THEME.textMuted,
+  },
+  cardActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  editBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    borderRadius: 6,
+    marginRight: 6,
+  },
+  editBtnText: {
+    color: '#1D4ED8',
+    fontSize: 10,
+    fontWeight: '700',
   },
   deleteBtn: {
     paddingHorizontal: 8,
@@ -1238,5 +1553,301 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: 'bold',
+  },
+
+  // Order Sub-filters & Sections
+  orderFilterWrap: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 16,
+  },
+  orderFilterPill: {
+    backgroundColor: '#E2E8F0',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
+  },
+  orderFilterPillActive: {
+    backgroundColor: THEME.navy,
+  },
+  orderFilterText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: THEME.textMuted,
+  },
+  orderFilterTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  sectionHeaderWrap: {
+    marginBottom: 12,
+  },
+  sectionHeaderTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: THEME.navy,
+  },
+  sectionHeaderSub: {
+    fontSize: 11,
+    color: THEME.textMuted,
+    marginTop: 2,
+  },
+
+  // Custom Request Inquiry Cards
+  inquiryCard: {
+    backgroundColor: THEME.cardBg,
+    borderRadius: 14,
+    padding: 15,
+    marginBottom: 14,
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+    elevation: 2,
+  },
+  inquiryHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+    paddingBottom: 10,
+  },
+  inquiryCropRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  inquiryCropIcon: {
+    fontSize: 26,
+    marginRight: 10,
+  },
+  inquiryCropName: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: THEME.textDark,
+  },
+  inquiryCategoryBadge: {
+    fontSize: 11,
+    color: THEME.textMuted,
+    marginTop: 2,
+  },
+  inquiryStatusBadge: {
+    backgroundColor: THEME.warningLight,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  inquiryStatusBadgeText: {
+    color: '#B45309',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  inquiryGrid: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    padding: 10,
+    gap: 6,
+    marginBottom: 10,
+  },
+  inquiryGridItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  inquiryLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: THEME.textMuted,
+    flex: 1,
+  },
+  inquiryValue: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: THEME.textDark,
+    flex: 1.3,
+    textAlign: 'right',
+  },
+  inquiryValueHighlight: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: THEME.emeraldDark,
+    flex: 1.3,
+    textAlign: 'right',
+  },
+  inquiryNotesBox: {
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    borderRadius: 8,
+    padding: 8,
+    marginBottom: 12,
+  },
+  inquiryNotesText: {
+    fontSize: 11,
+    color: '#92400E',
+    fontStyle: 'italic',
+  },
+  inquiryFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 4,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  inquiryBuyerInfo: {
+    flex: 1,
+    marginRight: 10,
+  },
+  inquiryBuyerName: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: THEME.textDark,
+  },
+  inquiryBuyerPhone: {
+    fontSize: 11,
+    color: THEME.textMuted,
+    marginTop: 1,
+  },
+  btnProvideAction: {
+    backgroundColor: THEME.emerald,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
+    shadowColor: THEME.emerald,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  btnProvideActionText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+  emptyInquiryCard: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    padding: 18,
+    alignItems: 'center',
+  },
+  emptyInquiryIcon: {
+    fontSize: 28,
+    marginBottom: 6,
+  },
+  emptyInquiryText: {
+    fontSize: 12,
+    color: THEME.textMuted,
+    textAlign: 'center',
+  },
+
+  // Accepted Orders Card Styles
+  acceptedOrderCard: {
+    backgroundColor: THEME.cardBg,
+    borderRadius: 14,
+    padding: 15,
+    marginBottom: 14,
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+    elevation: 2,
+  },
+  orderLocationRow: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 4,
+    marginBottom: 8,
+    gap: 4,
+  },
+  orderLocationText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: THEME.textDark,
+  },
+  orderPhoneText: {
+    fontSize: 11,
+    color: THEME.textMuted,
+    fontWeight: '500',
+  },
+  orderNotesMiniBox: {
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    borderRadius: 6,
+    padding: 6,
+    marginBottom: 8,
+  },
+  orderNotesMiniText: {
+    fontSize: 11,
+    color: '#92400E',
+    fontStyle: 'italic',
+  },
+  acceptedOrderActionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 6,
+  },
+  btnDeliveredAction: {
+    flex: 1.2,
+    minWidth: 140,
+    backgroundColor: THEME.emerald,
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: THEME.emerald,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  btnDeliveredActionText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  btnSecondaryAction: {
+    flex: 1,
+    minWidth: 120,
+    backgroundColor: THEME.navy,
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  btnSecondaryActionText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  deliveredCompleteBadge: {
+    flex: 1,
+    backgroundColor: THEME.emeraldLight,
+    borderWidth: 1,
+    borderColor: THEME.emerald,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deliveredCompleteBadgeText: {
+    color: THEME.emeraldDark,
+    fontSize: 13,
+    fontWeight: '800',
   },
 });

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
   Text,
@@ -13,7 +13,12 @@ import {
   StatusBar,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { placeOrderInFirestore } from '../services/firebaseDatabase';
+import {
+  placeOrderInFirestore,
+  subscribeToBuyerRequests,
+  deleteBuyerRequest,
+} from '../services/firebaseDatabase';
+import BuyerRequestProduceScreen from './BuyerRequestProduceScreen';
 
 // ----------------------------------------------------
 // THEME COLORS
@@ -34,6 +39,8 @@ const THEME = {
   danger: '#EF4444',
   info: '#3B82F6',
   infoLight: '#DBEAFE',
+  purple: '#8B5CF6',
+  purpleLight: '#F3E8FF',
 };
 
 // ----------------------------------------------------
@@ -47,7 +54,26 @@ const TRANSLATIONS = {
     categories: ['All', 'Vegetables', 'Fruits', 'Rice & Grains', 'Spices'],
     tabs: {
       market: 'Fresh Marketplace',
-      myOrders: 'My Orders & Tracking',
+      customRequests: 'Custom Requests',
+      myOrders: 'My Orders',
+    },
+    customRequests: {
+      title: 'Custom Harvest Inquiries',
+      subtitle: 'Broadcast bulk produce requirements to farmers by region & delivery date',
+      postBtn: '+ Request Produce',
+      bannerTitle: 'Need a Specific Crop & Date Window?',
+      bannerSub: 'Broadcast requirements (e.g. 100kg Carrots from Nuwara Eliya) directly to regional growers!',
+      bannerBtn: 'Broadcast Request 📢',
+      emptyTitle: 'No custom requests broadcasted yet',
+      emptySub: 'Need bulk produce or a specific harvest period? Post a request for growers to see.',
+      cancelBtn: 'Cancel Request',
+      cancelConfirm: 'Are you sure you want to cancel this produce request?',
+      targetDistrict: 'Origin District:',
+      datePeriod: 'Required Period:',
+      targetPrice: 'Target Budget:',
+      quality: 'Grade:',
+      destination: 'Delivery Location:',
+      statusOpen: '⏳ Broadcasted (Open)',
     },
     labels: {
       farmer: 'Farmer:',
@@ -86,7 +112,26 @@ const TRANSLATIONS = {
     categories: ['සියල්ල', 'එළවළු', 'පලතුරු', 'ධාන්‍ය', 'කුළුබඩු'],
     tabs: {
       market: 'නැවුම් වෙළඳපොළ',
-      myOrders: 'මගේ ඇණවුම් සහ ප්‍රවාහනය',
+      customRequests: 'විශේෂ ඉල්ලුම්',
+      myOrders: 'මගේ ඇණවුම් ',
+    },
+    customRequests: {
+      title: 'විශේෂ අස්වනු ඉල්ලුම්',
+      subtitle: 'ප්‍රදේශය හා දින වකවානුව අනුව ඔබේ අස්වනු අවශ්‍යතාව පළ කරන්න',
+      postBtn: '+ අස්වනු ඉල්ලුමක් යොමු කරන්න',
+      bannerTitle: 'විශේෂ බෝගයක් සහ දින වකවානුවක් අවශ්‍යද?',
+      bannerSub: 'නුවරඑළියෙන් කැරට් කිලෝ 100ක් වැනි විශේෂ ඉල්ලුම් කෙලින්ම ගොවීන්ගෙන් ඉල්ලන්න!',
+      bannerBtn: 'ඉල්ලුම පළ කරන්න 📢',
+      emptyTitle: 'තවමත් කිසිදු විශේෂ ඉල්ලුමක් නැත',
+      emptySub: 'ඔබට අවශ්‍ය විශේෂ අස්වැන්න පිළිබඳ ගොවීන් දැනුවත් කිරීමට ඉල්ලුමක් පළ කරන්න.',
+      cancelBtn: 'ඉල්ලුම අවලංගු කරන්න',
+      cancelConfirm: 'මෙම ඉල්ලුම අවලංගු කිරීමට ඔබට සහතිකද?',
+      targetDistrict: 'ප්‍රදේශය / දිස්ත්‍රික්කය:',
+      datePeriod: 'දින වකවානුව:',
+      targetPrice: 'බලාපොරොත්තු මිල:',
+      quality: 'තත්ත්ව ශ්‍රේණිය:',
+      destination: 'භාරදිය යුතු ස්ථානය:',
+      statusOpen: '⏳ විවෘත ඉල්ලුමක්',
     },
     labels: {
       farmer: 'ගොවියා:',
@@ -125,7 +170,26 @@ const TRANSLATIONS = {
     categories: ['அனைத்தும்', 'காய்கறிகள்', 'பழங்கள்', 'தானியங்கள்', 'மசாலா'],
     tabs: {
       market: 'சந்தை',
+      customRequests: 'விசேட கோரிக்கைகள்',
       myOrders: 'என் ஆர்டர்கள்',
+    },
+    customRequests: {
+      title: 'விசேட விளைச்சல் கோரிக்கைகள்',
+      subtitle: 'பகுதி மற்றும் திகதி அடிப்படையில் உங்கள் தேவையை குறிப்பிடுங்கள்',
+      postBtn: '+ கோரிக்கை உருவாக்கவும்',
+      bannerTitle: 'குறிப்பிட்ட பயிர் & திகதி தேவையா?',
+      bannerSub: 'விவசாயிகளிடம் நேரடியாக விசேட விளைச்சல் கோரிக்கைகளை அனுப்புங்கள்!',
+      bannerBtn: 'கோரிக்கையை அனுப்புக 📢',
+      emptyTitle: 'கோரிக்கைகள் எதுவும் இல்லை',
+      emptySub: 'உங்களுக்குத் தேவையான பயிரைக் கோர புதிய கோரிக்கையை உருவாக்கவும்.',
+      cancelBtn: 'ரத்து செய்',
+      cancelConfirm: 'இந்த கோரிக்கையை நிச்சயமாக ரத்து செய்ய விரும்புகிறீர்களா?',
+      targetDistrict: 'மாவட்டம்:',
+      datePeriod: 'திகதி காலம்:',
+      targetPrice: 'எதிர்பார்க்கப்படும் விலை:',
+      quality: 'தரம்:',
+      destination: 'விநியோக இடம்:',
+      statusOpen: '⏳ அனுப்பப்பட்டது (விசாரணை)',
     },
     labels: {
       farmer: 'விவசாயி:',
@@ -167,7 +231,9 @@ export default function BuyerHomeScreen({
   ordersList = [],
   onChangeLanguage,
 }) {
-  const [activeTab, setActiveTab] = useState('market'); // 'market' | 'myOrders'
+  const [activeTab, setActiveTab] = useState('market'); // 'market' | 'customRequests' | 'myOrders'
+  const [showRequestScreen, setShowRequestScreen] = useState(false);
+  const [buyerRequests, setBuyerRequests] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState(0);
   const [selectedProduce, setSelectedProduce] = useState(null);
@@ -178,6 +244,32 @@ export default function BuyerHomeScreen({
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
 
   const t = TRANSLATIONS[lang] || TRANSLATIONS.en;
+
+  // Real-time listener for buyer's own custom requests
+  useEffect(() => {
+    const unsub = subscribeToBuyerRequests((requests) => {
+      setBuyerRequests(requests || []);
+    }, userProfile?.uid);
+
+    return () => unsub && unsub();
+  }, [userProfile?.uid]);
+
+  const handleDeleteRequest = (requestId, cropName) => {
+    Alert.alert(
+      t.customRequests.cancelBtn,
+      `${t.customRequests.cancelConfirm} (${cropName})`,
+      [
+        { text: 'No', style: 'cancel' },
+        {
+          text: 'Yes, Cancel',
+          style: 'destructive',
+          onPress: async () => {
+            await deleteBuyerRequest(requestId);
+          },
+        },
+      ]
+    );
+  };
 
   const getProduceTitle = (item) => {
     if (!item) return '';
@@ -280,6 +372,20 @@ export default function BuyerHomeScreen({
     }
   };
 
+  if (showRequestScreen) {
+    return (
+      <BuyerRequestProduceScreen
+        userProfile={userProfile}
+        lang={lang}
+        onBack={() => setShowRequestScreen(false)}
+        onRequestSubmitted={() => {
+          setShowRequestScreen(false);
+          setActiveTab('customRequests');
+        }}
+      />
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="light-content" backgroundColor={THEME.navy} />
@@ -327,7 +433,7 @@ export default function BuyerHomeScreen({
               }}
             >
               <Text style={styles.langPillText}>
-                {lang === 'en' ? 'සිං' : lang === 'si' ? 'தம' : 'EN'}
+                {lang === 'en' ? 'EN' : lang === 'si' ? 'සිං' : 'தம'}
               </Text>
             </TouchableOpacity>
           )}
@@ -356,11 +462,20 @@ export default function BuyerHomeScreen({
           </TouchableOpacity>
 
           <TouchableOpacity
+            style={[styles.tabBtn, activeTab === 'customRequests' && styles.tabBtnActive]}
+            onPress={() => setActiveTab('customRequests')}
+          >
+            <Text style={[styles.tabText, activeTab === 'customRequests' && styles.tabTextActive]}>
+              📋 {t.tabs.customRequests}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
             style={[styles.tabBtn, activeTab === 'myOrders' && styles.tabBtnActive]}
             onPress={() => setActiveTab('myOrders')}
           >
             <Text style={[styles.tabText, activeTab === 'myOrders' && styles.tabTextActive]}>
-              📦 {t.tabs.myOrders} ({myBuyerOrders.length})
+              📦 {t.tabs.myOrders}
             </Text>
           </TouchableOpacity>
         </View>
@@ -370,6 +485,24 @@ export default function BuyerHomeScreen({
         {/* ============================================== */}
         {activeTab === 'market' && (
           <View>
+            {/* Direct Sourcing Banner */}
+            <View style={styles.requestBannerCard}>
+              <View style={styles.requestBannerLeft}>
+                <View style={styles.requestBannerBadgeRow}>
+                  <Text style={styles.requestBannerBadge}>✨ DIRECT SOURCING</Text>
+                </View>
+                <Text style={styles.requestBannerTitle}>{t.customRequests.bannerTitle}</Text>
+                <Text style={styles.requestBannerSub}>{t.customRequests.bannerSub}</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.requestBannerBtn}
+                activeOpacity={0.85}
+                onPress={() => setShowRequestScreen(true)}
+              >
+                <Text style={styles.requestBannerBtnText}>{t.customRequests.bannerBtn}</Text>
+              </TouchableOpacity>
+            </View>
+
             {/* Search Input Box */}
             <View style={styles.searchBarContainer}>
               <Text style={styles.searchIcon}>🔍</Text>
@@ -464,7 +597,132 @@ export default function BuyerHomeScreen({
         )}
 
         {/* ============================================== */}
-        {/* TAB 2: MY ORDERS & REAL-TIME TRACKING          */}
+        {/* TAB 2: CUSTOM HARVEST REQUESTS & BROADCASTS    */}
+        {/* ============================================== */}
+        {activeTab === 'customRequests' && (
+          <View>
+            <View style={styles.requestsHeaderRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.sectionHeader}>{t.customRequests.title}</Text>
+                <Text style={styles.sectionSubText}>{t.customRequests.subtitle}</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.newRequestTopBtn}
+                onPress={() => setShowRequestScreen(true)}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.newRequestTopBtnText}>{t.customRequests.postBtn}</Text>
+              </TouchableOpacity>
+            </View>
+
+            {buyerRequests.length === 0 ? (
+              <View style={styles.emptyCard}>
+                <Text style={styles.emptyIcon}>📋</Text>
+                <Text style={styles.emptyTitle}>{t.customRequests.emptyTitle}</Text>
+                <Text style={styles.emptySubtitle}>{t.customRequests.emptySub}</Text>
+                <TouchableOpacity
+                  style={[styles.newRequestTopBtn, { marginTop: 14, alignSelf: 'center' }]}
+                  onPress={() => setShowRequestScreen(true)}
+                >
+                  <Text style={styles.newRequestTopBtnText}>+ Broadcast First Request</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              buyerRequests.map((req) => (
+                <View key={req.id} style={styles.customRequestCard}>
+                  <View style={styles.reqCardHeader}>
+                    <View style={styles.reqCropRow}>
+                      <Text style={styles.reqCropIcon}>
+                        {req.cropName?.toLowerCase().includes('carrot')
+                          ? '🥕'
+                          : req.cropName?.toLowerCase().includes('potato')
+                          ? '🥔'
+                          : req.cropName?.toLowerCase().includes('leek')
+                          ? '🌱'
+                          : req.cropName?.toLowerCase().includes('tomato')
+                          ? '🍅'
+                          : req.cropName?.toLowerCase().includes('cabbage')
+                          ? '🥬'
+                          : req.cropName?.toLowerCase().includes('rice')
+                          ? '🌾'
+                          : req.cropName?.toLowerCase().includes('banana')
+                          ? '🍌'
+                          : req.cropName?.toLowerCase().includes('papaya')
+                          ? '🍈'
+                          : '🌱'}
+                      </Text>
+                      <View>
+                        <Text style={styles.reqCropName}>{req.cropName}</Text>
+                        <Text style={styles.reqCategoryBadge}>🏷️ {req.category || 'Vegetables'}</Text>
+                      </View>
+                    </View>
+                    <View style={styles.reqStatusBadge}>
+                      <Text style={styles.reqStatusText}>{t.customRequests.statusOpen}</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.reqInfoGrid}>
+                    <View style={styles.reqInfoItem}>
+                      <Text style={styles.reqInfoLabel}>⚖️ Quantity:</Text>
+                      <Text style={styles.reqInfoValue}>
+                        {req.quantity} {req.unit || 'kg'}
+                      </Text>
+                    </View>
+                    <View style={styles.reqInfoItem}>
+                      <Text style={styles.reqInfoLabel}>📍 {t.customRequests.targetDistrict}</Text>
+                      <Text style={styles.reqInfoValue} numberOfLines={1}>
+                        {req.targetDistrictName || req.targetDistrictEn || 'Island-wide'}
+                        {req.specificArea ? ` (${req.specificArea})` : ''}
+                      </Text>
+                    </View>
+                    <View style={styles.reqInfoItem}>
+                      <Text style={styles.reqInfoLabel}>📅 {t.customRequests.datePeriod}</Text>
+                      <Text style={styles.reqInfoValue}>
+                        {req.datePeriodDescription || `${req.requiredDateStart} to ${req.requiredDateEnd}`}
+                      </Text>
+                    </View>
+                    {req.targetPricePerUnit ? (
+                      <View style={styles.reqInfoItem}>
+                        <Text style={styles.reqInfoLabel}>💰 {t.customRequests.targetPrice}</Text>
+                        <Text style={styles.reqInfoValue}>
+                          Rs. {req.targetPricePerUnit} / {req.unit || 'kg'}
+                        </Text>
+                      </View>
+                    ) : null}
+                    {req.qualityGrade ? (
+                      <View style={styles.reqInfoItem}>
+                        <Text style={styles.reqInfoLabel}>✨ {t.customRequests.quality}</Text>
+                        <Text style={styles.reqInfoValue} numberOfLines={1}>{req.qualityGrade}</Text>
+                      </View>
+                    ) : null}
+                  </View>
+
+                  {req.notes ? (
+                    <View style={styles.reqNotesBox}>
+                      <Text style={styles.reqNotesText}>📝 "{req.notes}"</Text>
+                    </View>
+                  ) : null}
+
+                  <View style={styles.reqFooter}>
+                    <Text style={styles.reqDeliveryText} numberOfLines={1}>
+                      {req.deliveryNeeded === false ? '🚜 Farm Self-Pickup by Buyer' : `🚚 Deliver to: ${req.deliveryAddress || 'Central Destination'}`}
+                    </Text>
+                    <TouchableOpacity
+                      style={styles.reqDeleteBtn}
+                      onPress={() => handleDeleteRequest(req.id, req.cropName)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.reqDeleteBtnText}>🗑️ {t.customRequests.cancelBtn}</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))
+            )}
+          </View>
+        )}
+
+        {/* ============================================== */}
+        {/* TAB 3: MY ORDERS & REAL-TIME TRACKING          */}
         {/* ============================================== */}
         {activeTab === 'myOrders' && (
           <View>
@@ -1276,4 +1534,201 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontWeight: 'bold',
   },
+
+  // ----------------------------------------------------
+  // DIRECT SOURCING BANNER & CUSTOM REQUESTS
+  // ----------------------------------------------------
+  requestBannerCard: {
+    backgroundColor: THEME.navy,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+    elevation: 3,
+  },
+  requestBannerLeft: {
+    flex: 1,
+    paddingRight: 10,
+  },
+  requestBannerBadgeRow: {
+    flexDirection: 'row',
+    marginBottom: 4,
+  },
+  requestBannerBadge: {
+    backgroundColor: THEME.emerald,
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: '900',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    letterSpacing: 0.5,
+  },
+  requestBannerTitle: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '800',
+    marginBottom: 2,
+  },
+  requestBannerSub: {
+    color: '#94A3B8',
+    fontSize: 11,
+    lineHeight: 15,
+  },
+  requestBannerBtn: {
+    backgroundColor: THEME.emerald,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  requestBannerBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+
+  requestsHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  sectionSubText: {
+    fontSize: 11,
+    color: THEME.textMuted,
+    marginTop: 2,
+  },
+  newRequestTopBtn: {
+    backgroundColor: THEME.emerald,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  newRequestTopBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+
+  customRequestCard: {
+    backgroundColor: THEME.cardBg,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  reqCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  reqCropRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  reqCropIcon: {
+    fontSize: 26,
+    marginRight: 10,
+  },
+  reqCropName: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: THEME.textDark,
+  },
+  reqCategoryBadge: {
+    fontSize: 11,
+    color: THEME.textMuted,
+    fontWeight: '600',
+    marginTop: 1,
+  },
+  reqStatusBadge: {
+    backgroundColor: THEME.warningLight,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  reqStatusText: {
+    color: THEME.warning,
+    fontSize: 11,
+    fontWeight: '800',
+  },
+
+  reqInfoGrid: {
+    backgroundColor: THEME.bg,
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 10,
+    gap: 6,
+  },
+  reqInfoItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  reqInfoLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: THEME.textMuted,
+  },
+  reqInfoValue: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: THEME.textDark,
+    maxWidth: '65%',
+    textAlign: 'right',
+  },
+  reqNotesBox: {
+    backgroundColor: '#F8FAFC',
+    borderLeftWidth: 3,
+    borderLeftColor: THEME.emerald,
+    padding: 8,
+    borderRadius: 4,
+    marginBottom: 10,
+  },
+  reqNotesText: {
+    fontSize: 11,
+    color: THEME.textMuted,
+    fontStyle: 'italic',
+  },
+  reqFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: THEME.border,
+    paddingTop: 8,
+  },
+  reqDeliveryText: {
+    fontSize: 11,
+    color: THEME.textMuted,
+    flex: 1,
+    marginRight: 8,
+  },
+  reqDeleteBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: 'rgba(239, 68, 68, 0.08)',
+  },
+  reqDeleteBtnText: {
+    color: THEME.danger,
+    fontSize: 11,
+    fontWeight: '700',
+  },
 });
+
