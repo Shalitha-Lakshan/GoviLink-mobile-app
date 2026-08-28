@@ -223,6 +223,27 @@ const TRANSLATIONS = {
   },
 };
 
+const DISTRICT_OPTIONS = [
+  'All',
+  'Nuwara Eliya',
+  'Dambulla',
+  'Jaffna',
+  'Badulla',
+  'Kandy',
+  'Matale',
+  'Anuradhapura',
+  'Colombo',
+  'Galle',
+  'Kurunegala',
+];
+
+const SORT_OPTIONS = [
+  { id: 'newest', labelEn: 'Newest First', labelSi: 'නවතම මුලින්', labelTa: 'புதியது முதலில்' },
+  { id: 'price_asc', labelEn: 'Price: Low to High', labelSi: 'මිල: අඩුවේ සිට', labelTa: 'விலை: குறைந்ததிலிருந்து' },
+  { id: 'price_desc', labelEn: 'Price: High to Low', labelSi: 'මිල: වැඩිවේ සිට', labelTa: 'விலை: கூடியதிலிருந்து' },
+  { id: 'stock_desc', labelEn: 'Stock: High to Low', labelSi: 'තොග: වැඩිවේ සිට', labelTa: 'இருப்பு: கூடியதிலிருந்து' },
+];
+
 export default function BuyerHomeScreen({
   userProfile,
   lang = 'en',
@@ -236,10 +257,16 @@ export default function BuyerHomeScreen({
   const [buyerRequests, setBuyerRequests] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState(0);
+  const [selectedDistrict, setSelectedDistrict] = useState('All');
+  const [sortBy, setSortBy] = useState('newest');
   const [selectedProduce, setSelectedProduce] = useState(null);
+  const [detailProduce, setDetailProduce] = useState(null);
+  const [showDetailModal, setShowDetailModal] = useState(false);
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [orderQty, setOrderQty] = useState(5);
-  const [deliveryAddress, setDeliveryAddress] = useState(userProfile?.district?.nameEn ? `${userProfile.district.nameEn} Central Outlet` : 'Colombo 03');
+  const [deliveryAddress, setDeliveryAddress] = useState(
+    userProfile?.district?.nameEn ? `${userProfile.district.nameEn} Central Outlet` : 'Colombo 03'
+  );
   const [deliveryNotes, setDeliveryNotes] = useState('');
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
 
@@ -285,31 +312,68 @@ export default function BuyerHomeScreen({
     return item.unitEn || 'kg';
   };
 
-  // Filter listings based on search and category
-  const filteredListings = produceListings.filter((item) => {
-    const title = getProduceTitle(item).toLowerCase();
-    const farmer = (item.farmerName || '').toLowerCase();
-    const loc = (item.location || '').toLowerCase();
-    const query = searchQuery.toLowerCase();
+  // Filter & sort listings based on search, category, origin district & selected sort
+  const filteredListings = produceListings
+    .filter((item) => {
+      const title = getProduceTitle(item).toLowerCase();
+      const farmer = (item.farmerName || '').toLowerCase();
+      const loc = (item.location || '').toLowerCase();
+      const desc = (item.description || '').toLowerCase();
+      const query = searchQuery.toLowerCase();
 
-    const matchesSearch = title.includes(query) || farmer.includes(query) || loc.includes(query);
+      const matchesSearch =
+        title.includes(query) || farmer.includes(query) || loc.includes(query) || desc.includes(query);
 
-    if (!matchesSearch) return false;
-    if (selectedCategory === 0) return true; // 'All'
+      if (!matchesSearch) return false;
 
-    const catName = t.categories[selectedCategory];
-    const itemCat = item.category || 'Vegetables';
-    if (selectedCategory === 1) return itemCat.toLowerCase().includes('veg');
-    if (selectedCategory === 2) return itemCat.toLowerCase().includes('fruit');
-    if (selectedCategory === 3) return itemCat.toLowerCase().includes('rice') || itemCat.toLowerCase().includes('grain');
-    if (selectedCategory === 4) return itemCat.toLowerCase().includes('spice');
-    return true;
-  });
+      // Category filter
+      if (selectedCategory !== 0) {
+        const itemCat = (item.category || 'Vegetables').toLowerCase();
+        if (selectedCategory === 1 && !itemCat.includes('veg')) return false;
+        if (selectedCategory === 2 && !itemCat.includes('fruit')) return false;
+        if (selectedCategory === 3 && !(itemCat.includes('rice') || itemCat.includes('grain'))) return false;
+        if (selectedCategory === 4 && !itemCat.includes('spice')) return false;
+      }
+
+      // Origin District filter
+      if (selectedDistrict !== 'All') {
+        const targetDist = selectedDistrict.toLowerCase();
+        const itemLocation = loc.toLowerCase();
+        const itemDistrict = (item.district || '').toLowerCase();
+        if (!itemLocation.includes(targetDist) && !itemDistrict.includes(targetDist)) {
+          return false;
+        }
+      }
+
+      return true;
+    })
+    .sort((a, b) => {
+      if (sortBy === 'price_asc') return (Number(a.price) || 0) - (Number(b.price) || 0);
+      if (sortBy === 'price_desc') return (Number(b.price) || 0) - (Number(a.price) || 0);
+      if (sortBy === 'stock_desc') return (Number(b.stockQty) || 0) - (Number(a.stockQty) || 0);
+      // Fallback: newest first
+      const timeA = a.createdAt?.seconds || 0;
+      const timeB = b.createdAt?.seconds || 0;
+      return timeB - timeA;
+    });
 
   // Filter buyer's own orders
   const myBuyerOrders = ordersList.filter(
     (o) => !o.buyerPhone || o.buyerPhone === userProfile?.phoneNumber || o.buyerName === userProfile?.fullName || true
   );
+
+  const handleOpenDetailModal = (item) => {
+    setDetailProduce(item);
+    setShowDetailModal(true);
+  };
+
+  const handleOpenOrderFromDetail = () => {
+    const produceToOrder = detailProduce;
+    setShowDetailModal(false);
+    if (produceToOrder) {
+      handleOpenOrderModal(produceToOrder);
+    }
+  };
 
   const handleOpenOrderModal = (item) => {
     setSelectedProduce(item);
@@ -514,6 +578,11 @@ export default function BuyerHomeScreen({
                 onChangeText={setSearchQuery}
                 clearButtonMode="while-editing"
               />
+              {searchQuery ? (
+                <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearSearchBtn}>
+                  <Text style={styles.clearSearchText}>✕</Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
 
             {/* Category Chips Scroll */}
@@ -539,6 +608,66 @@ export default function BuyerHomeScreen({
               ))}
             </ScrollView>
 
+            {/* District / Origin Filter Scroll */}
+            <View style={styles.filterSectionRow}>
+              <Text style={styles.filterSectionTitle}>📍 Origin District:</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 4 }}>
+                {DISTRICT_OPTIONS.map((dist) => (
+                  <TouchableOpacity
+                    key={dist}
+                    onPress={() => setSelectedDistrict(dist)}
+                    style={[
+                      styles.districtChip,
+                      selectedDistrict === dist && styles.districtChipActive,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.districtChipText,
+                        selectedDistrict === dist && styles.districtChipTextActive,
+                      ]}
+                    >
+                      {dist === 'All' ? 'All Districts' : dist}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+
+            {/* Sort Selector Scroll */}
+            <View style={styles.filterSectionRow}>
+              <Text style={styles.filterSectionTitle}>⚡ Sort By:</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 4 }}>
+                {SORT_OPTIONS.map((sortOpt) => {
+                  const label =
+                    lang === 'si'
+                      ? sortOpt.labelSi
+                      : lang === 'ta'
+                        ? sortOpt.labelTa
+                        : sortOpt.labelEn;
+                  return (
+                    <TouchableOpacity
+                      key={sortOpt.id}
+                      onPress={() => setSortBy(sortOpt.id)}
+                      style={[
+                        styles.sortChip,
+                        sortBy === sortOpt.id && styles.sortChipActive,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.sortChipText,
+                          sortBy === sortOpt.id && styles.sortChipTextActive,
+                        ]}
+                      >
+                        {label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+
             <View style={styles.marketTitleRow}>
               <Text style={styles.sectionHeader}>{t.dashboardTitle}</Text>
               <Text style={styles.itemCountText}>{filteredListings.length} available</Text>
@@ -549,49 +678,92 @@ export default function BuyerHomeScreen({
               <View style={styles.emptyCard}>
                 <Text style={styles.emptyIcon}>🔍</Text>
                 <Text style={styles.emptyTitle}>No matching produce found</Text>
-                <Text style={styles.emptySubtitle}>Try changing your search term or selecting another category.</Text>
+                <Text style={styles.emptySubtitle}>Try changing your search term, origin district, or category filter.</Text>
               </View>
             ) : (
-              filteredListings.map((item) => (
-                <View key={item.id} style={styles.produceCard}>
-                  <Image source={{ uri: item.image }} style={styles.produceImage} resizeMode="cover" />
-                  <View style={styles.produceDetails}>
-                    <View style={styles.badgeRow}>
-                      <View style={styles.stockBadge}>
-                        <Text style={styles.stockBadgeText}>✓ {t.labels.inStock} ({item.stockQty} {getProduceUnit(item)})</Text>
+              filteredListings.map((item) => {
+                const stockVal = Number(item.stockQty || 0);
+                const isOutOfStock = stockVal <= 0;
+                const isLimited = stockVal > 0 && stockVal <= 20;
+
+                return (
+                  <TouchableOpacity
+                    key={item.id}
+                    style={styles.produceCard}
+                    activeOpacity={0.9}
+                    onPress={() => handleOpenDetailModal(item)}
+                  >
+                    <Image source={{ uri: item.image }} style={styles.produceImage} resizeMode="cover" />
+                    <View style={styles.produceDetails}>
+                      <View style={styles.badgeRow}>
+                        <View
+                          style={[
+                            styles.stockBadge,
+                            isOutOfStock && { backgroundColor: '#FEE2E2' },
+                            isLimited && { backgroundColor: THEME.warningLight },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.stockBadgeText,
+                              isOutOfStock && { color: THEME.danger },
+                              isLimited && { color: THEME.warning },
+                            ]}
+                          >
+                            {isOutOfStock
+                              ? '🔴 Out of Stock'
+                              : isLimited
+                                ? `🟡 Low Stock (${stockVal} ${getProduceUnit(item)})`
+                                : `✓ In Stock (${stockVal} ${getProduceUnit(item)})`}
+                          </Text>
+                        </View>
+                        <Text style={styles.locationText}>📍 {item.location || 'Sri Lanka'}</Text>
                       </View>
-                      <Text style={styles.locationText}>📍 {item.location || 'Sri Lanka'}</Text>
-                    </View>
 
-                    <Text style={styles.produceName}>{getProduceTitle(item)}</Text>
-                    
-                    {item.grade ? (
-                      <Text style={styles.gradeBadge}>🌿 {item.grade}</Text>
-                    ) : null}
+                      <Text style={styles.produceName}>{getProduceTitle(item)}</Text>
 
-                    <Text style={styles.farmerSubText}>
-                      {t.labels.farmer} <Text style={{ fontWeight: '600', color: THEME.textDark }}>{item.farmerName || 'Local Cooperative'}</Text>
-                    </Text>
+                      {item.grade ? (
+                        <Text style={styles.gradeBadge}>🌿 Grade: {item.grade}</Text>
+                      ) : null}
 
-                    <View style={styles.priceRow}>
-                      <View>
-                        <Text style={styles.priceText}>
-                          {t.labels.currency} {Number(item.price).toFixed(2)}
+                      <Text style={styles.farmerSubText}>
+                        {t.labels.farmer}{' '}
+                        <Text style={{ fontWeight: '600', color: THEME.textDark }}>
+                          {item.farmerName || 'Local Cooperative'}
                         </Text>
-                        <Text style={styles.unitSub}>per {getProduceUnit(item)}</Text>
-                      </View>
+                      </Text>
 
-                      <TouchableOpacity
-                        style={styles.orderButton}
-                        activeOpacity={0.85}
-                        onPress={() => handleOpenOrderModal(item)}
-                      >
-                        <Text style={styles.orderButtonText}>🛒 {t.labels.orderBtn}</Text>
-                      </TouchableOpacity>
+                      <View style={styles.priceRow}>
+                        <View>
+                          <Text style={styles.priceText}>
+                            {t.labels.currency} {Number(item.price).toFixed(2)}
+                          </Text>
+                          <Text style={styles.unitSub}>per {getProduceUnit(item)}</Text>
+                        </View>
+
+                        <View style={{ flexDirection: 'row', gap: 6 }}>
+                          <TouchableOpacity
+                            style={styles.detailBtn}
+                            activeOpacity={0.8}
+                            onPress={() => handleOpenDetailModal(item)}
+                          >
+                            <Text style={styles.detailBtnText}>👁️ View</Text>
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            style={[styles.orderButton, isOutOfStock && { backgroundColor: '#94A3B8' }]}
+                            disabled={isOutOfStock}
+                            activeOpacity={0.85}
+                            onPress={() => handleOpenOrderModal(item)}
+                          >
+                            <Text style={styles.orderButtonText}>🛒 {t.labels.orderBtn}</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
                     </View>
-                  </View>
-                </View>
-              ))
+                  </TouchableOpacity>
+                );
+              })
             )}
           </View>
         )}
@@ -636,20 +808,20 @@ export default function BuyerHomeScreen({
                         {req.cropName?.toLowerCase().includes('carrot')
                           ? '🥕'
                           : req.cropName?.toLowerCase().includes('potato')
-                          ? '🥔'
-                          : req.cropName?.toLowerCase().includes('leek')
-                          ? '🌱'
-                          : req.cropName?.toLowerCase().includes('tomato')
-                          ? '🍅'
-                          : req.cropName?.toLowerCase().includes('cabbage')
-                          ? '🥬'
-                          : req.cropName?.toLowerCase().includes('rice')
-                          ? '🌾'
-                          : req.cropName?.toLowerCase().includes('banana')
-                          ? '🍌'
-                          : req.cropName?.toLowerCase().includes('papaya')
-                          ? '🍈'
-                          : '🌱'}
+                            ? '🥔'
+                            : req.cropName?.toLowerCase().includes('leek')
+                              ? '🌱'
+                              : req.cropName?.toLowerCase().includes('tomato')
+                                ? '🍅'
+                                : req.cropName?.toLowerCase().includes('cabbage')
+                                  ? '🥬'
+                                  : req.cropName?.toLowerCase().includes('rice')
+                                    ? '🌾'
+                                    : req.cropName?.toLowerCase().includes('banana')
+                                      ? '🍌'
+                                      : req.cropName?.toLowerCase().includes('papaya')
+                                        ? '🍈'
+                                        : '🌱'}
                       </Text>
                       <View>
                         <Text style={styles.reqCropName}>{req.cropName}</Text>
@@ -766,7 +938,7 @@ export default function BuyerHomeScreen({
                     </View>
 
                     <Text style={styles.orderProduceTitle}>{order.produceName || 'Fresh Harvest Crop'}</Text>
-                    
+
                     <View style={styles.buyerOrderDetailsRow}>
                       <Text style={styles.buyerOrderSub}>
                         👨‍🌾 Farmer: <Text style={{ fontWeight: '600', color: THEME.textDark }}>{order.farmerName || 'GoviLink Farmer'}</Text>
@@ -931,6 +1103,125 @@ export default function BuyerHomeScreen({
                     ) : (
                       <Text style={styles.modalBtnConfirmText}>{t.modal.confirmBtn}</Text>
                     )}
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
+      )}
+
+      {/* ============================================== */}
+      {/* MODAL: PRODUCT DETAILS SHEET                   */}
+      {/* ============================================== */}
+      {detailProduce && (
+        <Modal visible={showDetailModal} transparent animationType="slide">
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { maxHeight: '92%' }]}>
+              <View style={styles.modalHeaderRow}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text style={styles.modalTitle}>🌾 Produce Overview</Text>
+                </View>
+                <TouchableOpacity onPress={() => setShowDetailModal(false)} style={styles.closeBtn}>
+                  <Text style={{ fontSize: 16, color: THEME.textMuted }}>✕</Text>
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView showsVerticalScrollIndicator={false}>
+                {detailProduce.image ? (
+                  <Image
+                    source={{ uri: detailProduce.image }}
+                    style={styles.detailCoverImage}
+                    resizeMode="cover"
+                  />
+                ) : null}
+
+                <View style={{ marginTop: 12 }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text style={styles.modalProduceName}>{getProduceTitle(detailProduce)}</Text>
+                    <Text style={styles.detailPriceTag}>
+                      {t.labels.currency} {Number(detailProduce.price).toFixed(2)} / {getProduceUnit(detailProduce)}
+                    </Text>
+                  </View>
+
+                  <View style={{ flexDirection: 'row', gap: 6, marginVertical: 8, flexWrap: 'wrap' }}>
+                    <View style={styles.detailChipBadge}>
+                      <Text style={styles.detailChipBadgeText}>🏷️ {detailProduce.category || 'Vegetables'}</Text>
+                    </View>
+                    {detailProduce.grade ? (
+                      <View style={[styles.detailChipBadge, { backgroundColor: THEME.emeraldLight }]}>
+                        <Text style={[styles.detailChipBadgeText, { color: THEME.emeraldDark }]}>🌿 {detailProduce.grade}</Text>
+                      </View>
+                    ) : null}
+                    <View style={[styles.detailChipBadge, { backgroundColor: THEME.infoLight }]}>
+                      <Text style={[styles.detailChipBadgeText, { color: THEME.info }]}>📍 {detailProduce.location || 'Sri Lanka'}</Text>
+                    </View>
+                  </View>
+                </View>
+
+                {/* FARMER PROFILE CARD */}
+                <View style={styles.farmerProfileBox}>
+                  <Text style={styles.farmerBoxTitle}>👨‍🌾 Grower & Origin Info</Text>
+                  <Text style={styles.farmerBoxName}>{detailProduce.farmerName || 'Registered GoviLink Farmer'}</Text>
+                  <Text style={styles.farmerBoxSub}>
+                    📍 Farm Location: {detailProduce.location || 'Sri Lanka'}
+                  </Text>
+                  <Text style={styles.farmerBoxSub}>
+                    🛡️ Quality Verification: Certified Co-op Member
+                  </Text>
+                </View>
+
+                {/* STOCK & HARVEST SPECS */}
+                <View style={styles.specsGrid}>
+                  <View style={styles.specBox}>
+                    <Text style={styles.specLabel}>Available Stock</Text>
+                    <Text style={styles.specVal}>
+                      {detailProduce.stockQty || 0} {getProduceUnit(detailProduce)}
+                    </Text>
+                  </View>
+                  <View style={styles.specBox}>
+                    <Text style={styles.specLabel}>Unit Price</Text>
+                    <Text style={styles.specVal}>
+                      Rs. {Number(detailProduce.price || 0).toFixed(2)}
+                    </Text>
+                  </View>
+                  <View style={styles.specBox}>
+                    <Text style={styles.specLabel}>Harvest State</Text>
+                    <Text style={styles.specVal}>
+                      {Number(detailProduce.stockQty) > 20 ? '🟢 Fresh In Stock' : Number(detailProduce.stockQty) > 0 ? '🟡 Low Stock' : '🔴 Out of Stock'}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* DESCRIPTION */}
+                {detailProduce.description ? (
+                  <View style={styles.descriptionSection}>
+                    <Text style={styles.descriptionTitle}>📝 Sourcing & Crop Notes</Text>
+                    <Text style={styles.descriptionText}>{detailProduce.description}</Text>
+                  </View>
+                ) : (
+                  <View style={styles.descriptionSection}>
+                    <Text style={styles.descriptionTitle}>📝 Harvest Overview</Text>
+                    <Text style={styles.descriptionText}>
+                      Fresh farm produce grown and harvested with high quality standards. Transport and direct delivery managed by cooperative logistics.
+                    </Text>
+                  </View>
+                )}
+
+                <View style={styles.modalActionRow}>
+                  <TouchableOpacity
+                    style={[styles.modalBtn, styles.modalBtnCancel]}
+                    onPress={() => setShowDetailModal(false)}
+                  >
+                    <Text style={styles.modalBtnCancelText}>Close</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.modalBtn, styles.modalBtnConfirm, Number(detailProduce.stockQty || 0) <= 0 && { backgroundColor: '#94A3B8' }]}
+                    disabled={Number(detailProduce.stockQty || 0) <= 0}
+                    onPress={handleOpenOrderFromDetail}
+                  >
+                    <Text style={styles.modalBtnConfirmText}>🛒 Proceed to Order</Text>
                   </TouchableOpacity>
                 </View>
               </ScrollView>
@@ -1729,6 +2020,175 @@ const styles = StyleSheet.create({
     color: THEME.danger,
     fontSize: 11,
     fontWeight: '700',
+  },
+
+  // Search Clear & Filtering Styles
+  clearSearchBtn: {
+    padding: 4,
+    marginLeft: 4,
+  },
+  clearSearchText: {
+    fontSize: 14,
+    color: THEME.textMuted,
+    fontWeight: 'bold',
+  },
+  filterSectionRow: {
+    marginBottom: 8,
+  },
+  filterSectionTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: THEME.navy,
+    marginBottom: 2,
+  },
+  districtChip: {
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 16,
+    marginRight: 6,
+    borderWidth: 1,
+    borderColor: THEME.border,
+  },
+  districtChipActive: {
+    backgroundColor: THEME.emerald,
+    borderColor: THEME.emerald,
+  },
+  districtChipText: {
+    fontSize: 11,
+    color: THEME.textMuted,
+    fontWeight: '600',
+  },
+  districtChipTextActive: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+  },
+  sortChip: {
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
+    marginRight: 6,
+    borderWidth: 1,
+    borderColor: THEME.border,
+  },
+  sortChipActive: {
+    backgroundColor: THEME.navy,
+    borderColor: THEME.navy,
+  },
+  sortChipText: {
+    fontSize: 11,
+    color: THEME.textMuted,
+    fontWeight: '600',
+  },
+  sortChipTextActive: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+  },
+  detailBtn: {
+    backgroundColor: THEME.bg,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 8,
+  },
+  detailBtnText: {
+    color: THEME.navy,
+    fontWeight: '700',
+    fontSize: 12,
+  },
+
+  // Product Details Modal Styles
+  detailCoverImage: {
+    width: '100%',
+    height: 180,
+    borderRadius: 12,
+    backgroundColor: '#E2E8F0',
+  },
+  detailPriceTag: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: THEME.emeraldDark,
+  },
+  detailChipBadge: {
+    backgroundColor: THEME.bg,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  detailChipBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: THEME.textMuted,
+  },
+  farmerProfileBox: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    padding: 12,
+    marginVertical: 10,
+    borderWidth: 1,
+    borderColor: THEME.border,
+  },
+  farmerBoxTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: THEME.navy,
+    marginBottom: 4,
+  },
+  farmerBoxName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: THEME.textDark,
+    marginBottom: 2,
+  },
+  farmerBoxSub: {
+    fontSize: 11,
+    color: THEME.textMuted,
+    marginTop: 2,
+  },
+  specsGrid: {
+    flexDirection: 'row',
+    gap: 8,
+    marginVertical: 8,
+  },
+  specBox: {
+    flex: 1,
+    backgroundColor: THEME.bg,
+    padding: 8,
+    borderRadius: 8,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: THEME.border,
+  },
+  specLabel: {
+    fontSize: 10,
+    color: THEME.textMuted,
+    marginBottom: 2,
+  },
+  specVal: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: THEME.navy,
+  },
+  descriptionSection: {
+    backgroundColor: THEME.cardBg,
+    borderRadius: 10,
+    padding: 12,
+    marginVertical: 8,
+    borderWidth: 1,
+    borderColor: THEME.border,
+  },
+  descriptionTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: THEME.navy,
+    marginBottom: 4,
+  },
+  descriptionText: {
+    fontSize: 12,
+    color: THEME.textMuted,
+    lineHeight: 18,
   },
 });
 
