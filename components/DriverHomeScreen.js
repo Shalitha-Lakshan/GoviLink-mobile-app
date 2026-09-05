@@ -11,12 +11,14 @@ import {
   StatusBar,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import {
   updateOrderStatus,
   subscribeToDriverVehicles,
 } from '../services/firebaseDatabase';
 import AddVehicleScreen from './AddVehicleScreen';
 import DriverVehiclesListScreen from './DriverVehiclesListScreen';
+import UserProfileScreen from './UserProfileScreen';
 
 // ----------------------------------------------------
 // THEME COLORS
@@ -200,6 +202,7 @@ export default function DriverHomeScreen({
   onLogout,
   ordersList = [],
   onChangeLanguage,
+  onProfileUpdated,
 }) {
   const [isOnDuty, setIsOnDuty] = useState(true);
   const [activeTab, setActiveTab] = useState('assigned'); // 'assigned' | 'available'
@@ -207,6 +210,7 @@ export default function DriverHomeScreen({
   const [currentScreen, setCurrentScreen] = useState('dashboard'); // 'dashboard' | 'vehiclesList' | 'addVehicle'
   const [editingVehicle, setEditingVehicle] = useState(null);
   const [vehiclesList, setVehiclesList] = useState([]);
+  const [showProfileScreen, setShowProfileScreen] = useState(false);
 
   const t = TRANSLATIONS[lang] || TRANSLATIONS.en;
 
@@ -262,7 +266,6 @@ export default function DriverHomeScreen({
     (trip) => trip.status === 'READY_FOR_PICKUP' || trip.status === 'IN_TRANSIT' || trip.status === 'ACCEPTED'
   );
   const completedDeliveries = allDriverTrips.filter((trip) => trip.status === 'DELIVERED');
-
   const totalDriverEarnings = completedDeliveries.reduce(
     (sum, trip) => sum + (Number(trip.totalPrice) || 0),
     0
@@ -338,34 +341,50 @@ export default function DriverHomeScreen({
     );
   }
 
+  if (showProfileScreen) {
+    return (
+      <UserProfileScreen
+        userProfile={userProfile}
+        lang={lang}
+        onBack={() => setShowProfileScreen(false)}
+        onLogout={onLogout}
+        onChangeLanguage={onChangeLanguage}
+        onProfileUpdated={(updated) => {
+          if (onProfileUpdated) onProfileUpdated(updated);
+        }}
+      />
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="light-content" backgroundColor={THEME.navy} />
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
-      {/* TOP HEADER BAR */}
-      <View style={styles.headerBar}>
-        <View style={styles.brandRow}>
+      {/* TOP APP HEADER */}
+      <View style={styles.topHeader}>
+        <TouchableOpacity
+          style={styles.profileAvatarWrapper}
+          onPress={() => setShowProfileScreen(true)}
+          activeOpacity={0.8}
+        >
           <Image
-            source={require('../assets/splash-icon.png')}
-            style={styles.logoBadge}
-            resizeMode="contain"
+            source={
+              userProfile?.photoURL
+                ? { uri: userProfile.photoURL }
+                : require('../assets/splash-icon.png')
+            }
+            style={styles.profileAvatar}
           />
-          <View>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Text style={styles.brandGovi}>Govi</Text>
-              <Text style={styles.brandLink}>Link</Text>
-              <View style={styles.roleTag}>
-                <Text style={styles.roleTagText}>🚛 Driver</Text>
-              </View>
-            </View>
-            <Text style={styles.driverWelcome} numberOfLines={1}>
-              {userProfile?.fullName ? userProfile.fullName : 'Logistics Pilot'} • 📍 {activeVehicle?.district || userProfile?.district?.nameEn || 'Western Province'}
-            </Text>
+        </TouchableOpacity>
+
+        <View style={styles.brandTitleRow}>
+          <Text style={styles.brandTitle}>GoviLink</Text>
+          <View style={styles.driverRoleBadge}>
+            <Text style={styles.driverRoleBadgeText}>DRIVER</Text>
           </View>
         </View>
 
         <View style={styles.headerRightActions}>
-          {/* Language Switcher Pill */}
           {onChangeLanguage && (
             <TouchableOpacity
               style={styles.langPill}
@@ -375,29 +394,30 @@ export default function DriverHomeScreen({
               }}
             >
               <Text style={styles.langPillText}>
-                {lang === 'en' ? 'EN' : lang === 'si' ? 'සිං' : 'தம'}
+                {lang === 'en' ? 'EN' : lang === 'si' ? 'සිං' : 'තමි'}
               </Text>
             </TouchableOpacity>
           )}
 
-          {/* Logout Button */}
-          <TouchableOpacity
-            style={styles.logoutBtn}
-            onPress={onLogout}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.logoutBtnText}>{t.actions.logout}</Text>
+          <TouchableOpacity style={styles.notifBtn} activeOpacity={0.7} onPress={onLogout}>
+            <Ionicons name="log-out-outline" size={20} color="#DC2626" />
           </TouchableOpacity>
         </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
+        {/* PAGE TITLE & SUBTITLE */}
+        <View style={styles.pageTitleSection}>
+          <Text style={styles.pageTitle}>Driver Logistics</Text>
+          <Text style={styles.pageSubtitle}>Manage assigned farm pickups and delivery routes.</Text>
+        </View>
+
         {/* SHIFT & DUTY STATUS CARD */}
         <View style={styles.dutyCard}>
           <View style={styles.dutyInfo}>
             <Text style={styles.dutyTitle}>📍 Logistics Availability</Text>
             <Text style={styles.dutySub}>
-              {isOnDuty ? 'Ready to accept farm pickup & dropoff dispatches' : 'Offline • No new trip requests assigned'}
+              {isOnDuty ? 'Ready for farm pickup & dropoff dispatches' : 'Offline • No new trip requests'}
             </Text>
           </View>
 
@@ -406,15 +426,13 @@ export default function DriverHomeScreen({
             onPress={() => setIsOnDuty(!isOnDuty)}
             activeOpacity={0.8}
           >
-            <Text style={styles.dutyToggleText}>
+            <Text style={[styles.dutyToggleText, isOnDuty ? { color: '#006837' } : { color: '#DC2626' }]}>
               {isOnDuty ? t.shift.onDuty : t.shift.offDuty}
             </Text>
           </TouchableOpacity>
         </View>
 
-        {/* ============================================== */}
-        {/* DYNAMIC VEHICLE & FLEET MANAGEMENT CARD        */}
-        {/* ============================================== */}
+        {/* ACTIVE DISPATCH VEHICLE CARD */}
         {activeVehicle ? (
           <View style={styles.registeredVehicleCard}>
             <View style={styles.vehicleHeaderRow}>
@@ -425,7 +443,7 @@ export default function DriverHomeScreen({
                     {activeVehicle.makeModel || 'Assigned Vehicle'}
                   </Text>
                   <Text style={styles.vehicleTypeTag}>
-                    {activeVehicle.vehicleTypeLabel || 'Logistics Fleet Vehicle'} • 🟢 Active
+                    {activeVehicle.vehicleTypeLabel || 'Logistics Vehicle'} • 🟢 Operational
                   </Text>
                 </View>
               </View>
@@ -443,19 +461,16 @@ export default function DriverHomeScreen({
             </View>
 
             <View style={styles.vehicleDetailsRow}>
-              {/* Registration Number Pill */}
               <View style={styles.platePill}>
                 <Text style={styles.platePillText}>🇱🇰 {activeVehicle.plateNumber || 'WP-NB-4482'}</Text>
               </View>
 
-              {/* Payload Capacity */}
               <View style={styles.capacityBadge}>
                 <Text style={styles.capacityBadgeText}>
                   📦 {activeVehicle.capacity ? `${activeVehicle.capacity} kg` : '3500 kg'}
                 </Text>
               </View>
 
-              {/* Cold Chain Badge */}
               {activeVehicle.hasColdChain ? (
                 <View style={styles.coldBadge}>
                   <Text style={styles.coldBadgeText}>{t.vehicle.coldChain}</Text>
@@ -467,7 +482,6 @@ export default function DriverHomeScreen({
               )}
             </View>
 
-            {/* Vehicle image preview if available */}
             {activeVehicle.image ? (
               <View style={styles.vehicleThumbnailContainer}>
                 <Image
@@ -478,7 +492,6 @@ export default function DriverHomeScreen({
               </View>
             ) : null}
 
-            {/* Fleet Action Buttons: View All My Vehicles & Add Vehicle */}
             <View style={styles.fleetActionsRow}>
               <TouchableOpacity
                 style={styles.viewAllVehiclesBtn}
@@ -527,31 +540,26 @@ export default function DriverHomeScreen({
           </View>
         )}
 
-
         {/* DRIVER METRICS GRID */}
         <View style={styles.statsGrid}>
-          <View style={[styles.kpiCard, { borderLeftColor: THEME.warning }]}>
-            <Text style={styles.kpiIcon}>📦</Text>
-            <Text style={styles.kpiValue}>{activeDeliveries.length}</Text>
+          <View style={[styles.kpiCard, { borderLeftColor: '#F59E0B' }]}>
             <Text style={styles.kpiLabel}>{t.stats.activeTrips}</Text>
+            <Text style={styles.kpiValue}>{activeDeliveries.length}</Text>
           </View>
 
-          <View style={[styles.kpiCard, { borderLeftColor: THEME.emerald }]}>
-            <Text style={styles.kpiIcon}>✅</Text>
-            <Text style={styles.kpiValue}>{completedDeliveries.length}</Text>
+          <View style={[styles.kpiCard, { borderLeftColor: '#10B981' }]}>
             <Text style={styles.kpiLabel}>{t.stats.completedToday}</Text>
+            <Text style={styles.kpiValue}>{completedDeliveries.length}</Text>
           </View>
 
-          <View style={[styles.kpiCard, { borderLeftColor: THEME.navy }]}>
-            <Text style={styles.kpiIcon}>💰</Text>
-            <Text style={styles.kpiValue}>{t.currency} {totalDriverEarnings.toLocaleString()}</Text>
+          <View style={[styles.kpiCard, { borderLeftColor: '#006837' }]}>
             <Text style={styles.kpiLabel}>{t.stats.estEarnings}</Text>
+            <Text style={styles.kpiValue}>{t.currency} {totalDriverEarnings.toLocaleString()}</Text>
           </View>
 
-          <View style={[styles.kpiCard, { borderLeftColor: THEME.purple }]}>
-            <Text style={styles.kpiIcon}>⭐</Text>
-            <Text style={styles.kpiValue}>5.0 / 5.0</Text>
+          <View style={[styles.kpiCard, { borderLeftColor: '#3B82F6' }]}>
             <Text style={styles.kpiLabel}>{t.stats.rating}</Text>
+            <Text style={styles.kpiValue}>5.0 ★</Text>
           </View>
         </View>
 
@@ -562,7 +570,7 @@ export default function DriverHomeScreen({
             onPress={() => setActiveTab('assigned')}
           >
             <Text style={[styles.tabText, activeTab === 'assigned' && styles.tabTextActive]}>
-              🚛 {t.tabs.assigned} ({activeDeliveries.length})
+              Assigned Deliveries ({activeDeliveries.length})
             </Text>
           </TouchableOpacity>
 
@@ -571,18 +579,16 @@ export default function DriverHomeScreen({
             onPress={() => setActiveTab('available')}
           >
             <Text style={[styles.tabText, activeTab === 'available' && styles.tabTextActive]}>
-              📦 {t.tabs.available} ({allDriverTrips.length})
+              Available Co-op Loads ({allDriverTrips.length})
             </Text>
           </TouchableOpacity>
         </View>
 
-        {/* ============================================== */}
-        {/* ASSIGNED DELIVERIES ROUTE CARDS                */}
-        {/* ============================================== */}
+        {/* ASSIGNED DELIVERIES ROUTE CARDS */}
         <View>
           {activeDeliveries.length === 0 ? (
             <View style={styles.emptyCard}>
-              <Text style={styles.emptyIcon}>🎉</Text>
+              <Ionicons name="checkmark-circle-outline" size={48} color="#006837" />
               <Text style={styles.emptyTitle}>All deliveries completed!</Text>
               <Text style={styles.emptySubtitle}>You have no pending pickup routes right now. Switch to 'Available Loads' to claim new trips.</Text>
             </View>
@@ -593,63 +599,65 @@ export default function DriverHomeScreen({
 
               return (
                 <View key={trip.id} style={styles.deliveryCard}>
-                  {/* Trip Header */}
+                  {/* CARD HEADER ROW */}
                   <View style={styles.tripHeaderRow}>
+                    <Text style={styles.cargoTitle}>{trip.produceName}</Text>
                     <View style={[
                       styles.tripBadge,
-                      isInTransit ? { backgroundColor: THEME.warningLight } : { backgroundColor: THEME.infoLight },
+                      isInTransit ? styles.badgeInTransit : styles.badgePending,
                     ]}>
                       <Text style={[
                         styles.tripBadgeText,
-                        isInTransit ? { color: THEME.warning } : { color: THEME.info },
+                        isInTransit ? { color: '#059669' } : { color: '#64748B' },
                       ]}>
-                        {isInTransit ? '● IN TRANSIT 🚛' : '● READY FOR PICKUP 📦'}
+                        {isInTransit ? 'IN TRANSIT' : 'READY FOR PICKUP'}
                       </Text>
                     </View>
+                  </View>
 
-                    <Text style={styles.tripPillId}>
-                      TRIP #{trip.id.slice(-6).toUpperCase()}
+                  {/* FARMER SUBHEADER ROW */}
+                  <View style={styles.farmerRow}>
+                    <Ionicons name="person-outline" size={14} color="#64748B" style={{ marginRight: 6 }} />
+                    <Text style={styles.farmerNameText}>
+                      {trip.farmerName} • 📞 {trip.farmerPhone || 'N/A'}
                     </Text>
                   </View>
 
-                  <Text style={styles.cargoTitle}>{trip.produceName}</Text>
+                  {/* DIVIDER LINE */}
+                  <View style={styles.cardDivider} />
 
-                  {/* ROUTE VISUALIZER */}
-                  <View style={styles.routeBox}>
-                    {/* Pickup Point */}
-                    <View style={styles.routeRow}>
-                      <View style={styles.iconColumn}>
-                        <View style={[styles.routeDot, { backgroundColor: THEME.emerald }]} />
-                        <View style={styles.routeDottedLine} />
+                  {/* ROUTE TIMELINE VISUALIZER (MATCHES REQUEST SCREEN) */}
+                  <View style={styles.routeContainer}>
+                    {/* PICKUP NODE */}
+                    <View style={styles.routeNodeRow}>
+                      <View style={styles.pickupCircleOuter}>
+                        <View style={styles.pickupCircleInner} />
                       </View>
-                      <View style={styles.routeDetails}>
-                        <Text style={styles.routeLabel}>{t.route.pickupLabel}</Text>
-                        <Text style={styles.routeAddress}>{trip.pickupLocation}</Text>
-                        <Text style={styles.contactSub}>
-                          {t.route.contactFarmer} {trip.farmerName} • 📞 {trip.farmerPhone}
-                        </Text>
+                      <View style={styles.routeTextCol}>
+                        <Text style={styles.routeLabelPickup}>PICKUP</Text>
+                        <Text style={styles.locationTitle}>{trip.pickupLocation}</Text>
                       </View>
                     </View>
 
-                    {/* Dropoff Point */}
-                    <View style={styles.routeRow}>
-                      <View style={styles.iconColumn}>
-                        <View style={[styles.routeDot, { backgroundColor: THEME.danger }]} />
-                      </View>
-                      <View style={styles.routeDetails}>
-                        <Text style={styles.routeLabel}>{t.route.dropoffLabel}</Text>
-                        <Text style={styles.routeAddress}>{trip.deliveryAddress}</Text>
-                        <Text style={styles.contactSub}>
-                          {t.route.contactBuyer} {trip.buyerName} • 📞 {trip.buyerPhone}
-                        </Text>
+                    {/* CONNECTING LINE */}
+                    <View style={styles.routeConnectingLine} />
+
+                    {/* DESTINATION NODE */}
+                    <View style={styles.routeNodeRow}>
+                      <View style={styles.destCircleOuter} />
+                      <View style={styles.routeTextCol}>
+                        <Text style={styles.routeLabelDest}>DESTINATION</Text>
+                        <Text style={styles.locationTitle}>{trip.deliveryAddress}</Text>
+                        <Text style={styles.buyerContactSub}>Buyer: {trip.buyerName} • 📞 {trip.buyerPhone || 'N/A'}</Text>
                       </View>
                     </View>
                   </View>
 
-                  {/* Transport Special Notes */}
+                  {/* HANDLING NOTES BANNER */}
                   {trip.specialNotes ? (
                     <View style={styles.specialNotesCard}>
-                      <Text style={styles.specialNotesText}>⚠️ {trip.specialNotes}</Text>
+                      <Ionicons name="information-circle-outline" size={16} color="#0284C7" style={{ marginRight: 8 }} />
+                      <Text style={styles.specialNotesText}>{trip.specialNotes}</Text>
                     </View>
                   ) : null}
 
@@ -657,17 +665,26 @@ export default function DriverHomeScreen({
                   <TouchableOpacity
                     style={[
                       styles.actionBtn,
-                      isInTransit ? { backgroundColor: THEME.emerald } : { backgroundColor: THEME.navy },
+                      isInTransit ? styles.actionBtnDelivered : styles.actionBtnTransit,
                     ]}
                     disabled={updatingTripId === trip.id}
                     onPress={() => handleTripProgression(trip)}
+                    activeOpacity={0.85}
                   >
                     {updatingTripId === trip.id ? (
                       <ActivityIndicator size="small" color="#FFFFFF" />
                     ) : (
-                      <Text style={styles.actionBtnText}>
-                        {isInTransit ? t.actions.markDelivered : t.actions.startTransit}
-                      </Text>
+                      <>
+                        <MaterialCommunityIcons
+                          name={isInTransit ? 'check-circle' : 'truck-fast'}
+                          size={18}
+                          color="#FFFFFF"
+                          style={{ marginRight: 8 }}
+                        />
+                        <Text style={styles.actionBtnText}>
+                          {isInTransit ? t.actions.markDelivered : t.actions.startTransit}
+                        </Text>
+                      </>
                     )}
                   </TouchableOpacity>
                 </View>
@@ -683,57 +700,52 @@ export default function DriverHomeScreen({
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: THEME.navy,
+    backgroundColor: '#F8FAFC',
   },
-  headerBar: {
-    backgroundColor: THEME.navy,
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 14,
+
+  /* TOP APP HEADER */
+  topHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.1)',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    backgroundColor: '#F8FAFC',
   },
-  brandRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  logoBadge: {
+  profileAvatarWrapper: {
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: '#FFFFFF',
-    marginRight: 10,
+    overflow: 'hidden',
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
   },
-  brandGovi: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
+  profileAvatar: {
+    width: '100%',
+    height: '100%',
   },
-  brandLink: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: THEME.accentLeaf,
+  brandTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
-  roleTag: {
-    backgroundColor: THEME.purple,
-    borderRadius: 6,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    marginLeft: 8,
+  brandTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#006837',
+    letterSpacing: -0.3,
   },
-  roleTagText: {
-    color: '#FFFFFF',
+  driverRoleBadge: {
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+  },
+  driverRoleBadgeText: {
     fontSize: 10,
-    fontWeight: 'bold',
-  },
-  driverWelcome: {
-    fontSize: 11,
-    color: '#B0BEC5',
-    marginTop: 2,
+    fontWeight: '800',
+    color: '#059669',
+    letterSpacing: 0.5,
   },
   headerRightActions: {
     flexDirection: 'row',
@@ -741,91 +753,113 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   langPill: {
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
+    backgroundColor: '#E2E8F0',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
   },
   langPillText: {
-    color: '#FFFFFF',
     fontSize: 11,
     fontWeight: '700',
+    color: '#334155',
   },
-  logoutBtn: {
-    backgroundColor: 'rgba(239, 68, 68, 0.9)',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  logoutBtnText: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: '700',
+  notifBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#FEE2E2',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 
   scrollContainer: {
-    backgroundColor: THEME.bg,
-    padding: 16,
+    paddingHorizontal: 20,
     paddingBottom: 40,
-    minHeight: '100%',
   },
 
-  // Duty Status Card
+  /* PAGE TITLE SECTION */
+  pageTitleSection: {
+    marginTop: 6,
+    marginBottom: 16,
+  },
+  pageTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#0F172A',
+    letterSpacing: -0.3,
+  },
+  pageSubtitle: {
+    fontSize: 13,
+    color: '#64748B',
+    marginTop: 2,
+  },
+
+  /* DUTY AVAILABILITY CARD */
   dutyCard: {
-    backgroundColor: THEME.cardBg,
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 12,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
     borderWidth: 1,
-    borderColor: THEME.border,
+    borderColor: '#E2E8F0',
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
   },
   dutyInfo: {
     flex: 1,
     paddingRight: 10,
   },
   dutyTitle: {
-    fontSize: 13,
-    fontWeight: 'bold',
-    color: THEME.textDark,
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0F172A',
   },
   dutySub: {
     fontSize: 11,
-    color: THEME.textMuted,
+    color: '#64748B',
     marginTop: 2,
   },
   dutyToggleBtn: {
     paddingHorizontal: 12,
-    paddingVertical: 7,
+    paddingVertical: 8,
     borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
   },
   dutyBtnOn: {
-    backgroundColor: THEME.emeraldLight,
+    backgroundColor: '#DCFCE7',
+    borderColor: '#86EFAC',
   },
   dutyBtnOff: {
-    backgroundColor: THEME.dangerLight,
+    backgroundColor: '#FEE2E2',
+    borderColor: '#FCA5A5',
   },
   dutyToggleText: {
     fontSize: 11,
-    fontWeight: 'bold',
-    color: THEME.textDark,
+    fontWeight: '800',
   },
 
-  // Registered Vehicle Card
+  /* REGISTERED VEHICLE CARD */
   registeredVehicleCard: {
-    backgroundColor: THEME.cardBg,
-    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
     padding: 16,
     marginBottom: 16,
-    borderWidth: 1.5,
-    borderColor: THEME.emerald,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderLeftWidth: 4,
+    borderLeftColor: '#006837',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
     elevation: 2,
-    shadowColor: THEME.emerald,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
   },
   vehicleHeaderRow: {
     flexDirection: 'row',
@@ -839,31 +873,31 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   vehicleIconBadge: {
-    fontSize: 28,
+    fontSize: 26,
     marginRight: 10,
   },
   vehicleCardTitle: {
     fontSize: 15,
-    fontWeight: 'bold',
-    color: THEME.textDark,
+    fontWeight: '800',
+    color: '#0F172A',
   },
   vehicleTypeTag: {
     fontSize: 11,
-    color: THEME.textMuted,
+    color: '#64748B',
     marginTop: 1,
   },
   editVehicleBtn: {
-    backgroundColor: THEME.emeraldLight,
+    backgroundColor: '#F1F5F9',
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: THEME.emerald,
+    borderColor: '#CBD5E1',
   },
   editVehicleBtnText: {
-    color: THEME.emeraldDark,
+    color: '#0F172A',
     fontSize: 11,
-    fontWeight: 'bold',
+    fontWeight: '700',
   },
   vehicleDetailsRow: {
     flexDirection: 'row',
@@ -873,59 +907,59 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   platePill: {
-    backgroundColor: THEME.navy,
+    backgroundColor: '#0F172A',
     borderRadius: 8,
     paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingVertical: 5,
   },
   platePillText: {
     color: '#FFFFFF',
     fontSize: 11,
-    fontWeight: 'bold',
+    fontWeight: '800',
     letterSpacing: 0.5,
   },
   capacityBadge: {
     backgroundColor: '#F1F5F9',
     borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderWidth: 1,
-    borderColor: THEME.border,
+    borderColor: '#E2E8F0',
   },
   capacityBadgeText: {
-    color: THEME.textDark,
+    color: '#334155',
     fontSize: 11,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   coldBadge: {
-    backgroundColor: THEME.cyanLight,
+    backgroundColor: '#E0F2FE',
     borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderWidth: 1,
     borderColor: '#BAE6FD',
   },
   coldBadgeText: {
     color: '#0284C7',
     fontSize: 11,
-    fontWeight: 'bold',
+    fontWeight: '800',
   },
   ambientBadge: {
     backgroundColor: '#F8FAFC',
     borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderWidth: 1,
-    borderColor: THEME.border,
+    borderColor: '#E2E8F0',
   },
   ambientBadgeText: {
-    color: THEME.textMuted,
+    color: '#64748B',
     fontSize: 11,
-    fontWeight: '500',
+    fontWeight: '600',
   },
   vehicleThumbnailContainer: {
     marginTop: 12,
-    borderRadius: 10,
+    borderRadius: 12,
     overflow: 'hidden',
     height: 120,
     backgroundColor: '#E2E8F0',
@@ -944,39 +978,39 @@ const styles = StyleSheet.create({
   },
   viewAllVehiclesBtn: {
     flex: 1.5,
-    backgroundColor: THEME.emeraldLight,
-    borderRadius: 8,
-    paddingVertical: 9,
+    backgroundColor: '#E6F4EA',
+    borderRadius: 10,
+    paddingVertical: 10,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: THEME.emerald,
+    borderColor: '#86EFAC',
   },
   viewAllVehiclesBtnText: {
-    color: THEME.emeraldDark,
+    color: '#006837',
     fontSize: 12,
-    fontWeight: 'bold',
+    fontWeight: '700',
   },
   quickAddVehicleBtn: {
     flex: 1,
     backgroundColor: '#F1F5F9',
-    borderRadius: 8,
-    paddingVertical: 9,
+    borderRadius: 10,
+    paddingVertical: 10,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: THEME.border,
+    borderColor: '#E2E8F0',
   },
   quickAddVehicleBtnText: {
-    color: THEME.textDark,
+    color: '#0F172A',
     fontSize: 12,
-    fontWeight: 'bold',
+    fontWeight: '700',
   },
 
-  // No Vehicle Card
+  /* NO VEHICLE CARD */
   noVehicleCard: {
-    backgroundColor: THEME.warningLight,
-    borderRadius: 14,
+    backgroundColor: '#FEF3C7',
+    borderRadius: 16,
     padding: 16,
     marginBottom: 16,
     borderWidth: 1,
@@ -993,7 +1027,7 @@ const styles = StyleSheet.create({
   },
   noVehicleTitle: {
     fontSize: 14,
-    fontWeight: 'bold',
+    fontWeight: '800',
     color: '#92400E',
   },
   noVehicleSub: {
@@ -1003,7 +1037,7 @@ const styles = StyleSheet.create({
     lineHeight: 15,
   },
   addVehicleBtn: {
-    backgroundColor: THEME.emerald,
+    backgroundColor: '#006837',
     borderRadius: 10,
     paddingVertical: 10,
     alignItems: 'center',
@@ -1012,10 +1046,10 @@ const styles = StyleSheet.create({
   addVehicleBtnText: {
     color: '#FFFFFF',
     fontSize: 13,
-    fontWeight: 'bold',
+    fontWeight: '700',
   },
 
-  // KPI Grid
+  /* KPI METRICS GRID */
   statsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1025,198 +1059,248 @@ const styles = StyleSheet.create({
   kpiCard: {
     flex: 1,
     minWidth: '47%',
-    backgroundColor: THEME.cardBg,
-    borderRadius: 12,
-    padding: 12,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 14,
     borderLeftWidth: 4,
     borderWidth: 1,
-    borderColor: THEME.border,
-    elevation: 2,
+    borderColor: '#E2E8F0',
     shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.04,
     shadowRadius: 4,
-  },
-  kpiIcon: {
-    fontSize: 16,
-    marginBottom: 4,
+    elevation: 2,
   },
   kpiValue: {
-    fontSize: 17,
-    fontWeight: 'bold',
-    color: THEME.textDark,
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginTop: 2,
   },
   kpiLabel: {
     fontSize: 11,
-    color: THEME.textMuted,
-    marginTop: 2,
+    fontWeight: '600',
+    color: '#64748B',
   },
 
-  // Tabs
+  /* TAB SELECTOR */
   tabContainer: {
     flexDirection: 'row',
-    backgroundColor: '#E2E8F0',
-    borderRadius: 10,
-    padding: 3,
+    backgroundColor: '#F1F5F9',
+    borderRadius: 12,
+    padding: 4,
     marginBottom: 16,
   },
   tabBtn: {
     flex: 1,
-    paddingVertical: 8,
+    paddingVertical: 10,
     alignItems: 'center',
-    borderRadius: 8,
+    borderRadius: 9,
   },
   tabBtnActive: {
-    backgroundColor: THEME.cardBg,
-    elevation: 2,
+    backgroundColor: '#FFFFFF',
     shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 2,
+    elevation: 1,
   },
   tabText: {
     fontSize: 12,
     fontWeight: '600',
-    color: THEME.textMuted,
+    color: '#64748B',
   },
   tabTextActive: {
-    color: THEME.navy,
-    fontWeight: 'bold',
+    color: '#006837',
+    fontWeight: '800',
   },
 
-  // Delivery Card
+  /* DELIVERY CARD (MATCHES REQUEST CARDS) */
   deliveryCard: {
-    backgroundColor: THEME.cardBg,
-    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
     padding: 16,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: THEME.border,
-    elevation: 2,
+    borderColor: '#E2E8F0',
+    borderLeftWidth: 4,
+    borderLeftColor: '#F59E0B',
     shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
   },
   tripHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
-  },
-  tripBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  tripBadgeText: {
-    fontSize: 11,
-    fontWeight: 'bold',
-  },
-  tripPillId: {
-    fontSize: 11,
-    color: THEME.textMuted,
-    fontWeight: '600',
   },
   cargoTitle: {
     fontSize: 16,
-    fontWeight: 'bold',
-    color: THEME.textDark,
-    marginBottom: 14,
+    fontWeight: '800',
+    color: '#0F172A',
+    flex: 1,
+    marginRight: 8,
+  },
+  tripBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  badgePending: {
+    backgroundColor: '#F1F5F9',
+  },
+  badgeInTransit: {
+    backgroundColor: '#DCFCE7',
+  },
+  tripBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
 
-  // Route visualizer
-  routeBox: {
-    backgroundColor: THEME.bg,
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 12,
-  },
-  routeRow: {
+  farmerRow: {
     flexDirection: 'row',
-  },
-  iconColumn: {
     alignItems: 'center',
-    width: 20,
-    marginRight: 10,
+    marginTop: 4,
   },
-  routeDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
+  farmerNameText: {
+    fontSize: 13,
+    color: '#64748B',
+    fontWeight: '500',
+  },
+  cardDivider: {
+    height: 1,
+    backgroundColor: '#F1F5F9',
+    marginVertical: 14,
+  },
+
+  /* ROUTE TIMELINE */
+  routeContainer: {
+    paddingLeft: 2,
+  },
+  routeNodeRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  pickupCircleOuter: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 2,
+    borderColor: '#006837',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
     marginTop: 2,
   },
-  routeDottedLine: {
+  pickupCircleInner: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#006837',
+  },
+  destCircleOuter: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 2,
+    borderColor: '#94A3B8',
+    marginRight: 10,
+    marginTop: 2,
+  },
+  routeConnectingLine: {
     width: 2,
-    height: 38,
+    height: 22,
     backgroundColor: '#CBD5E1',
+    marginLeft: 8,
     marginVertical: 2,
   },
-  routeDetails: {
+  routeTextCol: {
     flex: 1,
-    paddingBottom: 8,
+    justifyContent: 'center',
   },
-  routeLabel: {
+  routeLabelPickup: {
     fontSize: 10,
-    color: THEME.textMuted,
-    textTransform: 'uppercase',
-    fontWeight: 'bold',
+    fontWeight: '800',
+    color: '#006837',
+    letterSpacing: 0.8,
   },
-  routeAddress: {
-    fontSize: 13,
-    fontWeight: 'bold',
-    color: THEME.textDark,
+  routeLabelDest: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#64748B',
+    letterSpacing: 0.8,
+  },
+  locationTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0F172A',
     marginTop: 1,
   },
-  contactSub: {
+  buyerContactSub: {
     fontSize: 11,
-    color: THEME.textMuted,
+    color: '#64748B',
     marginTop: 2,
   },
 
   specialNotesCard: {
-    backgroundColor: THEME.warningLight,
-    borderRadius: 8,
-    padding: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F1F5F9',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginTop: 14,
     marginBottom: 14,
   },
   specialNotesText: {
-    fontSize: 11,
-    color: '#92400E',
-    lineHeight: 15,
+    fontSize: 12,
+    color: '#334155',
+    fontWeight: '500',
+    flex: 1,
   },
 
   actionBtn: {
-    borderRadius: 10,
-    paddingVertical: 12,
+    borderRadius: 12,
+    paddingVertical: 13,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
   },
+  actionBtnTransit: {
+    backgroundColor: '#006837',
+  },
+  actionBtnDelivered: {
+    backgroundColor: '#059669',
+  },
   actionBtnText: {
     color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: 'bold',
+    fontSize: 14,
+    fontWeight: '700',
   },
 
-  // Empty
+  /* EMPTY STATE */
   emptyCard: {
-    backgroundColor: THEME.cardBg,
-    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
     padding: 30,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: THEME.border,
-  },
-  emptyIcon: {
-    fontSize: 36,
-    marginBottom: 10,
+    borderColor: '#E2E8F0',
   },
   emptyTitle: {
-    fontSize: 15,
-    fontWeight: 'bold',
-    color: THEME.textDark,
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginTop: 10,
     marginBottom: 4,
   },
   emptySubtitle: {
     fontSize: 12,
-    color: THEME.textMuted,
+    color: '#64748B',
     textAlign: 'center',
+    paddingHorizontal: 10,
   },
 });

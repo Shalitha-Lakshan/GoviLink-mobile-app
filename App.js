@@ -33,6 +33,9 @@ SplashScreen.preventAutoHideAsync().catch(() => {
 
 // Helper: map Firestore role string & email to internal dashboard role
 const mapRoleToDashboard = (role, email) => {
+  if (role === 'cooperative_admin' || role === 'admin') {
+    return 'admin';
+  }
   if (email && email.toLowerCase() === 'govilink@admin.lk') {
     return 'admin';
   }
@@ -98,7 +101,7 @@ function AppInner() {
             uid: firebaseUser.uid,
             email: firebaseUser.email,
             fullName: firebaseUser.displayName || 'GoviLink User',
-            role: 'buyer',
+            role: firebaseUser.email?.toLowerCase() === 'govilink@admin.lk' ? 'cooperative_admin' : 'buyer',
           };
           setUserProfile(fallbackProfile);
           setCurrentRole(mapRoleToDashboard(fallbackProfile.role, fallbackProfile.email));
@@ -181,6 +184,13 @@ function AppInner() {
   // Real produce list from Firestore
   const activeProduce = produceListings;
 
+  const handleProfileUpdated = (updatedProfileData) => {
+    setUserProfile((prev) => ({
+      ...prev,
+      ...updatedProfileData,
+    }));
+  };
+
   // ----------------------------------------------------
   // ROLE-BASED HOMEPAGE ROUTING
   // ----------------------------------------------------
@@ -193,6 +203,7 @@ function AppInner() {
         ordersList={ordersList}
         onChangeLanguage={setLang}
         onLogout={handleLogout}
+        onProfileUpdated={handleProfileUpdated}
       />
     );
   }
@@ -205,6 +216,7 @@ function AppInner() {
         ordersList={ordersList}
         onChangeLanguage={setLang}
         onLogout={handleLogout}
+        onProfileUpdated={handleProfileUpdated}
       />
     );
   }
@@ -218,6 +230,7 @@ function AppInner() {
         ordersList={ordersList}
         onChangeLanguage={setLang}
         onLogout={handleLogout}
+        onProfileUpdated={handleProfileUpdated}
       />
     );
   }
@@ -231,6 +244,7 @@ function AppInner() {
       ordersList={ordersList}
       onChangeLanguage={setLang}
       onLogout={handleLogout}
+      onProfileUpdated={handleProfileUpdated}
     />
   );
 }

@@ -19,6 +19,7 @@ import {
   deleteBuyerRequest,
 } from '../services/firebaseDatabase';
 import BuyerRequestProduceScreen from './BuyerRequestProduceScreen';
+import UserProfileScreen from './UserProfileScreen';
 
 // ----------------------------------------------------
 // THEME COLORS
@@ -251,6 +252,7 @@ export default function BuyerHomeScreen({
   produceListings = [],
   ordersList = [],
   onChangeLanguage,
+  onProfileUpdated,
 }) {
   const [activeTab, setActiveTab] = useState('market'); // 'market' | 'customRequests' | 'myOrders'
   const [showRequestScreen, setShowRequestScreen] = useState(false);
@@ -269,6 +271,7 @@ export default function BuyerHomeScreen({
   );
   const [deliveryNotes, setDeliveryNotes] = useState('');
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
+  const [showProfileScreen, setShowProfileScreen] = useState(false);
 
   const t = TRANSLATIONS[lang] || TRANSLATIONS.en;
 
@@ -450,13 +453,32 @@ export default function BuyerHomeScreen({
     );
   }
 
+  if (showProfileScreen) {
+    return (
+      <UserProfileScreen
+        userProfile={userProfile}
+        lang={lang}
+        onBack={() => setShowProfileScreen(false)}
+        onLogout={onLogout}
+        onChangeLanguage={onChangeLanguage}
+        onProfileUpdated={(updated) => {
+          if (onProfileUpdated) onProfileUpdated(updated);
+        }}
+      />
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="light-content" backgroundColor={THEME.navy} />
 
       {/* TOP HEADER BAR */}
       <View style={styles.headerBar}>
-        <View style={styles.brandRow}>
+        <TouchableOpacity
+          style={styles.brandRow}
+          onPress={() => setShowProfileScreen(true)}
+          activeOpacity={0.8}
+        >
           <Image
             source={require('../assets/splash-icon.png')}
             style={styles.logoBadge}
@@ -474,7 +496,7 @@ export default function BuyerHomeScreen({
               Hi, {userProfile?.fullName ? userProfile.fullName.split(' ')[0] : 'Buyer'} • 📍 {userProfile?.district?.nameEn || 'Colombo'}
             </Text>
           </View>
-        </View>
+        </TouchableOpacity>
 
         <View style={styles.headerRightActions}>
           {/* Active Orders Pill */}

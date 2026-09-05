@@ -21,6 +21,7 @@ import {
   acceptBuyerCustomRequest,
 } from '../services/firebaseDatabase';
 import AddProduceScreen from './AddProduceScreen';
+import UserProfileScreen from './UserProfileScreen';
 
 // ----------------------------------------------------
 // COLOR TOKENS
@@ -293,6 +294,7 @@ export default function FarmerHomeScreen({
   produceListings = [],
   ordersList = [],
   onChangeLanguage,
+  onProfileUpdated,
 }) {
   const [activeTab, setActiveTab] = useState('listings'); // 'listings' | 'orders'
   const [customRequests, setCustomRequests] = useState([]);
@@ -302,6 +304,7 @@ export default function FarmerHomeScreen({
   const [showAddModal, setShowAddModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [updatingOrderId, setUpdatingOrderId] = useState(null);
+  const [showProfileScreen, setShowProfileScreen] = useState(false);
 
   // Add Produce Form State
   const [formNameEn, setFormNameEn] = useState('');
@@ -509,13 +512,32 @@ export default function FarmerHomeScreen({
     );
   }
 
+  if (showProfileScreen) {
+    return (
+      <UserProfileScreen
+        userProfile={userProfile}
+        lang={lang}
+        onBack={() => setShowProfileScreen(false)}
+        onLogout={onLogout}
+        onChangeLanguage={onChangeLanguage}
+        onProfileUpdated={(updated) => {
+          if (onProfileUpdated) onProfileUpdated(updated);
+        }}
+      />
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="light-content" backgroundColor={THEME.navy} />
 
       {/* TOP BRAND & PROFILE BAR */}
       <View style={styles.headerBar}>
-        <View style={styles.brandRow}>
+        <TouchableOpacity
+          style={styles.brandRow}
+          onPress={() => setShowProfileScreen(true)}
+          activeOpacity={0.8}
+        >
           <Image
             source={require('../assets/splash-icon.png')}
             style={styles.logoBadge}
@@ -533,7 +555,7 @@ export default function FarmerHomeScreen({
               {userProfile?.fullName ? userProfile.fullName : 'Farmer Partner'} • 📍 {userProfile?.district?.nameEn || 'Nuwara Eliya'}
             </Text>
           </View>
-        </View>
+        </TouchableOpacity>
 
         <View style={styles.headerRightActions}>
           {/* Language Switcher Pill */}

@@ -59,14 +59,12 @@ export const uploadProduceImage = async (imageUri, produceId) => {
       return downloadURL;
     }
   } catch (storageError) {
-    console.warn('Firebase Storage upload warning, using data URL fallback:', storageError);
-
     // 3. Fallback: If it is already a base64 data URL, return it
     if (imageUri.startsWith('data:')) {
       return imageUri;
     }
 
-    // 4. Convert local file:// URI to base64 data URL
+    // 4. Convert local file:// URI to base64 data URL fallback
     try {
       const response = await fetch(imageUri);
       const blob = await response.blob();
@@ -77,8 +75,7 @@ export const uploadProduceImage = async (imageUri, produceId) => {
         reader.readAsDataURL(blob);
       });
       return base64Data;
-    } catch (fallbackError) {
-      console.error('Failed to convert image to fallback data URL:', fallbackError);
+    } catch (_fallbackError) {
       return imageUri;
     }
   }
@@ -241,6 +238,39 @@ export const getUserProfile = async (uid) => {
   }
 };
 
+/**
+ * Update user profile in Firestore users/{uid}
+ */
+export const updateUserProfileInFirestore = async (uid, profileData) => {
+  if (!uid) {
+    console.warn('updateUserProfileInFirestore: No uid provided');
+    return { success: false, error: 'No user ID provided' };
+  }
+
+  try {
+    // Safety check: if photoURL base64 is larger than 800KB, omit photoURL from Firestore doc
+    // to prevent exceeding Firestore's 1MB single-document limit.
+    const cleanProfileData = { ...profileData };
+    if (cleanProfileData.photoURL && cleanProfileData.photoURL.length > 800000) {
+      delete cleanProfileData.photoURL;
+    }
+
+    const userDocRef = doc(db, 'users', uid);
+    await setDoc(
+      userDocRef,
+      {
+        ...cleanProfileData,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+    return { success: true };
+  } catch (error) {
+    console.error('Error updating user profile in Firestore:', error);
+    return { success: false, error: error.message };
+  }
+};
+
 // -------------------------------------------------------
 // AUTHENTICATION
 // -------------------------------------------------------
@@ -305,7 +335,7 @@ export const loginWithFirebase = async (email, password) => {
     try {
       userCredential = await signInWithEmailAndPassword(auth, cleanEmail, password);
     } catch (authErr) {
-      // If admin account doesn't exist in Firebase Auth yet, auto-create it
+      // If default admin account doesn't exist in Firebase Auth yet, auto-create it
       if (isAdminEmail && (authErr.code === 'auth/user-not-found' || authErr.code === 'auth/invalid-credential')) {
         try {
           userCredential = await createUserWithEmailAndPassword(auth, cleanEmail, password);
@@ -319,25 +349,32 @@ export const loginWithFirebase = async (email, password) => {
 
     const user = userCredential.user;
 
-    // Fetch Firestore profile
+    // Fetch Firestore profile from users/{uid}
     const profileResult = await getUserProfile(user.uid);
 
-    // If profile doc missing or email is admin, ensure profile doc with cooperative_admin role exists
-    if (!profileResult.success || isAdminEmail) {
-      const adminProfile = {
-        uid: user.uid,
-        email: cleanEmail,
-        fullName: profileResult?.profile?.fullName || 'GoviLink Cooperative Admin',
-        phoneNumber: profileResult?.profile?.phoneNumber || '0770000000',
-        role: 'cooperative_admin',
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      };
-      await setDoc(doc(db, 'users', user.uid), adminProfile);
-      return { success: true, user, profile: adminProfile };
+    if (profileResult.success) {
+      const existingProfile = profileResult.profile;
+      // If admin email login, ensure role is set to cooperative_admin if missing
+      if (isAdminEmail && existingProfile.role !== 'cooperative_admin') {
+        const updatedProfile = { ...existingProfile, role: 'cooperative_admin' };
+        await setDoc(doc(db, 'users', user.uid), updatedProfile, { merge: true });
+        return { success: true, user, profile: updatedProfile };
+      }
+      return { success: true, user, profile: existingProfile };
     }
 
-    return { success: true, user, profile: profileResult.profile };
+    // Profile document missing in Firestore — initialize user profile document
+    const newProfile = {
+      uid: user.uid,
+      email: cleanEmail,
+      fullName: isAdminEmail ? 'GoviLink Cooperative Admin' : (user.displayName || 'GoviLink User'),
+      phoneNumber: '0770000000',
+      role: isAdminEmail ? 'cooperative_admin' : 'buyer',
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
+    await setDoc(doc(db, 'users', user.uid), newProfile);
+    return { success: true, user, profile: newProfile };
   } catch (error) {
     console.error('Login error:', error);
     return { success: false, error: error.code || error.message };
