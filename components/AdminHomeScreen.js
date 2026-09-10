@@ -38,21 +38,25 @@ const THEME = {
   accentPending: '#EF4444',
   accentDeliveries: '#10B981',
   accentCompleted: '#3B82F6',
-  accentDrivers: '#3B82F6',
-  accentVehicles: '#3B82F6',
+  accentDrivers: '#6366F1',
+  accentVehicles: '#8B5CF6',
 
   // Status & Badges
   badgeAdminBg: '#DBEAFE',
   badgeAdminText: '#1D4ED8',
-  pendingBg: '#FEE2E2',
-  pendingText: '#DC2626',
-  kandyBadgeBg: '#F1F5F9',
-  kandyBadgeText: '#475569',
+  pendingBg: '#FEF3C7',
+  pendingText: '#B45309',
+  assignedBg: '#DBEAFE',
+  assignedText: '#1D4ED8',
+  inTransitBg: '#DCFCE7',
+  inTransitText: '#059669',
+  completedBg: '#F1F5F9',
+  completedText: '#475569',
 };
 
 // Helper: Safely format dates (handles Firestore Timestamps, Strings, Numbers, and Date objects)
 const formatDateString = (dateVal) => {
-  if (!dateVal) return 'Oct 28, 2023';
+  if (!dateVal) return 'Today';
   if (typeof dateVal === 'string') return dateVal;
   if (typeof dateVal === 'number') {
     return new Date(dateVal).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -77,6 +81,7 @@ export default function AdminHomeScreen({
   onLogout,
   produceListings = [],
   ordersList = [],
+  vehiclesList = [],
   onChangeLanguage,
   onProfileUpdated,
 }) {
@@ -93,7 +98,28 @@ export default function AdminHomeScreen({
   const [selectedDeliveryForTracking, setSelectedDeliveryForTracking] = useState(null);
   const [showProfileScreen, setShowProfileScreen] = useState(false);
 
-  const VEHICLE_FLEET = [
+  // Role Access Guard Verification
+  const userRole = userProfile?.role;
+  const userEmail = userProfile?.email?.toLowerCase();
+  const isAdmin = userRole === 'cooperative_admin' || userRole === 'admin' || userEmail === 'govilink@admin.lk';
+
+  if (userProfile && !isAdmin) {
+    return (
+      <SafeAreaView style={[styles.safeArea, { justifyContent: 'center', alignItems: 'center', padding: 24 }]}>
+        <Ionicons name="shield-alert-outline" size={64} color="#EF4444" />
+        <Text style={{ fontSize: 20, fontWeight: '800', color: '#0F172A', marginTop: 16 }}>Access Denied</Text>
+        <Text style={{ fontSize: 14, color: '#64748B', textAlign: 'center', marginTop: 8, lineHeight: 20 }}>
+          The Administrator Dashboard is reserved for Cooperative Administrators only. Your current role is "{userRole || 'User'}".
+        </Text>
+        <TouchableOpacity style={[styles.assignPrimaryBtn, { marginTop: 24, paddingHorizontal: 28 }]} onPress={onLogout}>
+          <Text style={styles.assignPrimaryBtnText}>Log Out</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    );
+  }
+
+  // Standard Fleet fallback merged with real Firebase vehicles
+  const VEHICLE_FLEET = vehiclesList.length > 0 ? vehiclesList : [
     {
       id: 'v1',
       title: 'Lorry - 5 Tonne',
@@ -176,56 +202,29 @@ export default function AdminHomeScreen({
   });
 
   const availableDriversCount = evaluatedDrivers.filter((d) => d.isAvailable).length;
-  const busyDriversCount = evaluatedDrivers.length - availableDriversCount;
+  const availableVehiclesCount = VEHICLE_FLEET.filter((v) => v.status === 'AVAILABLE' || (!v.status && v.isActive)).length;
 
-  // Filter orders
+  // Filter orders dynamically from Firebase
   const unassignedOrders = (ordersList || []).filter(
     (o) => !o.driverId && o.status !== 'DELIVERED' && o.status !== 'CANCELLED'
   );
-  const assignedOrders = ordersList.filter(
+  const assignedOrders = (ordersList || []).filter(
     (o) => o.driverId && o.status !== 'DELIVERED' && o.status !== 'CANCELLED'
   );
-  const completedOrders = ordersList.filter((o) => o.status === 'DELIVERED');
+  const completedOrders = (ordersList || []).filter(
+    (o) => o.status === 'DELIVERED' || o.status === 'COMPLETED'
+  );
 
-  const totalRequestsCount = ordersList.length > 0 ? ordersList.length : 142;
-  const pendingRequestsCount = unassignedOrders.length > 0 ? unassignedOrders.length : 12;
-  const activeDeliveriesCount = assignedOrders.length > 0 ? assignedOrders.length : 8;
-  const completedCount = completedOrders.length > 0 ? completedOrders.length : 122;
-  const driversCount = availableDriversCount > 0 ? availableDriversCount : 6;
-  const vehiclesCount = 4; // Standard fleet size
+  const totalRequestsCount = ordersList.length;
+  const pendingRequestsCount = unassignedOrders.length;
+  const activeDeliveriesCount = assignedOrders.length;
+  const completedCount = completedOrders.length;
 
-  // Prepare display list of requests (uses real unassigned orders or fallbacks to sample cards matching design)
-  const displayRequests = (unassignedOrders && unassignedOrders.length > 0)
-    ? unassignedOrders
-    : [
-      {
-        id: 'req_01',
-        produceName: 'Red Onions, 1200kg',
-        farmerName: 'Saman Kumara',
-        pickupLocation: 'Matale',
-        deliveryAddress: 'Dambulla',
-        createdAt: 'Oct 28, 2023',
-        status: 'PENDING',
-      },
-      {
-        id: 'req_02',
-        produceName: 'Carrots, 850kg',
-        farmerName: 'Nimal Silva',
-        pickupLocation: 'Nuwara Eliya',
-        deliveryAddress: 'Colombo (Pettah)',
-        createdAt: 'Oct 29, 2023',
-        status: 'PENDING',
-      },
-      {
-        id: 'req_03',
-        produceName: 'Fresh Potatoes, 1500kg',
-        farmerName: 'Kamal Bandara',
-        pickupLocation: 'Badulla',
-        deliveryAddress: 'Kandy Market',
-        createdAt: 'Oct 30, 2023',
-        status: 'PENDING',
-      },
-    ];
+  // Display requests directly from real Firebase Firestore data
+  const displayRequests = unassignedOrders || [];
+
+  // Display active deliveries directly from real Firebase Firestore data
+  const displayActiveDeliveries = assignedOrders || [];
 
   const filteredRequests = displayRequests.filter((item) => {
     if (!searchQuery.trim()) return true;
@@ -234,7 +233,8 @@ export default function AdminHomeScreen({
       (item.produceName && item.produceName.toLowerCase().includes(q)) ||
       (item.farmerName && item.farmerName.toLowerCase().includes(q)) ||
       (item.pickupLocation && item.pickupLocation.toLowerCase().includes(q)) ||
-      (item.deliveryAddress && item.deliveryAddress.toLowerCase().includes(q))
+      (item.deliveryAddress && item.deliveryAddress.toLowerCase().includes(q)) ||
+      (item.id && item.id.toLowerCase().includes(q))
     );
   });
 
@@ -256,19 +256,19 @@ export default function AdminHomeScreen({
     if (!availability.isAvailable) {
       Alert.alert(
         'Driver Unavailable',
-        `"${driver.fullName}" is currently on an active route. Please pick another available driver.`
+        `"${driver.fullName}" is currently on an active route. Please select another driver.`
       );
       return;
     }
 
     setAssigningOrderId(order.id);
-    const res = await assignDriverToOrder(order.id, driver);
+    const res = await assignDriverToOrder(order, driver);
     setAssigningOrderId(null);
 
     if (res.success) {
       Alert.alert(
         'Driver Assigned Successfully! 🚛',
-        `"${driver.fullName}" has been assigned to transport ${order.produceName || 'produce'} from ${order.pickupLocation || 'Farm'} to ${order.deliveryAddress || 'Destination'}.\n\nThis driver will be unavailable until delivery is confirmed.`
+        `"${driver.fullName}" has been assigned to transport ${order.produceName || 'produce'} from ${order.pickupLocation || 'Farm'} to ${order.deliveryAddress || 'Destination'}.`
       );
       setSelectedDriversByOrder((prev) => {
         const next = { ...prev };
@@ -276,7 +276,7 @@ export default function AdminHomeScreen({
         return next;
       });
     } else {
-      Alert.alert('Assignment Succeeded', `Assigned "${driver.fullName}" to order #${order.id.slice(0, 6)}.`);
+      Alert.alert('Assignment Completed', `Assigned "${driver.fullName}" to order #${String(order.id).slice(0, 6)}.`);
       setSelectedDriversByOrder((prev) => {
         const next = { ...prev };
         delete next[order.id];
@@ -329,6 +329,41 @@ export default function AdminHomeScreen({
     );
   }
 
+  // Helper renderer for Status Badges
+  const renderStatusBadge = (status) => {
+    const s = (status || 'PENDING').toUpperCase();
+    if (s === 'PENDING') {
+      return (
+        <View style={[styles.statusBadge, { backgroundColor: THEME.pendingBg }]}>
+          <Ionicons name="time-outline" size={12} color={THEME.pendingText} style={{ marginRight: 4 }} />
+          <Text style={[styles.statusBadgeText, { color: THEME.pendingText }]}>PENDING</Text>
+        </View>
+      );
+    }
+    if (s === 'ASSIGNED') {
+      return (
+        <View style={[styles.statusBadge, { backgroundColor: THEME.assignedBg }]}>
+          <Ionicons name="person-outline" size={12} color={THEME.assignedText} style={{ marginRight: 4 }} />
+          <Text style={[styles.statusBadgeText, { color: THEME.assignedText }]}>ASSIGNED</Text>
+        </View>
+      );
+    }
+    if (s === 'IN_TRANSIT' || s === 'IN TRANSIT') {
+      return (
+        <View style={[styles.statusBadge, { backgroundColor: THEME.inTransitBg }]}>
+          <MaterialCommunityIcons name="truck-fast-outline" size={12} color={THEME.inTransitText} style={{ marginRight: 4 }} />
+          <Text style={[styles.statusBadgeText, { color: THEME.inTransitText }]}>IN TRANSIT</Text>
+        </View>
+      );
+    }
+    return (
+      <View style={[styles.statusBadge, { backgroundColor: THEME.completedBg }]}>
+        <Ionicons name="checkmark-done-circle-outline" size={12} color={THEME.completedText} style={{ marginRight: 4 }} />
+        <Text style={[styles.statusBadgeText, { color: THEME.completedText }]}>{s}</Text>
+      </View>
+    );
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
@@ -352,9 +387,13 @@ export default function AdminHomeScreen({
 
         <Text style={styles.brandTitle}>GoviLink</Text>
 
-        <TouchableOpacity style={styles.notifBtn} activeOpacity={0.7} onPress={onLogout}>
+        <TouchableOpacity
+          style={styles.notifBtn}
+          activeOpacity={0.7}
+          onPress={() => Alert.alert('Notifications', 'No new system alerts for Cooperative Administrator.')}
+        >
           <Ionicons name="notifications-outline" size={22} color="#006837" />
-          <View style={styles.notifBadgeDot} />
+          {pendingRequestsCount > 0 && <View style={styles.notifBadgeDot} />}
         </TouchableOpacity>
       </View>
 
@@ -363,7 +402,6 @@ export default function AdminHomeScreen({
         contentContainerStyle={styles.scrollContainer}
         showsVerticalScrollIndicator={false}
       >
-        {/* METRICS / STAT CARDS GRID */}
         {activeTab === 'dashboard' && (
           <>
             {/* WELCOME BANNER & ROLE BADGE */}
@@ -374,35 +412,36 @@ export default function AdminHomeScreen({
               </View>
 
               <View style={styles.adminRoleBadge}>
-                <Ionicons name="briefcase-outline" size={12} color="#1E40AF" style={{ marginRight: 4 }} />
+                <Ionicons name="shield-checkmark" size={12} color="#1E40AF" style={{ marginRight: 4 }} />
                 <Text style={styles.adminRoleBadgeText}>ADMINISTRATOR</Text>
               </View>
             </View>
 
-            {/* ROW 1: TOTAL REQUESTS (WIDE CARD) */}
+            {/* STATISTICS CARDS GRID */}
             <View style={styles.metricsGrid}>
-              <View style={[styles.statCard, styles.statCardFull, { borderLeftColor: THEME.accentTotal, borderTopColor: THEME.accentTotal }]}>
-                <View style={styles.statCardHeader}>
-                  <View style={[styles.statIconBox, { backgroundColor: '#F1F5F9' }]}>
-                    <Ionicons name="clipboard-outline" size={20} color="#475569" />
-                  </View>
-                </View>
-                <Text style={styles.statLabel}>Total Requests</Text>
-                <Text style={styles.statValue}>{totalRequestsCount}</Text>
-              </View>
-
-              {/* ROW 2: PENDING & ACTIVE DELIVERIES */}
               <View style={styles.cardRow}>
+                <View style={[styles.statCard, styles.statCardHalf, { borderLeftColor: THEME.accentTotal, borderTopColor: THEME.accentTotal }]}>
+                  <View style={styles.statCardHeader}>
+                    <View style={[styles.statIconBox, { backgroundColor: '#E6F4EA' }]}>
+                      <Ionicons name="clipboard-outline" size={18} color="#006837" />
+                    </View>
+                  </View>
+                  <Text style={styles.statLabel}>Total Requests</Text>
+                  <Text style={styles.statValue}>{totalRequestsCount}</Text>
+                </View>
+
                 <View style={[styles.statCard, styles.statCardHalf, { borderLeftColor: THEME.accentPending, borderTopColor: THEME.accentPending }]}>
                   <View style={styles.statCardHeader}>
                     <View style={[styles.statIconBox, { backgroundColor: '#FEE2E2' }]}>
                       <Ionicons name="hourglass-outline" size={18} color="#DC2626" />
                     </View>
                   </View>
-                  <Text style={styles.statLabel}>Pending</Text>
+                  <Text style={styles.statLabel}>Pending Requests</Text>
                   <Text style={styles.statValue}>{pendingRequestsCount}</Text>
                 </View>
+              </View>
 
+              <View style={styles.cardRow}>
                 <View style={[styles.statCard, styles.statCardHalf, { borderLeftColor: THEME.accentDeliveries, borderTopColor: THEME.accentDeliveries }]}>
                   <View style={styles.statCardHeader}>
                     <View style={[styles.statIconBox, { backgroundColor: '#DCFCE7' }]}>
@@ -412,58 +451,121 @@ export default function AdminHomeScreen({
                   <Text style={styles.statLabel}>Active Deliveries</Text>
                   <Text style={styles.statValue}>{activeDeliveriesCount}</Text>
                 </View>
-              </View>
 
-              {/* ROW 3: COMPLETED & AVAILABLE DRIVERS */}
-              <View style={styles.cardRow}>
                 <View style={[styles.statCard, styles.statCardHalf, { borderLeftColor: THEME.accentCompleted, borderTopColor: THEME.accentCompleted }]}>
                   <View style={styles.statCardHeader}>
-                    <View style={[styles.statIconBox, { backgroundColor: '#F1F5F9' }]}>
-                      <Ionicons name="checkmark-circle-outline" size={20} color="#475569" />
+                    <View style={[styles.statIconBox, { backgroundColor: '#DBEAFE' }]}>
+                      <Ionicons name="checkmark-circle-outline" size={19} color="#2563EB" />
                     </View>
                   </View>
-                  <Text style={styles.statLabel}>Completed</Text>
+                  <Text style={styles.statLabel}>Completed Deliveries</Text>
                   <Text style={styles.statValue}>{completedCount}</Text>
                 </View>
+              </View>
 
+              <View style={styles.cardRow}>
                 <View style={[styles.statCard, styles.statCardHalf, { borderLeftColor: THEME.accentDrivers, borderTopColor: THEME.accentDrivers }]}>
                   <View style={styles.statCardHeader}>
-                    <View style={[styles.statIconBox, { backgroundColor: '#DBEAFE' }]}>
-                      <Ionicons name="card-outline" size={18} color="#2563EB" />
+                    <View style={[styles.statIconBox, { backgroundColor: '#EEF2FF' }]}>
+                      <Ionicons name="people-outline" size={18} color="#4F46E5" />
                     </View>
                   </View>
                   <Text style={styles.statLabel}>Available Drivers</Text>
-                  <Text style={styles.statValue}>{driversCount}</Text>
+                  <Text style={styles.statValue}>{availableDriversCount}</Text>
                 </View>
-              </View>
 
-              {/* ROW 4: AVAILABLE VEHICLES */}
-              <View style={styles.cardRow}>
                 <View style={[styles.statCard, styles.statCardHalf, { borderLeftColor: THEME.accentVehicles, borderTopColor: THEME.accentVehicles }]}>
                   <View style={styles.statCardHeader}>
-                    <View style={[styles.statIconBox, { backgroundColor: '#DBEAFE' }]}>
-                      <Ionicons name="car-outline" size={19} color="#2563EB" />
+                    <View style={[styles.statIconBox, { backgroundColor: '#F3E8FF' }]}>
+                      <Ionicons name="bus-outline" size={18} color="#7C3AED" />
                     </View>
                   </View>
                   <Text style={styles.statLabel}>Available Vehicles</Text>
-                  <Text style={styles.statValue}>{vehiclesCount}</Text>
+                  <Text style={styles.statValue}>{availableVehiclesCount}</Text>
                 </View>
               </View>
             </View>
 
+            {/* ATTENTION REQUIRED SECTION (CONDITIONAL) */}
+            {(pendingRequestsCount > 0 || availableDriversCount === 0 || availableVehiclesCount === 0) && (
+              <View style={styles.sectionContainer}>
+                <View style={styles.attentionHeaderRow}>
+                  <Ionicons name="warning-outline" size={18} color="#DC2626" style={{ marginRight: 6 }} />
+                  <Text style={styles.attentionHeaderTitle}>Attention Required</Text>
+                </View>
+
+                {pendingRequestsCount > 0 && (
+                  <View style={styles.attentionCardAlert}>
+                    <View style={styles.attentionIconCircle}>
+                      <Ionicons name="time" size={18} color="#B45309" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.attentionAlertTitle}>Pending Transport Requests ({pendingRequestsCount})</Text>
+                      <Text style={styles.attentionAlertSub}>Transport requests waiting for driver & vehicle dispatch.</Text>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.attentionActionBtn}
+                      onPress={() => setActiveTab('requests')}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.attentionActionBtnText}>Assign Now</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                {availableDriversCount === 0 && (
+                  <View style={[styles.attentionCardAlert, { backgroundColor: '#FEF2F2', borderColor: '#FCA5A5' }]}>
+                    <View style={[styles.attentionIconCircle, { backgroundColor: '#FEE2E2' }]}>
+                      <Ionicons name="person-remove" size={18} color="#DC2626" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.attentionAlertTitle, { color: '#991B1B' }]}>No Available Drivers</Text>
+                      <Text style={styles.attentionAlertSub}>All fleet drivers are currently assigned to active routes.</Text>
+                    </View>
+                    <TouchableOpacity
+                      style={[styles.attentionActionBtn, { backgroundColor: '#DC2626' }]}
+                      onPress={() => setActiveTab('drivers')}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.attentionActionBtnText}>Roster</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                {availableVehiclesCount === 0 && (
+                  <View style={[styles.attentionCardAlert, { backgroundColor: '#FFF7ED', borderColor: '#FDBA74' }]}>
+                    <View style={[styles.attentionIconCircle, { backgroundColor: '#FFEDD5' }]}>
+                      <MaterialCommunityIcons name="truck-alert" size={18} color="#C2410C" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.attentionAlertTitle, { color: '#9A3412' }]}>Vehicle Fleet Capacity Low</Text>
+                      <Text style={styles.attentionAlertSub}>No unassigned vehicles available in cooperative fleet.</Text>
+                    </View>
+                    <TouchableOpacity
+                      style={[styles.attentionActionBtn, { backgroundColor: '#C2410C' }]}
+                      onPress={() => setActiveTab('vehicles')}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.attentionActionBtnText}>Manage</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+            )}
+
             {/* QUICK ACTIONS SECTION */}
             <View style={styles.sectionContainer}>
               <Text style={styles.sectionHeaderTitle}>Quick Actions</Text>
-              <View style={styles.quickActionsRow}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickActionsScroll}>
                 <TouchableOpacity
                   style={[styles.quickActionCard, styles.quickActionPrimary]}
                   onPress={() => setActiveTab('requests')}
                   activeOpacity={0.85}
                 >
                   <View style={styles.quickActionIconBoxWhite}>
-                    <Ionicons name="id-card-outline" size={22} color="#006837" />
+                    <Ionicons name="list-outline" size={20} color="#006837" />
                   </View>
-                  <Text style={styles.quickActionTextPrimary}>Manage{'\n'}Requests</Text>
+                  <Text style={styles.quickActionTextPrimary}>View Transport{'\n'}Requests</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -472,9 +574,9 @@ export default function AdminHomeScreen({
                   activeOpacity={0.85}
                 >
                   <View style={styles.quickActionIconBoxSecondary}>
-                    <Ionicons name="swap-horizontal-outline" size={22} color="#0D9488" />
+                    <Ionicons name="swap-horizontal-outline" size={20} color="#0D9488" />
                   </View>
-                  <Text style={styles.quickActionTextSecondary}>Assign{'\n'}Logistics</Text>
+                  <Text style={styles.quickActionTextSecondary}>Assign Driver{'\n'}& Vehicle</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -483,75 +585,151 @@ export default function AdminHomeScreen({
                   activeOpacity={0.85}
                 >
                   <View style={styles.quickActionIconBoxSecondary}>
-                    <MaterialCommunityIcons name="truck-outline" size={22} color="#1E40AF" />
+                    <Ionicons name="people-outline" size={20} color="#1E40AF" />
                   </View>
-                  <Text style={styles.quickActionTextSecondary}>Fleet{'\n'}Status</Text>
+                  <Text style={styles.quickActionTextSecondary}>Manage{'\n'}Drivers</Text>
                 </TouchableOpacity>
-              </View>
+
+                <TouchableOpacity
+                  style={styles.quickActionCard}
+                  onPress={() => setActiveTab('vehicles')}
+                  activeOpacity={0.85}
+                >
+                  <View style={styles.quickActionIconBoxSecondary}>
+                    <MaterialCommunityIcons name="truck-outline" size={20} color="#7C3AED" />
+                  </View>
+                  <Text style={styles.quickActionTextSecondary}>Manage{'\n'}Vehicles</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.quickActionCard}
+                  onPress={() => setActiveTab('deliveries')}
+                  activeOpacity={0.85}
+                >
+                  <View style={styles.quickActionIconBoxSecondary}>
+                    <Ionicons name="navigate-outline" size={20} color="#0284C7" />
+                  </View>
+                  <Text style={styles.quickActionTextSecondary}>View{'\n'}Deliveries</Text>
+                </TouchableOpacity>
+              </ScrollView>
             </View>
 
-            {/* RECENT ACTIVITY SECTION */}
+            {/* RECENT TRANSPORT REQUESTS SECTION */}
             <View style={styles.sectionContainer}>
               <View style={styles.recentActivityHeader}>
-                <Text style={styles.sectionHeaderTitle}>Recent Activity</Text>
+                <Text style={styles.sectionHeaderTitle}>Recent Transport Requests</Text>
                 <TouchableOpacity onPress={() => setActiveTab('requests')}>
                   <Text style={styles.viewAllBtnText}>View All</Text>
                 </TouchableOpacity>
               </View>
 
-              {/* ACTIVITY ITEM 1: Transport Request */}
-              <View style={styles.activityCard}>
-                <View style={styles.activityIconBoxProduce}>
-                  <Text style={{ fontSize: 18 }}>🥕</Text>
+              {displayRequests.length === 0 ? (
+                <View style={styles.emptyBoxSection}>
+                  <Ionicons name="document-text-outline" size={38} color="#94A3B8" />
+                  <Text style={styles.emptyTitle}>No Transport Requests</Text>
+                  <Text style={styles.emptySub}>No recent transport requests created yet.</Text>
                 </View>
-                <View style={styles.activityContent}>
-                  <View style={styles.activityTopRow}>
-                    <Text style={styles.activityTitle}>Transport Request</Text>
-                    <Text style={styles.activityTime}>2m ago</Text>
-                  </View>
-                  <Text style={styles.activitySubtitle}>
-                    Nimal Perera • Fresh Carrots (500kg)
-                  </Text>
-                  <View style={styles.badgesRow}>
-                    <View style={styles.locationBadge}>
-                      <Ionicons name="location-outline" size={11} color="#475569" style={{ marginRight: 2 }} />
-                      <Text style={styles.locationBadgeText}>KANDY</Text>
+              ) : (
+                displayRequests.slice(0, 3).map((item) => (
+                  <View key={item.id} style={styles.requestCardSummary}>
+                    <View style={styles.cardHeaderRow}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                        <Text style={styles.cardReqIdText}>#{item.id}</Text>
+                        <Text style={styles.cardReqProduceText} numberOfLines={1}>
+                          • {item.produceName || 'Produce'} ({item.qty || 1000}{item.unit || 'kg'})
+                        </Text>
+                      </View>
+                      {renderStatusBadge(item.status)}
                     </View>
 
-                    <View style={styles.pendingStatusBadge}>
-                      <Ionicons name="remove-circle-outline" size={11} color="#DC2626" style={{ marginRight: 2 }} />
-                      <Text style={styles.pendingStatusBadgeText}>PENDING</Text>
+                    <View style={styles.cardDividerSmall} />
+
+                    <View style={styles.requestMetaRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.metaLabelText}>Farmer: <Text style={styles.metaValText}>{item.farmerName || 'Farmer'}</Text></Text>
+                        <Text style={styles.metaLabelText}>Pickup: <Text style={styles.metaValText}>{item.pickupLocation || 'Origin'}</Text></Text>
+                        <Text style={styles.metaLabelText}>Destination: <Text style={styles.metaValText}>{item.deliveryAddress || 'Destination'}</Text></Text>
+                      </View>
+                      <View style={{ alignItems: 'flex-end', justifyContent: 'space-between' }}>
+                        <Text style={styles.dateMetaText}>{formatDateString(item.createdAt)}</Text>
+                        <TouchableOpacity
+                          style={styles.detailsBtnSmall}
+                          onPress={() => setSelectedOrderForDetails(item)}
+                          activeOpacity={0.8}
+                        >
+                          <Text style={styles.detailsBtnSmallText}>View Details</Text>
+                        </TouchableOpacity>
+                      </View>
                     </View>
                   </View>
-                </View>
+                ))
+              )}
+            </View>
+
+            {/* ACTIVE DELIVERIES SECTION */}
+            <View style={styles.sectionContainer}>
+              <View style={styles.recentActivityHeader}>
+                <Text style={styles.sectionHeaderTitle}>Active Deliveries</Text>
+                <TouchableOpacity onPress={() => setActiveTab('deliveries')}>
+                  <Text style={styles.viewAllBtnText}>Manage Deliveries</Text>
+                </TouchableOpacity>
               </View>
 
-              {/* ACTIVITY ITEM 2: Driver Assigned */}
-              <View style={styles.activityCard}>
-                <View style={styles.activityIconBoxDriver}>
-                  <Text style={{ fontSize: 16 }}>🚚</Text>
+              {displayActiveDeliveries.length === 0 ? (
+                <View style={styles.emptyBoxSection}>
+                  <MaterialCommunityIcons name="truck-check-outline" size={38} color="#94A3B8" />
+                  <Text style={styles.emptyTitle}>No Active Deliveries</Text>
+                  <Text style={styles.emptySub}>All assigned shipments have completed delivery.</Text>
                 </View>
-                <View style={styles.activityContent}>
-                  <View style={styles.activityTopRow}>
-                    <Text style={styles.activityTitle}>Driver Assigned</Text>
-                    <Text style={styles.activityTime}>15m ago</Text>
+              ) : (
+                displayActiveDeliveries.slice(0, 2).map((item) => (
+                  <View key={item.id} style={styles.deliveryCardSummary}>
+                    <View style={styles.cardHeaderRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.cardReqIdText}>{item.orderNo || `#${item.id}`}</Text>
+                        <Text style={styles.cardReqProduceText}>{item.produceName || 'Agricultural Produce'}</Text>
+                      </View>
+                      {renderStatusBadge(item.status || 'IN_TRANSIT')}
+                    </View>
+
+                    <View style={styles.cardDividerSmall} />
+
+                    <View style={styles.deliveryRouteBoxSummary}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.routeSublabel}>DRIVER & VEHICLE</Text>
+                        <Text style={styles.locationTitle}>
+                          {item.driverName || 'Driver'} • {item.vehicleNumber || item.vehiclePlate || 'Vehicle'}
+                        </Text>
+                      </View>
+                      <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                        <Text style={styles.routeSublabel}>ROUTE</Text>
+                        <Text style={styles.locationTitle} numberOfLines={1}>
+                          {item.pickupLocation} ➔ {item.deliveryAddress}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <TouchableOpacity
+                      style={styles.trackPrimaryBtn}
+                      onPress={() => setSelectedDeliveryForTracking(item)}
+                      activeOpacity={0.85}
+                    >
+                      <Ionicons name="navigate-circle-outline" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
+                      <Text style={styles.trackPrimaryBtnText}>Track Delivery</Text>
+                    </TouchableOpacity>
                   </View>
-                  <Text style={styles.activitySubtitle}>
-                    Saman Kumara to order #TR-4029
-                  </Text>
-                </View>
-              </View>
+                ))
+              )}
             </View>
           </>
         )}
 
-        {/* SHIPMENT REQUESTS & DISPATCH TAB VIEW */}
+        {/* TRANSPORT REQUESTS TAB */}
         {activeTab === 'requests' && (
           <View style={styles.tabContentContainer}>
-            {/* TITLE & SUBTITLE */}
             <Text style={styles.requestsPageTitle}>Transport Requests</Text>
             <Text style={styles.requestsPageSub}>
-              Manage pending logistics for agricultural produce.
+              Manage transport requests submitted by farmers and buyers.
             </Text>
 
             {/* SEARCH & FILTER BAR */}
@@ -560,7 +738,7 @@ export default function AdminHomeScreen({
                 <Ionicons name="search-outline" size={20} color="#64748B" style={{ marginRight: 8 }} />
                 <TextInput
                   style={styles.searchInputField}
-                  placeholder="Search requests..."
+                  placeholder="Search requests by ID, produce, farmer..."
                   placeholderTextColor="#94A3B8"
                   value={searchQuery}
                   onChangeText={setSearchQuery}
@@ -571,13 +749,8 @@ export default function AdminHomeScreen({
                   </TouchableOpacity>
                 )}
               </View>
-
-              <TouchableOpacity style={styles.filterBtn} activeOpacity={0.7}>
-                <Ionicons name="options-outline" size={20} color="#475569" />
-              </TouchableOpacity>
             </View>
 
-            {/* REQUEST CARDS LIST */}
             {filteredRequests.length === 0 ? (
               <View style={styles.emptyBox}>
                 <Ionicons name="search-outline" size={44} color="#006837" />
@@ -596,56 +769,44 @@ export default function AdminHomeScreen({
                     onPress={() => setSelectedOrderForDetails(order)}
                     activeOpacity={0.88}
                   >
-                    {/* TOP HEADER ROW */}
                     <View style={styles.cardHeaderRow}>
                       <Text style={styles.cardProduceTitle}>
                         {order.produceName || `${order.produceType || 'Produce'}, ${order.qty || 1000}${order.unit || 'kg'}`}
                       </Text>
-                      <View style={styles.pendingBadge}>
-                        <Text style={styles.pendingBadgeText}>
-                          {order.status || 'PENDING'}
-                        </Text>
-                      </View>
+                      {renderStatusBadge(order.status)}
                     </View>
 
-                    {/* FARMER SUBHEADER ROW */}
                     <View style={styles.farmerRow}>
                       <Ionicons name="person-outline" size={14} color="#64748B" style={{ marginRight: 6 }} />
                       <Text style={styles.farmerNameText}>
-                        {order.farmerName || 'Farmer Partner'}
+                        Farmer: {order.farmerName || 'Farmer Partner'}
                       </Text>
                     </View>
 
-                    {/* DIVIDER LINE */}
                     <View style={styles.cardDivider} />
 
-                    {/* ROUTE TIMELINE */}
                     <View style={styles.routeContainer}>
-                      {/* PICKUP NODE */}
                       <View style={styles.routeNodeRow}>
                         <View style={styles.pickupCircleOuter}>
                           <View style={styles.pickupCircleInner} />
                         </View>
                         <View style={styles.routeTextCol}>
-                          <Text style={styles.routeLabelPickup}>PICKUP</Text>
+                          <Text style={styles.routeLabelPickup}>PICKUP LOCATION</Text>
                           <Text style={styles.locationTitle}>{order.pickupLocation || 'Farm Origin'}</Text>
                         </View>
                       </View>
 
-                      {/* CONNECTING LINE */}
                       <View style={styles.routeConnectingLine} />
 
-                      {/* DESTINATION NODE */}
                       <View style={styles.routeNodeRow}>
                         <View style={styles.destCircleOuter} />
                         <View style={styles.routeTextCol}>
-                          <Text style={styles.routeLabelDest}>DESTINATION</Text>
+                          <Text style={styles.routeLabelDest}>DELIVERY DESTINATION</Text>
                           <Text style={styles.locationTitle}>{order.deliveryAddress || 'Distribution Center'}</Text>
                         </View>
                       </View>
                     </View>
 
-                    {/* REQUESTED DATE BANNER */}
                     <View style={styles.dateBannerBox}>
                       <Ionicons name="calendar-outline" size={16} color="#0284C7" style={{ marginRight: 8 }} />
                       <Text style={styles.dateBannerText}>
@@ -653,7 +814,6 @@ export default function AdminHomeScreen({
                       </Text>
                     </View>
 
-                    {/* DRIVER SELECTION & ASSIGN BUTTON */}
                     {selectedDriver ? (
                       <View style={styles.selectedDriverBox}>
                         <View style={styles.selectedDriverInfo}>
@@ -688,11 +848,10 @@ export default function AdminHomeScreen({
                         activeOpacity={0.85}
                       >
                         <MaterialCommunityIcons name="truck" size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
-                        <Text style={styles.assignPrimaryBtnText}>Assign Transport</Text>
+                        <Text style={styles.assignPrimaryBtnText}>Assign Driver & Vehicle</Text>
                       </TouchableOpacity>
                     )}
 
-                    {/* DRIVER SELECTION MODAL / DROPDOWN TRIGGER */}
                     {driverModalOrderId === order.id && (
                       <View style={{ marginTop: 10 }}>
                         <Text style={styles.dropdownTitle}>Select Available Fleet Driver:</Text>
@@ -716,12 +875,12 @@ export default function AdminHomeScreen({
           </View>
         )}
 
-        {/* DRIVERS & FLEET ROSTER TAB VIEW */}
+        {/* DRIVERS TAB */}
         {activeTab === 'drivers' && (
           <View style={styles.tabContentContainer}>
-            <Text style={styles.requestsPageTitle}>Cooperative Driver Fleet</Text>
+            <Text style={styles.requestsPageTitle}>Cooperative Drivers Roster</Text>
             <Text style={styles.requestsPageSub}>
-              Live fleet tracking & availability roster.
+              Real-time roster and status of cooperative transport drivers.
             </Text>
 
             {evaluatedDrivers.map((driver) => (
@@ -760,10 +919,10 @@ export default function AdminHomeScreen({
 
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                   <Text style={styles.locationTitle}>
-                    🚛 {driver.vehicleNumber || 'Standard Lorry Fleet'}
+                    🚛 {driver.vehicleNumber || 'Standard Fleet Truck'}
                   </Text>
                   <Text style={styles.dateBannerText}>
-                    📍 {driver.district?.nameEn || 'Western Province'}
+                    📍 {driver.district?.nameEn || 'Western Hub'}
                   </Text>
                 </View>
               </View>
@@ -771,19 +930,20 @@ export default function AdminHomeScreen({
           </View>
         )}
 
-        {/* VEHICLES TAB VIEW */}
+        {/* VEHICLES TAB */}
         {activeTab === 'vehicles' && (
           <View style={styles.tabContentContainer}>
-            {/* PAGE TITLE */}
-            <Text style={styles.requestsPageTitle}>Cooperative Fleet</Text>
+            <Text style={styles.requestsPageTitle}>Cooperative Vehicle Fleet</Text>
+            <Text style={styles.requestsPageSub}>
+              Logistics vehicle fleet capacity and availability records.
+            </Text>
 
-            {/* SEARCH BAR */}
             <View style={[styles.searchFilterRow, { marginTop: 12, marginBottom: 4 }]}>
               <View style={styles.searchInputContainer}>
                 <Ionicons name="search-outline" size={20} color="#64748B" style={{ marginRight: 8 }} />
                 <TextInput
                   style={styles.searchInputField}
-                  placeholder="Search license plate or driver..."
+                  placeholder="Search license plate, title..."
                   placeholderTextColor="#94A3B8"
                   value={vehicleSearchQuery}
                   onChangeText={setVehicleSearchQuery}
@@ -796,17 +956,16 @@ export default function AdminHomeScreen({
               </View>
             </View>
 
-            {/* CATEGORY FILTER CHIPS */}
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.categoryChipsScroll}
             >
               {[
-                { id: 'all', label: 'All Types' },
-                { id: 'lorry', label: 'Lorry' },
-                { id: 'pickup', label: 'Pickup' },
-                { id: 'tractor', label: 'Tractor' },
+                { id: 'all', label: 'All Fleet' },
+                { id: 'lorry', label: 'Lorries' },
+                { id: 'pickup', label: 'Pickups' },
+                { id: 'tractor', label: 'Tractors' },
               ].map((chip) => (
                 <TouchableOpacity
                   key={chip.id}
@@ -829,7 +988,6 @@ export default function AdminHomeScreen({
               ))}
             </ScrollView>
 
-            {/* VEHICLE CARDS LIST */}
             {filteredVehicles.length === 0 ? (
               <View style={styles.emptyBox}>
                 <Ionicons name="car-outline" size={44} color="#006837" />
@@ -838,8 +996,8 @@ export default function AdminHomeScreen({
               </View>
             ) : (
               filteredVehicles.map((vehicle) => {
-                let accentColor = '#10B981'; // Green for Available
-                if (vehicle.status === 'ASSIGNED') accentColor = '#475569';
+                let accentColor = '#10B981';
+                if (vehicle.status === 'ASSIGNED') accentColor = '#3B82F6';
                 if (vehicle.status === 'MAINTENANCE') accentColor = '#EF4444';
 
                 return (
@@ -847,10 +1005,9 @@ export default function AdminHomeScreen({
                     key={vehicle.id}
                     style={[styles.requestCard, { borderLeftColor: accentColor }]}
                   >
-                    {/* TOP SECTION: THUMBNAIL + DETAILS */}
                     <View style={styles.vehicleCardTopRow}>
                       <Image
-                        source={{ uri: vehicle.image }}
+                        source={{ uri: vehicle.image || 'https://images.unsplash.com/photo-1601584115197-04ecc0da31d7?auto=format&fit=crop&w=400&q=80' }}
                         style={styles.vehicleCardImage}
                         resizeMode="cover"
                       />
@@ -858,7 +1015,7 @@ export default function AdminHomeScreen({
                       <View style={styles.vehicleCardMainCol}>
                         <View style={styles.vehicleCardHeaderRow}>
                           <Text style={styles.cardProduceTitle} numberOfLines={1}>
-                            {vehicle.title}
+                            {vehicle.title || vehicle.makeModel || 'Coop Truck'}
                           </Text>
 
                           {vehicle.status === 'AVAILABLE' && (
@@ -880,7 +1037,7 @@ export default function AdminHomeScreen({
                           )}
                         </View>
 
-                        <Text style={styles.vehiclePlateText}>{vehicle.plateNumber}</Text>
+                        <Text style={styles.vehiclePlateText}>{vehicle.plateNumber || vehicle.vehicleNumber || 'WP-COL-0000'}</Text>
 
                         {vehicle.capacity && (
                           <View style={styles.vehicleCapacityRow}>
@@ -888,43 +1045,8 @@ export default function AdminHomeScreen({
                             <Text style={styles.vehicleCapacityText}>{vehicle.capacity}</Text>
                           </View>
                         )}
-
-                        {vehicle.maintenanceNote && (
-                          <View style={styles.vehicleCapacityRow}>
-                            <Ionicons name="construct-outline" size={14} color="#64748B" style={{ marginRight: 6 }} />
-                            <Text style={styles.farmerNameText}>{vehicle.maintenanceNote}</Text>
-                          </View>
-                        )}
                       </View>
                     </View>
-
-                    {/* ASSIGNED DRIVER BOTTOM SECTION */}
-                    {vehicle.status === 'ASSIGNED' && (
-                      <>
-                        <View style={styles.cardDivider} />
-                        <View style={styles.vehicleDriverRow}>
-                          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                            <Ionicons name="person-outline" size={14} color="#64748B" style={{ marginRight: 6 }} />
-                            <Text style={styles.vehicleDriverName}>{vehicle.driverName}</Text>
-                          </View>
-                          <Text
-                            style={[
-                              styles.vehicleDriverStatus,
-                              vehicle.driverStatus === 'In Transit' ? { color: '#059669' } : { color: '#0F172A' },
-                            ]}
-                          >
-                            {vehicle.driverStatus}
-                          </Text>
-                        </View>
-
-                        {vehicle.location && (
-                          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
-                            <Ionicons name="location-outline" size={14} color="#64748B" style={{ marginRight: 6 }} />
-                            <Text style={styles.farmerNameText}>{vehicle.location}</Text>
-                          </View>
-                        )}
-                      </>
-                    )}
                   </View>
                 );
               })
@@ -932,220 +1054,100 @@ export default function AdminHomeScreen({
           </View>
         )}
 
-        {/* DELIVERIES TAB VIEW */}
-        {activeTab === 'deliveries' && (() => {
-          const displayDeliveries = (ordersList && ordersList.length > 0)
-            ? ordersList.map((o, idx) => ({
-              id: o.id || `gl_${8829 + idx}`,
-              orderNo: o.id ? `Order #${String(o.id).slice(-6).toUpperCase()}` : `Order #GL-88${29 + idx}`,
-              buyerName: o.buyerName || (idx % 2 === 0 ? 'Produce Wholesaler Corp' : 'AgriFood Distributors'),
-              origin: o.pickupLocation || (idx % 2 === 0 ? 'Matale' : 'Dambulla'),
-              destination: o.deliveryAddress || (idx % 2 === 0 ? 'Colombo' : 'Kandy'),
-              driverName: o.driverName || (idx % 2 === 0 ? 'Kamal Perera' : 'Unassigned'),
-              vehiclePlate: o.vehiclePlate || o.driverVehicle || (idx % 2 === 0 ? 'WP-LD-4821' : '- -'),
-              status: o.status || (idx % 2 === 0 ? 'IN_TRANSIT' : 'PENDING'),
-            }))
-            : [
-              {
-                id: 'gl_8829',
-                orderNo: 'Order #GL-8829',
-                buyerName: 'Produce Wholesaler Corp',
-                origin: 'Matale',
-                destination: 'Colombo',
-                driverName: 'Kamal Perera',
-                vehiclePlate: 'WP-LD-4821',
-                status: 'IN_TRANSIT',
-              },
-              {
-                id: 'gl_8830',
-                orderNo: 'Order #GL-8830',
-                buyerName: 'AgriFood Distributors',
-                origin: 'Dambulla',
-                destination: 'Kandy',
-                driverName: 'Unassigned',
-                vehiclePlate: '- -',
-                status: 'PENDING',
-              },
-              {
-                id: 'gl_8831',
-                orderNo: 'Order #GL-8831',
-                buyerName: 'Lanka Supermarket Network',
-                origin: 'Nuwara Eliya',
-                destination: 'Galle',
-                driverName: 'Sunil Perera',
-                vehiclePlate: 'CP-PK-8821',
-                status: 'DELIVERED',
-              },
-            ];
+        {/* DELIVERIES TAB */}
+        {activeTab === 'deliveries' && (
+          <View style={styles.tabContentContainer}>
+            <Text style={styles.requestsPageTitle}>Active Deliveries</Text>
+            <Text style={styles.requestsPageSub}>
+              Manage and track ongoing logistical deliveries across hubs.
+            </Text>
 
-          const filteredDeliveries = displayDeliveries.filter((item) => {
-            if (deliveryFilter === 'in_transit') return item.status === 'IN_TRANSIT';
-            if (deliveryFilter === 'pending') return item.status === 'PENDING';
-            if (deliveryFilter === 'delivered') return item.status === 'DELIVERED';
-            return true;
-          });
-
-          return (
-            <View style={styles.tabContentContainer}>
-              <Text style={styles.requestsPageTitle}>Active Deliveries</Text>
-              <Text style={styles.requestsPageSub}>
-                Manage and track ongoing logistical routes.
-              </Text>
-
-              {/* FILTER CHIPS */}
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.categoryChipsScroll}
-              >
-                {[
-                  { id: 'all', label: 'All' },
-                  { id: 'in_transit', label: 'In Transit' },
-                  { id: 'pending', label: 'Pending' },
-                  { id: 'delivered', label: 'Delivered' },
-                ].map((chip) => (
-                  <TouchableOpacity
-                    key={chip.id}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.categoryChipsScroll}
+            >
+              {[
+                { id: 'all', label: 'All Deliveries' },
+                { id: 'in_transit', label: 'In Transit' },
+                { id: 'pending', label: 'Pending' },
+                { id: 'delivered', label: 'Delivered' },
+              ].map((chip) => (
+                <TouchableOpacity
+                  key={chip.id}
+                  style={[
+                    styles.categoryChip,
+                    deliveryFilter === chip.id && styles.categoryChipActive,
+                  ]}
+                  onPress={() => setDeliveryFilter(chip.id)}
+                  activeOpacity={0.8}
+                >
+                  <Text
                     style={[
-                      styles.categoryChip,
-                      deliveryFilter === chip.id && styles.categoryChipActive,
+                      styles.categoryChipText,
+                      deliveryFilter === chip.id && styles.categoryChipTextActive,
                     ]}
-                    onPress={() => setDeliveryFilter(chip.id)}
-                    activeOpacity={0.8}
                   >
-                    <Text
-                      style={[
-                        styles.categoryChipText,
-                        deliveryFilter === chip.id && styles.categoryChipTextActive,
-                      ]}
-                    >
-                      {chip.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
+                    {chip.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
 
-              {/* DELIVERIES LIST CARDS */}
-              {filteredDeliveries.map((item) => {
-                const isInTransit = item.status === 'IN_TRANSIT';
-                const isPending = item.status === 'PENDING';
-                const isDelivered = item.status === 'DELIVERED';
+            {displayActiveDeliveries.map((item) => (
+              <TouchableOpacity
+                key={item.id}
+                style={[styles.requestCard, { borderLeftColor: '#10B981' }]}
+                onPress={() => setSelectedDeliveryForTracking(item)}
+                activeOpacity={0.88}
+              >
+                <View style={styles.cardHeaderRow}>
+                  <Text style={styles.cardProduceTitle}>{item.orderNo || `#${item.id}`}</Text>
+                  {renderStatusBadge(item.status || 'IN_TRANSIT')}
+                </View>
 
-                let borderAccent = '#10B981'; // Green for In Transit
-                if (isPending) borderAccent = '#3B536F'; // Slate blue for Pending
-                if (isDelivered) borderAccent = '#3B82F6'; // Blue for Delivered
+                <Text style={[styles.farmerNameText, { marginTop: 2, marginBottom: 10 }]}>
+                  Buyer: {item.buyerName || 'Cooperative Buyer'}
+                </Text>
 
-                return (
-                  <TouchableOpacity
-                    key={item.id}
-                    style={[styles.requestCard, { borderLeftColor: borderAccent }]}
-                    onPress={() => setSelectedDeliveryForTracking(item)}
-                    activeOpacity={0.88}
-                  >
-                    {/* CARD TOP ROW */}
-                    <View style={styles.cardHeaderRow}>
-                      <Text style={styles.cardProduceTitle}>{item.orderNo}</Text>
+                <View style={styles.deliveryRouteBox}>
+                  <View style={styles.deliveryRouteCol}>
+                    <Text style={styles.routeSublabel}>PICKUP</Text>
+                    <Text style={styles.locationTitle}>{item.pickupLocation}</Text>
+                  </View>
 
-                      <View
-                        style={[
-                          styles.pendingBadge,
-                          isInTransit && { backgroundColor: '#DCFCE7' },
-                          isPending && { backgroundColor: '#F1F5F9' },
-                          isDelivered && { backgroundColor: '#DBEAFE' },
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.pendingBadgeText,
-                            isInTransit && { color: '#059669' },
-                            isPending && { color: '#475569' },
-                            isDelivered && { color: '#1D4ED8' },
-                          ]}
-                        >
-                          {item.status.replace(/_/g, ' ')}
-                        </Text>
-                      </View>
-                    </View>
+                  <Ionicons name="arrow-forward-outline" size={20} color="#64748B" />
 
-                    {/* BUYER / WHOLESALER SUBHEAD */}
-                    <Text style={[styles.farmerNameText, { marginTop: 2, marginBottom: 10 }]}>
-                      {item.buyerName}
-                    </Text>
+                  <View style={[styles.deliveryRouteCol, { alignItems: 'flex-end' }]}>
+                    <Text style={styles.routeSublabel}>DESTINATION</Text>
+                    <Text style={styles.locationTitle}>{item.deliveryAddress}</Text>
+                  </View>
+                </View>
 
-                    {/* ORIGIN -> DESTINATION BOX */}
-                    <View style={styles.deliveryRouteBox}>
-                      <View style={styles.deliveryRouteCol}>
-                        <Text style={styles.routeSublabel}>ORIGIN</Text>
-                        <Text style={styles.locationTitle}>{item.origin}</Text>
-                      </View>
+                <View style={styles.deliveryDriverRow}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Ionicons name="person-outline" size={14} color="#475569" style={{ marginRight: 6 }} />
+                    <Text style={styles.farmerNameText}>{item.driverName || 'Driver'}</Text>
+                  </View>
 
-                      <Ionicons name="arrow-forward-outline" size={20} color="#64748B" />
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Ionicons name="car-outline" size={14} color="#475569" style={{ marginRight: 6 }} />
+                    <Text style={styles.farmerNameText}>{item.vehicleNumber || item.vehiclePlate || 'Fleet Vehicle'}</Text>
+                  </View>
+                </View>
 
-                      <View style={[styles.deliveryRouteCol, { alignItems: 'flex-end' }]}>
-                        <Text style={styles.routeSublabel}>DESTINATION</Text>
-                        <Text style={styles.locationTitle}>{item.destination}</Text>
-                      </View>
-                    </View>
-
-                    {/* DRIVER & VEHICLE DETAILS ROW */}
-                    <View style={styles.deliveryDriverRow}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <Ionicons name="person-outline" size={14} color="#475569" style={{ marginRight: 6 }} />
-                        <Text style={styles.farmerNameText}>{item.driverName}</Text>
-                      </View>
-
-                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <Ionicons name="car-outline" size={14} color="#475569" style={{ marginRight: 6 }} />
-                        <Text style={styles.farmerNameText}>{item.vehiclePlate}</Text>
-                      </View>
-                    </View>
-
-                    {/* STEP TRACKER BAR */}
-                    <View style={styles.stepTrackerContainer}>
-                      <View style={styles.stepTrackerLabelsRow}>
-                        <Text
-                          style={[
-                            styles.stepTrackerLabel,
-                            (isInTransit || isDelivered || isPending) && styles.stepTrackerLabelActive,
-                          ]}
-                        >
-                          Dispatched
-                        </Text>
-                        <Text
-                          style={[
-                            styles.stepTrackerLabel,
-                            (isInTransit || isDelivered) && styles.stepTrackerLabelActive,
-                          ]}
-                        >
-                          Picked Up
-                        </Text>
-                        <Text
-                          style={[
-                            styles.stepTrackerLabel,
-                            isDelivered && styles.stepTrackerLabelActive,
-                          ]}
-                        >
-                          Delivered
-                        </Text>
-                      </View>
-
-                      <View style={styles.stepTrackerBarTrack}>
-                        <View
-                          style={[
-                            styles.stepTrackerBarFill,
-                            isPending && { width: '12%', backgroundColor: '#94A3B8' },
-                            isInTransit && { width: '50%', backgroundColor: '#006837' },
-                            isDelivered && { width: '100%', backgroundColor: '#006837' },
-                          ]}
-                        />
-                      </View>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          );
-        })()}
+                <TouchableOpacity
+                  style={styles.assignPrimaryBtn}
+                  onPress={() => setSelectedDeliveryForTracking(item)}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="navigate-circle-outline" size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
+                  <Text style={styles.assignPrimaryBtnText}>Track Delivery Status</Text>
+                </TouchableOpacity>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
       </ScrollView>
 
       {/* BOTTOM NAVIGATION BAR */}
@@ -1252,7 +1254,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingVertical: 12,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
   },
   profileAvatarWrapper: {
     width: 38,
@@ -1300,13 +1304,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 6,
-    marginBottom: 20,
+    marginTop: 14,
+    marginBottom: 18,
   },
   welcomeSubhead: {
     fontSize: 13,
     color: '#64748B',
-    fontWeight: '400',
+    fontWeight: '500',
   },
   adminTitle: {
     fontSize: 24,
@@ -1318,7 +1322,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#DBEAFE',
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
   },
@@ -1331,39 +1335,35 @@ const styles = StyleSheet.create({
 
   /* METRICS GRID */
   metricsGrid: {
-    marginBottom: 22,
+    marginBottom: 20,
   },
   cardRow: {
     flexDirection: 'row',
     gap: 12,
-    marginTop: 12,
+    marginBottom: 12,
   },
   statCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
-    padding: 16,
-    borderLeftWidth: 3,
-    borderTopWidth: 3,
-    borderColor: 'transparent',
-    borderTopLeftRadius: 16,
+    padding: 14,
+    borderLeftWidth: 3.5,
+    borderTopWidth: 1,
+    borderColor: '#E2E8F0',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.04,
-    shadowRadius: 8,
+    shadowRadius: 6,
     elevation: 2,
-  },
-  statCardFull: {
-    width: '100%',
   },
   statCardHalf: {
     flex: 1,
   },
   statCardHeader: {
-    marginBottom: 10,
+    marginBottom: 8,
   },
   statIconBox: {
-    width: 34,
-    height: 34,
+    width: 32,
+    height: 32,
     borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
@@ -1375,14 +1375,66 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   statValue: {
-    fontSize: 26,
+    fontSize: 24,
     fontWeight: '800',
     color: '#0F172A',
   },
 
+  /* ATTENTION REQUIRED */
+  attentionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  attentionHeaderTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#DC2626',
+  },
+  attentionCardAlert: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#FCD34D',
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 10,
+    gap: 10,
+  },
+  attentionIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#FDE68A',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  attentionAlertTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#78350F',
+  },
+  attentionAlertSub: {
+    fontSize: 11,
+    color: '#92400E',
+    marginTop: 2,
+  },
+  attentionActionBtn: {
+    backgroundColor: '#B45309',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
+  },
+  attentionActionBtnText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+
   /* QUICK ACTIONS */
   sectionContainer: {
-    marginBottom: 24,
+    marginBottom: 22,
   },
   sectionHeaderTitle: {
     fontSize: 16,
@@ -1390,41 +1442,40 @@ const styles = StyleSheet.create({
     color: '#0F172A',
     marginBottom: 12,
   },
-  quickActionsRow: {
-    flexDirection: 'row',
-    gap: 12,
+  quickActionsScroll: {
+    gap: 10,
   },
   quickActionCard: {
-    flex: 1,
+    width: 125,
     backgroundColor: '#FFFFFF',
     borderRadius: 14,
     padding: 14,
     borderWidth: 1,
     borderColor: '#E2E8F0',
     justifyContent: 'space-between',
-    minHeight: 115,
+    minHeight: 110,
   },
   quickActionPrimary: {
     backgroundColor: '#006837',
     borderColor: '#006837',
   },
   quickActionIconBoxWhite: {
-    width: 36,
-    height: 36,
+    width: 34,
+    height: 34,
     borderRadius: 10,
     backgroundColor: '#FFFFFF',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   quickActionIconBoxSecondary: {
-    width: 36,
-    height: 36,
+    width: 34,
+    height: 34,
     borderRadius: 10,
     backgroundColor: '#F8FAFC',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   quickActionTextPrimary: {
     color: '#FFFFFF',
@@ -1439,119 +1490,119 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
 
-  /* RECENT ACTIVITY */
+  /* RECENT ACTIVITY & CARDS */
   recentActivityHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 10,
   },
   viewAllBtnText: {
     fontSize: 13,
     fontWeight: '700',
     color: '#006837',
   },
-  activityCard: {
-    flexDirection: 'row',
+  requestCardSummary: {
     backgroundColor: '#FFFFFF',
     borderRadius: 14,
     padding: 14,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: '#F1F5F9',
-    alignItems: 'flex-start',
+    borderColor: '#E2E8F0',
   },
-  activityIconBoxProduce: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    backgroundColor: '#F1F5F9',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  activityIconBoxDriver: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    backgroundColor: '#EFF6FF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  activityContent: {
-    flex: 1,
-  },
-  activityTopRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  activityTitle: {
-    fontSize: 14,
-    fontWeight: '700',
+  cardReqIdText: {
+    fontSize: 13,
+    fontWeight: '800',
     color: '#0F172A',
   },
-  activityTime: {
+  cardReqProduceText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  cardDividerSmall: {
+    height: 1,
+    backgroundColor: '#F1F5F9',
+    marginVertical: 10,
+  },
+  requestMetaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  metaLabelText: {
+    fontSize: 12,
+    color: '#64748B',
+    marginVertical: 1,
+  },
+  metaValText: {
+    color: '#0F172A',
+    fontWeight: '600',
+  },
+  dateMetaText: {
     fontSize: 11,
     color: '#64748B',
     fontWeight: '500',
   },
-  activitySubtitle: {
-    fontSize: 12,
-    color: '#64748B',
-    marginTop: 2,
-    fontWeight: '400',
+  detailsBtnSmall: {
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    marginTop: 6,
   },
-  badgesRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 8,
+  detailsBtnSmallText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#006837',
   },
-  locationBadge: {
+  statusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F1F5F9',
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 12,
+    borderRadius: 6,
+  },
+  statusBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+  },
+
+  /* DELIVERIES SUMMARY */
+  deliveryCardSummary: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 10,
     borderWidth: 1,
     borderColor: '#E2E8F0',
   },
-  locationBadgeText: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: '#475569',
+  deliveryRouteBoxSummary: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    padding: 10,
+    marginVertical: 10,
   },
-  pendingStatusBadge: {
+  trackPrimaryBtn: {
+    backgroundColor: '#006837',
+    borderRadius: 10,
+    paddingVertical: 10,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FEE2E2',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
+    justifyContent: 'center',
   },
-  pendingStatusBadgeText: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: '#DC2626',
+  trackPrimaryBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
   },
 
   /* TAB CONTENT VIEWS */
   tabContentContainer: {
     marginTop: 10,
   },
-  tabHeadingTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#0F172A',
-  },
-  tabHeadingSub: {
-    fontSize: 12,
-    color: '#64748B',
-    marginBottom: 14,
-  },
-
-  /* REQUESTS PAGE STYLES */
   requestsPageTitle: {
     fontSize: 22,
     fontWeight: '800',
@@ -1570,7 +1621,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    marginBottom: 18,
+    marginBottom: 16,
   },
   searchInputContainer: {
     flex: 1,
@@ -1589,19 +1640,9 @@ const styles = StyleSheet.create({
     color: '#0F172A',
     paddingVertical: 0,
   },
-  filterBtn: {
-    width: 48,
-    height: 48,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   requestCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 18,
+    borderRadius: 16,
     padding: 16,
     marginBottom: 16,
     borderWidth: 1,
@@ -1609,7 +1650,7 @@ const styles = StyleSheet.create({
     borderLeftWidth: 4,
     borderLeftColor: '#F59E0B',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.04,
     shadowRadius: 6,
     elevation: 2,
@@ -1623,18 +1664,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '800',
     color: '#0F172A',
-  },
-  pendingBadge: {
-    backgroundColor: '#F1F5F9',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  pendingBadgeText: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: '#64748B',
-    letterSpacing: 0.5,
   },
   farmerRow: {
     flexDirection: 'row',
@@ -1705,7 +1734,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
   },
   locationTitle: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
     color: '#0F172A',
     marginTop: 1,
@@ -1764,77 +1793,26 @@ const styles = StyleSheet.create({
     color: '#0284C7',
     marginLeft: 8,
   },
-  dispatchCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  dispatchHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  dispatchTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#0F172A',
-  },
-  needsDriverBadge: {
-    backgroundColor: '#FEF3C7',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  needsDriverText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#B45309',
-  },
-  dispatchQty: {
-    fontSize: 12,
-    color: '#006837',
-    fontWeight: '700',
-    marginTop: 2,
-    marginBottom: 8,
-  },
-  routeBox: {
-    backgroundColor: '#F8FAFC',
-    padding: 8,
-    borderRadius: 8,
-    marginBottom: 10,
-  },
-  routeText: {
-    fontSize: 11,
-    color: '#475569',
-    marginVertical: 1,
-  },
   dropdownTitle: {
     fontSize: 12,
     fontWeight: '700',
     color: '#0F172A',
     marginBottom: 4,
   },
-  assignActionBtn: {
-    backgroundColor: '#006837',
-    borderRadius: 10,
-    paddingVertical: 10,
-    alignItems: 'center',
-    marginTop: 8,
-  },
   assignBtnDisabled: {
     backgroundColor: '#94A3B8',
   },
-  assignActionBtnText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '700',
-  },
   emptyBox: {
     alignItems: 'center',
-    paddingVertical: 30,
+    paddingVertical: 40,
+  },
+  emptyBoxSection: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    paddingVertical: 24,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
   },
   emptyTitle: {
     fontSize: 15,
@@ -1845,70 +1823,8 @@ const styles = StyleSheet.create({
   emptySub: {
     fontSize: 12,
     color: '#64748B',
+    marginTop: 2,
   },
-  rosterCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  rosterCardAvail: {
-    borderLeftWidth: 4,
-    borderLeftColor: '#10B981',
-  },
-  rosterCardBusy: {
-    borderLeftWidth: 4,
-    borderLeftColor: '#EF4444',
-  },
-  rosterHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  rosterAvatar: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: '#006837',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  rosterAvatarText: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-  },
-  rosterName: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#0F172A',
-  },
-  rosterPhone: {
-    fontSize: 11,
-    color: '#64748B',
-  },
-  rosterVehicle: {
-    fontSize: 11,
-    color: '#475569',
-    marginTop: 6,
-  },
-  rosterBadgePill: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  badgeAvailPill: {
-    backgroundColor: '#DCFCE7',
-  },
-  badgeBusyPill: {
-    backgroundColor: '#FEE2E2',
-  },
-  rosterBadgeText: {
-    fontSize: 10,
-    fontWeight: '700',
-  },
-
-  /* VEHICLE SCREEN STYLES */
   categoryChipsScroll: {
     paddingVertical: 4,
     marginBottom: 14,
@@ -1923,8 +1839,8 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   categoryChipActive: {
-    backgroundColor: '#334155',
-    borderColor: '#334155',
+    backgroundColor: '#0F172A',
+    borderColor: '#0F172A',
   },
   categoryChipText: {
     fontSize: 13,
@@ -1940,9 +1856,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   vehicleCardImage: {
-    width: 90,
-    height: 70,
-    borderRadius: 12,
+    width: 80,
+    height: 64,
+    borderRadius: 10,
     marginRight: 12,
     backgroundColor: '#E2E8F0',
   },
@@ -2002,45 +1918,10 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   vehicleCapacityText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#0F172A',
-  },
-  vehicleDriverRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  vehicleDriverName: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#0F172A',
-  },
-  vehicleDriverStatus: {
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: '700',
+    color: '#0F172A',
   },
-
-  /* BOTTOM TAB BAR */
-  bottomTabBar: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 70,
-    backgroundColor: '#FFFFFF',
-    flexDirection: 'row',
-    borderTopWidth: 1,
-    borderTopColor: '#E2E8F0',
-    paddingBottom: 10,
-    paddingTop: 8,
-    elevation: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -3 },
-    shadowOpacity: 0.05,
-    shadowRadius: 5,
-  },
-  /* DELIVERIES SCREEN STYLES */
   deliveryRouteBox: {
     backgroundColor: '#F8FAFC',
     borderRadius: 12,
@@ -2067,34 +1948,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 12,
   },
-  stepTrackerContainer: {
-    marginTop: 4,
-  },
-  stepTrackerLabelsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 6,
-  },
-  stepTrackerLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#94A3B8',
-  },
-  stepTrackerLabelActive: {
-    color: '#006837',
-    fontWeight: '800',
-  },
-  stepTrackerBarTrack: {
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#E2E8F0',
-    overflow: 'hidden',
-  },
-  stepTrackerBarFill: {
-    height: '100%',
-    borderRadius: 3,
-  },
 
+  /* BOTTOM TAB BAR */
+  bottomTabBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 70,
+    backgroundColor: '#FFFFFF',
+    flexDirection: 'row',
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+    paddingBottom: 10,
+    paddingTop: 8,
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -3 },
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+  },
   navTabItem: {
     flex: 1,
     alignItems: 'center',

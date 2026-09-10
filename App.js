@@ -19,6 +19,7 @@ import AdminHomeScreen from './components/AdminHomeScreen';
 import {
   subscribeToProduceListings,
   subscribeToOrders,
+  subscribeToAllVehicles,
   logoutUser,
   getUserProfile,
 } from './services/firebaseDatabase';
@@ -58,6 +59,7 @@ function AppInner() {
   const [currentRole, setCurrentRole] = useState('buyer'); // 'buyer' | 'farmer' | 'admin' | 'driver'
   const [produceListings, setProduceListings] = useState([]);
   const [ordersList, setOrdersList] = useState([]);
+  const [vehiclesList, setVehiclesList] = useState([]);
 
   useEffect(() => {
     async function hideNativeSplash() {
@@ -80,6 +82,13 @@ function AppInner() {
     const unsubscribeOrders = subscribeToOrders((orders) => {
       if (orders) {
         setOrdersList(orders);
+      }
+    });
+
+    // Subscribe to Firestore real-time vehicles collection
+    const unsubscribeVehicles = subscribeToAllVehicles((vehicles) => {
+      if (vehicles) {
+        setVehiclesList(vehicles);
       }
     });
 
@@ -117,6 +126,7 @@ function AppInner() {
     return () => {
       unsubscribeProduce();
       unsubscribeOrders();
+      unsubscribeVehicles();
       unsubscribeAuth();
     };
   }, []);
@@ -228,12 +238,14 @@ function AppInner() {
         lang={lang}
         produceListings={activeProduce}
         ordersList={ordersList}
+        vehiclesList={vehiclesList}
         onChangeLanguage={setLang}
         onLogout={handleLogout}
         onProfileUpdated={handleProfileUpdated}
       />
     );
   }
+
 
   // Default: Buyer Homepage
   return (

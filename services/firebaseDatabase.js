@@ -535,12 +535,21 @@ export const subscribeToDrivers = (onUpdate) => {
 };
 
 /**
- * Assign a driver to an order
+ * Assign a driver to an order (creates or updates order document in Firestore)
  */
-export const assignDriverToOrder = async (orderId, driver) => {
+export const assignDriverToOrder = async (orderOrId, driver) => {
   try {
+    const orderId = typeof orderOrId === 'object' ? orderOrId.id : orderOrId;
+    const orderObj = typeof orderOrId === 'object' ? orderOrId : {};
+
     const orderDocRef = doc(db, 'orders', orderId);
     const driverPayload = {
+      ...(orderObj.produceName ? { produceName: orderObj.produceName } : {}),
+      ...(orderObj.farmerName ? { farmerName: orderObj.farmerName } : {}),
+      ...(orderObj.pickupLocation ? { pickupLocation: orderObj.pickupLocation } : {}),
+      ...(orderObj.deliveryAddress ? { deliveryAddress: orderObj.deliveryAddress } : {}),
+      ...(orderObj.qty ? { qty: orderObj.qty } : {}),
+      ...(orderObj.unit ? { unit: orderObj.unit } : {}),
       driverId: driver.uid || driver.id,
       driverName: driver.fullName,
       driverPhone: driver.phoneNumber,
@@ -550,13 +559,14 @@ export const assignDriverToOrder = async (orderId, driver) => {
       assignedAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
-    await updateDoc(orderDocRef, driverPayload);
+    await setDoc(orderDocRef, driverPayload, { merge: true });
     return { success: true };
   } catch (error) {
     console.error('Error assigning driver to order:', error);
     return { success: false, error: error.message };
   }
 };
+
 
 // -------------------------------------------------------
 // BUYER CUSTOM PRODUCE REQUESTS
@@ -696,6 +706,29 @@ export const subscribeToDriverVehicles = (driverUid, onUpdate) => {
     }
   );
 };
+
+/**
+ * Real-time listener for ALL vehicles in Firestore (for Admin Dashboard & fleet metrics)
+ */
+export const subscribeToAllVehicles = (onUpdate) => {
+  const vehiclesRef = collection(db, 'vehicles');
+
+  return onSnapshot(
+    vehiclesRef,
+    (snapshot) => {
+      const vehicles = snapshot.docs.map((docSnap) => ({
+        id: docSnap.id,
+        ...docSnap.data(),
+      }));
+      onUpdate(vehicles);
+    },
+    (error) => {
+      console.warn('Firestore all vehicles subscription error:', error);
+      onUpdate([]);
+    }
+  );
+};
+
 
 /**
  * Add a new vehicle to driver's fleet
