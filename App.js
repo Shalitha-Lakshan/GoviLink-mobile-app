@@ -71,19 +71,38 @@ function AppInner() {
     }
     hideNativeSplash();
 
-    // Subscribe to Firestore real-time produce collection
-    const unsubscribeProduce = subscribeToProduceListings((items) => {
-      if (items && items.length > 0) {
-        setProduceListings(items);
-      }
-    });
+    // Track Firestore subscriptions so we can unsubscribe on sign-out
+    let unsubscribeProduce = null;
+    let unsubscribeOrders = null;
 
-    // Subscribe to Firestore real-time orders collection
-    const unsubscribeOrders = subscribeToOrders((orders) => {
-      if (orders) {
-        setOrdersList(orders);
+    const startFirestoreSubscriptions = () => {
+      // Only subscribe if not already subscribed
+      if (!unsubscribeProduce) {
+        unsubscribeProduce = subscribeToProduceListings((items) => {
+          if (items && items.length > 0) {
+            setProduceListings(items);
+          }
+        });
       }
-    });
+      if (!unsubscribeOrders) {
+        unsubscribeOrders = subscribeToOrders((orders) => {
+          if (orders) {
+            setOrdersList(orders);
+          }
+        });
+      }
+    };
+
+    const stopFirestoreSubscriptions = () => {
+      if (unsubscribeProduce) {
+        unsubscribeProduce();
+        unsubscribeProduce = null;
+      }
+      if (unsubscribeOrders) {
+        unsubscribeOrders();
+        unsubscribeOrders = null;
+      }
+    };
 
     // Subscribe to Firestore real-time vehicles collection
     const unsubscribeVehicles = subscribeToAllVehicles((vehicles) => {
@@ -94,10 +113,15 @@ function AppInner() {
 
     // --------------------------------------------------------
     // AUTH STATE LISTENER — restores session on app restart
+    // Firestore subscriptions only start AFTER auth is confirmed
+    // to avoid "Missing or insufficient permissions" errors.
     // --------------------------------------------------------
     const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        // User is signed in — fetch their Firestore profile
+        // User is signed in — start Firestore subscriptions now
+        startFirestoreSubscriptions();
+
+        // Fetch their Firestore profile
         const result = await getUserProfile(firebaseUser.uid);
         if (result.success) {
           const profile = result.profile;
@@ -117,16 +141,23 @@ function AppInner() {
           setAuthScreen('authenticated');
         }
       } else {
-        // Not signed in
+        // Not signed in — stop Firestore subscriptions to prevent permission errors
+        stopFirestoreSubscriptions();
+        setProduceListings([]);
+        setOrdersList([]);
         setUserProfile(null);
         setAuthScreen('language');
       }
     });
 
     return () => {
+<<<<<<< Updated upstream
       unsubscribeProduce();
       unsubscribeOrders();
       unsubscribeVehicles();
+=======
+      stopFirestoreSubscriptions();
+>>>>>>> Stashed changes
       unsubscribeAuth();
     };
   }, []);
