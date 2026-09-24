@@ -71,12 +71,14 @@ function AppInner() {
     }
     hideNativeSplash();
 
-    // Track Firestore subscriptions so we can unsubscribe on sign-out
+    // Track Firestore subscriptions — all require authentication.
+    // They are started only after onAuthStateChanged confirms a signed-in user
+    // to avoid "Missing or insufficient permissions" errors.
     let unsubscribeProduce = null;
     let unsubscribeOrders = null;
+    let unsubscribeVehicles = null;
 
     const startFirestoreSubscriptions = () => {
-      // Only subscribe if not already subscribed
       if (!unsubscribeProduce) {
         unsubscribeProduce = subscribeToProduceListings((items) => {
           if (items && items.length > 0) {
@@ -91,6 +93,13 @@ function AppInner() {
           }
         });
       }
+      if (!unsubscribeVehicles) {
+        unsubscribeVehicles = subscribeToAllVehicles((vehicles) => {
+          if (vehicles) {
+            setVehiclesList(vehicles);
+          }
+        });
+      }
     };
 
     const stopFirestoreSubscriptions = () => {
@@ -102,14 +111,11 @@ function AppInner() {
         unsubscribeOrders();
         unsubscribeOrders = null;
       }
-    };
-
-    // Subscribe to Firestore real-time vehicles collection
-    const unsubscribeVehicles = subscribeToAllVehicles((vehicles) => {
-      if (vehicles) {
-        setVehiclesList(vehicles);
+      if (unsubscribeVehicles) {
+        unsubscribeVehicles();
+        unsubscribeVehicles = null;
       }
-    });
+    };
 
     // --------------------------------------------------------
     // AUTH STATE LISTENER — restores session on app restart
@@ -118,7 +124,7 @@ function AppInner() {
     // --------------------------------------------------------
     const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        // User is signed in — start Firestore subscriptions now
+        // User is signed in — start all Firestore subscriptions now
         startFirestoreSubscriptions();
 
         // Fetch their Firestore profile
@@ -129,7 +135,7 @@ function AppInner() {
           setCurrentRole(mapRoleToDashboard(profile.role, profile.email));
           setAuthScreen('authenticated');
         } else {
-          // Auth OK but no Firestore doc — fallback safe profile
+          // Auth OK but no Firestore doc — use fallback safe profile
           const fallbackProfile = {
             uid: firebaseUser.uid,
             email: firebaseUser.email,
@@ -141,23 +147,18 @@ function AppInner() {
           setAuthScreen('authenticated');
         }
       } else {
-        // Not signed in — stop Firestore subscriptions to prevent permission errors
+        // Not signed in — stop all Firestore subscriptions to prevent permission errors
         stopFirestoreSubscriptions();
         setProduceListings([]);
         setOrdersList([]);
+        setVehiclesList([]);
         setUserProfile(null);
         setAuthScreen('language');
       }
     });
 
     return () => {
-<<<<<<< Updated upstream
-      unsubscribeProduce();
-      unsubscribeOrders();
-      unsubscribeVehicles();
-=======
       stopFirestoreSubscriptions();
->>>>>>> Stashed changes
       unsubscribeAuth();
     };
   }, []);
@@ -276,7 +277,6 @@ function AppInner() {
       />
     );
   }
-
 
   // Default: Buyer Homepage
   return (
