@@ -19,6 +19,7 @@ import AdminHomeScreen from './components/AdminHomeScreen';
 import {
   subscribeToProduceListings,
   subscribeToOrders,
+  subscribeToAllVehicles,
   logoutUser,
   getUserProfile,
 } from './services/firebaseDatabase';
@@ -33,6 +34,9 @@ SplashScreen.preventAutoHideAsync().catch(() => {
 
 // Helper: map Firestore role string & email to internal dashboard role
 const mapRoleToDashboard = (role, email) => {
+  if (role === 'cooperative_admin' || role === 'admin') {
+    return 'admin';
+  }
   if (email && email.toLowerCase() === 'govilink@admin.lk') {
     return 'admin';
   }
@@ -55,6 +59,7 @@ function AppInner() {
   const [currentRole, setCurrentRole] = useState('buyer'); // 'buyer' | 'farmer' | 'admin' | 'driver'
   const [produceListings, setProduceListings] = useState([]);
   const [ordersList, setOrdersList] = useState([]);
+  const [vehiclesList, setVehiclesList] = useState([]);
 
   useEffect(() => {
     async function hideNativeSplash() {
@@ -66,26 +71,63 @@ function AppInner() {
     }
     hideNativeSplash();
 
-    // Subscribe to Firestore real-time produce collection
-    const unsubscribeProduce = subscribeToProduceListings((items) => {
-      if (items && items.length > 0) {
-        setProduceListings(items);
-      }
-    });
+    // Track Firestore subscriptions — all require authentication.
+    // They are started only after onAuthStateChanged confirms a signed-in user
+    // to avoid "Missing or insufficient permissions" errors.
+    let unsubscribeProduce = null;
+    let unsubscribeOrders = null;
+    let unsubscribeVehicles = null;
 
-    // Subscribe to Firestore real-time orders collection
-    const unsubscribeOrders = subscribeToOrders((orders) => {
-      if (orders) {
-        setOrdersList(orders);
+    const startFirestoreSubscriptions = () => {
+      if (!unsubscribeProduce) {
+        unsubscribeProduce = subscribeToProduceListings((items) => {
+          if (items && items.length > 0) {
+            setProduceListings(items);
+          }
+        });
       }
-    });
+      if (!unsubscribeOrders) {
+        unsubscribeOrders = subscribeToOrders((orders) => {
+          if (orders) {
+            setOrdersList(orders);
+          }
+        });
+      }
+      if (!unsubscribeVehicles) {
+        unsubscribeVehicles = subscribeToAllVehicles((vehicles) => {
+          if (vehicles) {
+            setVehiclesList(vehicles);
+          }
+        });
+      }
+    };
+
+    const stopFirestoreSubscriptions = () => {
+      if (unsubscribeProduce) {
+        unsubscribeProduce();
+        unsubscribeProduce = null;
+      }
+      if (unsubscribeOrders) {
+        unsubscribeOrders();
+        unsubscribeOrders = null;
+      }
+      if (unsubscribeVehicles) {
+        unsubscribeVehicles();
+        unsubscribeVehicles = null;
+      }
+    };
 
     // --------------------------------------------------------
     // AUTH STATE LISTENER — restores session on app restart
+    // Firestore subscriptions only start AFTER auth is confirmed
+    // to avoid "Missing or insufficient permissions" errors.
     // --------------------------------------------------------
     const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        // User is signed in — fetch their Firestore profile
+        // User is signed in — start all Firestore subscriptions now
+        startFirestoreSubscriptions();
+
+        // Fetch their Firestore profile
         const result = await getUserProfile(firebaseUser.uid);
         if (result.success) {
           const profile = result.profile;
@@ -93,27 +135,30 @@ function AppInner() {
           setCurrentRole(mapRoleToDashboard(profile.role, profile.email));
           setAuthScreen('authenticated');
         } else {
-          // Auth OK but no Firestore doc — fallback safe profile
+          // Auth OK but no Firestore doc — use fallback safe profile
           const fallbackProfile = {
             uid: firebaseUser.uid,
             email: firebaseUser.email,
             fullName: firebaseUser.displayName || 'GoviLink User',
-            role: 'buyer',
+            role: firebaseUser.email?.toLowerCase() === 'govilink@admin.lk' ? 'cooperative_admin' : 'buyer',
           };
           setUserProfile(fallbackProfile);
           setCurrentRole(mapRoleToDashboard(fallbackProfile.role, fallbackProfile.email));
           setAuthScreen('authenticated');
         }
       } else {
-        // Not signed in
+        // Not signed in — stop all Firestore subscriptions to prevent permission errors
+        stopFirestoreSubscriptions();
+        setProduceListings([]);
+        setOrdersList([]);
+        setVehiclesList([]);
         setUserProfile(null);
         setAuthScreen('language');
       }
     });
 
     return () => {
-      unsubscribeProduce();
-      unsubscribeOrders();
+      stopFirestoreSubscriptions();
       unsubscribeAuth();
     };
   }, []);
@@ -181,6 +226,13 @@ function AppInner() {
   // Real produce list from Firestore
   const activeProduce = produceListings;
 
+  const handleProfileUpdated = (updatedProfileData) => {
+    setUserProfile((prev) => ({
+      ...prev,
+      ...updatedProfileData,
+    }));
+  };
+
   // ----------------------------------------------------
   // ROLE-BASED HOMEPAGE ROUTING
   // ----------------------------------------------------
@@ -193,6 +245,7 @@ function AppInner() {
         ordersList={ordersList}
         onChangeLanguage={setLang}
         onLogout={handleLogout}
+        onProfileUpdated={handleProfileUpdated}
       />
     );
   }
@@ -205,6 +258,7 @@ function AppInner() {
         ordersList={ordersList}
         onChangeLanguage={setLang}
         onLogout={handleLogout}
+        onProfileUpdated={handleProfileUpdated}
       />
     );
   }
@@ -216,8 +270,10 @@ function AppInner() {
         lang={lang}
         produceListings={activeProduce}
         ordersList={ordersList}
+        vehiclesList={vehiclesList}
         onChangeLanguage={setLang}
         onLogout={handleLogout}
+        onProfileUpdated={handleProfileUpdated}
       />
     );
   }
@@ -231,6 +287,7 @@ function AppInner() {
       ordersList={ordersList}
       onChangeLanguage={setLang}
       onLogout={handleLogout}
+      onProfileUpdated={handleProfileUpdated}
     />
   );
 }

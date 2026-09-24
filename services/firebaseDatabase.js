@@ -59,14 +59,12 @@ export const uploadProduceImage = async (imageUri, produceId) => {
       return downloadURL;
     }
   } catch (storageError) {
-    console.warn('Firebase Storage upload warning, using data URL fallback:', storageError);
-
     // 3. Fallback: If it is already a base64 data URL, return it
     if (imageUri.startsWith('data:')) {
       return imageUri;
     }
 
-    // 4. Convert local file:// URI to base64 data URL
+    // 4. Convert local file:// URI to base64 data URL fallback
     try {
       const response = await fetch(imageUri);
       const blob = await response.blob();
@@ -77,8 +75,7 @@ export const uploadProduceImage = async (imageUri, produceId) => {
         reader.readAsDataURL(blob);
       });
       return base64Data;
-    } catch (fallbackError) {
-      console.error('Failed to convert image to fallback data URL:', fallbackError);
+    } catch (_fallbackError) {
       return imageUri;
     }
   }
@@ -241,6 +238,39 @@ export const getUserProfile = async (uid) => {
   }
 };
 
+/**
+ * Update user profile in Firestore users/{uid}
+ */
+export const updateUserProfileInFirestore = async (uid, profileData) => {
+  if (!uid) {
+    console.warn('updateUserProfileInFirestore: No uid provided');
+    return { success: false, error: 'No user ID provided' };
+  }
+
+  try {
+    // Safety check: if photoURL base64 is larger than 800KB, omit photoURL from Firestore doc
+    // to prevent exceeding Firestore's 1MB single-document limit.
+    const cleanProfileData = { ...profileData };
+    if (cleanProfileData.photoURL && cleanProfileData.photoURL.length > 800000) {
+      delete cleanProfileData.photoURL;
+    }
+
+    const userDocRef = doc(db, 'users', uid);
+    await setDoc(
+      userDocRef,
+      {
+        ...cleanProfileData,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+    return { success: true };
+  } catch (error) {
+    console.error('Error updating user profile in Firestore:', error);
+    return { success: false, error: error.message };
+  }
+};
+
 // -------------------------------------------------------
 // AUTHENTICATION
 // -------------------------------------------------------
@@ -305,7 +335,7 @@ export const loginWithFirebase = async (email, password) => {
     try {
       userCredential = await signInWithEmailAndPassword(auth, cleanEmail, password);
     } catch (authErr) {
-      // If admin account doesn't exist in Firebase Auth yet, auto-create it
+      // If default admin account doesn't exist in Firebase Auth yet, auto-create it
       if (isAdminEmail && (authErr.code === 'auth/user-not-found' || authErr.code === 'auth/invalid-credential')) {
         try {
           userCredential = await createUserWithEmailAndPassword(auth, cleanEmail, password);
@@ -319,25 +349,32 @@ export const loginWithFirebase = async (email, password) => {
 
     const user = userCredential.user;
 
-    // Fetch Firestore profile
+    // Fetch Firestore profile from users/{uid}
     const profileResult = await getUserProfile(user.uid);
 
-    // If profile doc missing or email is admin, ensure profile doc with cooperative_admin role exists
-    if (!profileResult.success || isAdminEmail) {
-      const adminProfile = {
-        uid: user.uid,
-        email: cleanEmail,
-        fullName: profileResult?.profile?.fullName || 'GoviLink Cooperative Admin',
-        phoneNumber: profileResult?.profile?.phoneNumber || '0770000000',
-        role: 'cooperative_admin',
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      };
-      await setDoc(doc(db, 'users', user.uid), adminProfile);
-      return { success: true, user, profile: adminProfile };
+    if (profileResult.success) {
+      const existingProfile = profileResult.profile;
+      // If admin email login, ensure role is set to cooperative_admin if missing
+      if (isAdminEmail && existingProfile.role !== 'cooperative_admin') {
+        const updatedProfile = { ...existingProfile, role: 'cooperative_admin' };
+        await setDoc(doc(db, 'users', user.uid), updatedProfile, { merge: true });
+        return { success: true, user, profile: updatedProfile };
+      }
+      return { success: true, user, profile: existingProfile };
     }
 
-    return { success: true, user, profile: profileResult.profile };
+    // Profile document missing in Firestore — initialize user profile document
+    const newProfile = {
+      uid: user.uid,
+      email: cleanEmail,
+      fullName: isAdminEmail ? 'GoviLink Cooperative Admin' : (user.displayName || 'GoviLink User'),
+      phoneNumber: '0770000000',
+      role: isAdminEmail ? 'cooperative_admin' : 'buyer',
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
+    await setDoc(doc(db, 'users', user.uid), newProfile);
+    return { success: true, user, profile: newProfile };
   } catch (error) {
     console.error('Login error:', error);
     return { success: false, error: error.code || error.message };
@@ -498,12 +535,21 @@ export const subscribeToDrivers = (onUpdate) => {
 };
 
 /**
- * Assign a driver to an order
+ * Assign a driver to an order (creates or updates order document in Firestore)
  */
-export const assignDriverToOrder = async (orderId, driver) => {
+export const assignDriverToOrder = async (orderOrId, driver) => {
   try {
+    const orderId = typeof orderOrId === 'object' ? orderOrId.id : orderOrId;
+    const orderObj = typeof orderOrId === 'object' ? orderOrId : {};
+
     const orderDocRef = doc(db, 'orders', orderId);
     const driverPayload = {
+      ...(orderObj.produceName ? { produceName: orderObj.produceName } : {}),
+      ...(orderObj.farmerName ? { farmerName: orderObj.farmerName } : {}),
+      ...(orderObj.pickupLocation ? { pickupLocation: orderObj.pickupLocation } : {}),
+      ...(orderObj.deliveryAddress ? { deliveryAddress: orderObj.deliveryAddress } : {}),
+      ...(orderObj.qty ? { qty: orderObj.qty } : {}),
+      ...(orderObj.unit ? { unit: orderObj.unit } : {}),
       driverId: driver.uid || driver.id,
       driverName: driver.fullName,
       driverPhone: driver.phoneNumber,
@@ -513,13 +559,14 @@ export const assignDriverToOrder = async (orderId, driver) => {
       assignedAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
-    await updateDoc(orderDocRef, driverPayload);
+    await setDoc(orderDocRef, driverPayload, { merge: true });
     return { success: true };
   } catch (error) {
     console.error('Error assigning driver to order:', error);
     return { success: false, error: error.message };
   }
 };
+
 
 // -------------------------------------------------------
 // BUYER CUSTOM PRODUCE REQUESTS
@@ -659,6 +706,29 @@ export const subscribeToDriverVehicles = (driverUid, onUpdate) => {
     }
   );
 };
+
+/**
+ * Real-time listener for ALL vehicles in Firestore (for Admin Dashboard & fleet metrics)
+ */
+export const subscribeToAllVehicles = (onUpdate) => {
+  const vehiclesRef = collection(db, 'vehicles');
+
+  return onSnapshot(
+    vehiclesRef,
+    (snapshot) => {
+      const vehicles = snapshot.docs.map((docSnap) => ({
+        id: docSnap.id,
+        ...docSnap.data(),
+      }));
+      onUpdate(vehicles);
+    },
+    (error) => {
+      console.warn('Firestore all vehicles subscription error:', error);
+      onUpdate([]);
+    }
+  );
+};
+
 
 /**
  * Add a new vehicle to driver's fleet
