@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   StyleSheet,
   Text,
@@ -8,6 +8,8 @@ import {
 } from 'react-native';
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import * as SplashScreen from 'expo-splash-screen';
+import { I18nextProvider } from 'react-i18next';
+import i18n, { loadSavedLanguage, changeAppLanguage } from './services/i18n';
 import SplashScreenComponent from './components/SplashScreen';
 import LanguageSelectionScreen from './components/LanguageSelectionScreen';
 import LoginScreen from './components/LoginScreen';
@@ -52,6 +54,7 @@ const mapRoleToDashboard = (role, email) => {
 
 function AppInner() {
   const [isSplashVisible, setIsSplashVisible] = useState(true);
+  const [nativeSplashHidden, setNativeSplashHidden] = useState(false);
   // 'checking' while onAuthStateChanged runs, then 'language'|'login'|'register'|'authenticated'
   const [authScreen, setAuthScreen] = useState('checking');
   const [userProfile, setUserProfile] = useState(null);
@@ -61,19 +64,45 @@ function AppInner() {
   const [ordersList, setOrdersList] = useState([]);
   const [vehiclesList, setVehiclesList] = useState([]);
 
+  // Load saved language on mount
   useEffect(() => {
-    async function hideNativeSplash() {
+    async function initLanguage() {
+      const savedLang = await loadSavedLanguage();
+      setLang(savedLang);
+    }
+    initLanguage();
+  }, []);
+
+  const handleLanguageChange = async (newLang) => {
+    await changeAppLanguage(newLang);
+    setLang(newLang);
+  };
+
+  // Called by the custom SplashScreen once it has laid out and is visible.
+  const handleCustomSplashLayout = useCallback(async () => {
+    if (!nativeSplashHidden) {
+      setNativeSplashHidden(true);
       try {
         await SplashScreen.hideAsync();
       } catch (e) {
         // Native splash already hidden or unavailable
       }
     }
-    hideNativeSplash();
+  }, [nativeSplashHidden]);
 
-    // Track Firestore subscriptions — all require authentication.
-    // They are started only after onAuthStateChanged confirms a signed-in user
-    // to avoid "Missing or insufficient permissions" errors.
+  // Hide native splash on mount so custom animated splash screen displays on mobile Expo Go app
+  useEffect(() => {
+    async function hideNativeSplash() {
+      try {
+        await SplashScreen.hideAsync();
+      } catch (_e) {
+        /* Already hidden or web mode */
+      }
+    }
+    hideNativeSplash();
+  }, []);
+
+  useEffect(() => {
     let unsubscribeProduce = null;
     let unsubscribeOrders = null;
     let unsubscribeVehicles = null;
@@ -119,15 +148,11 @@ function AppInner() {
 
     // --------------------------------------------------------
     // AUTH STATE LISTENER — restores session on app restart
-    // Firestore subscriptions only start AFTER auth is confirmed
-    // to avoid "Missing or insufficient permissions" errors.
     // --------------------------------------------------------
     const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        // User is signed in — start all Firestore subscriptions now
         startFirestoreSubscriptions();
 
-        // Fetch their Firestore profile
         const result = await getUserProfile(firebaseUser.uid);
         if (result.success) {
           const profile = result.profile;
@@ -135,7 +160,6 @@ function AppInner() {
           setCurrentRole(mapRoleToDashboard(profile.role, profile.email));
           setAuthScreen('authenticated');
         } else {
-          // Auth OK but no Firestore doc — use fallback safe profile
           const fallbackProfile = {
             uid: firebaseUser.uid,
             email: firebaseUser.email,
@@ -147,7 +171,6 @@ function AppInner() {
           setAuthScreen('authenticated');
         }
       } else {
-        // Not signed in — stop all Firestore subscriptions to prevent permission errors
         stopFirestoreSubscriptions();
         setProduceListings([]);
         setOrdersList([]);
@@ -171,10 +194,14 @@ function AppInner() {
   };
 
   if (isSplashVisible) {
-    return <SplashScreenComponent onFinish={() => setIsSplashVisible(false)} />;
+    return (
+      <SplashScreenComponent
+        onFinish={() => setIsSplashVisible(false)}
+        onLayout={handleCustomSplashLayout}
+      />
+    );
   }
 
-  // While onAuthStateChanged is determining auth state, show a loading screen
   if (authScreen === 'checking') {
     return (
       <SafeAreaView style={[styles.safeArea, styles.loadingCenter]}>
@@ -187,8 +214,8 @@ function AppInner() {
   if (authScreen === 'language') {
     return (
       <LanguageSelectionScreen
-        onSelectLanguage={(selectedLang) => {
-          setLang(selectedLang);
+        onSelectLanguage={async (selectedLang) => {
+          await handleLanguageChange(selectedLang);
           setAuthScreen('login');
         }}
       />
@@ -223,7 +250,6 @@ function AppInner() {
     );
   }
 
-  // Real produce list from Firestore
   const activeProduce = produceListings;
 
   const handleProfileUpdated = (updatedProfileData) => {
@@ -233,9 +259,7 @@ function AppInner() {
     }));
   };
 
-  // ----------------------------------------------------
   // ROLE-BASED HOMEPAGE ROUTING
-  // ----------------------------------------------------
   if (currentRole === 'farmer') {
     return (
       <FarmerHomeScreen
@@ -243,7 +267,7 @@ function AppInner() {
         lang={lang}
         produceListings={activeProduce}
         ordersList={ordersList}
-        onChangeLanguage={setLang}
+        onChangeLanguage={handleLanguageChange}
         onLogout={handleLogout}
         onProfileUpdated={handleProfileUpdated}
       />
@@ -256,7 +280,7 @@ function AppInner() {
         userProfile={userProfile}
         lang={lang}
         ordersList={ordersList}
-        onChangeLanguage={setLang}
+        onChangeLanguage={handleLanguageChange}
         onLogout={handleLogout}
         onProfileUpdated={handleProfileUpdated}
       />
@@ -271,7 +295,7 @@ function AppInner() {
         produceListings={activeProduce}
         ordersList={ordersList}
         vehiclesList={vehiclesList}
-        onChangeLanguage={setLang}
+        onChangeLanguage={handleLanguageChange}
         onLogout={handleLogout}
         onProfileUpdated={handleProfileUpdated}
       />
@@ -285,7 +309,7 @@ function AppInner() {
       lang={lang}
       produceListings={activeProduce}
       ordersList={ordersList}
-      onChangeLanguage={setLang}
+      onChangeLanguage={handleLanguageChange}
       onLogout={handleLogout}
       onProfileUpdated={handleProfileUpdated}
     />
@@ -293,19 +317,27 @@ function AppInner() {
 }
 
 // -------------------------------------------------------
-// ROOT EXPORT — wraps AppInner with AuthProvider & SafeAreaProvider
+// ROOT EXPORT — wraps AppInner with I18nextProvider & AuthProvider
 // -------------------------------------------------------
 export default function App() {
   return (
-    <SafeAreaProvider>
-      <AuthProvider>
-        <AppInner />
-      </AuthProvider>
-    </SafeAreaProvider>
+    <View style={styles.rootBackground}>
+      <I18nextProvider i18n={i18n}>
+        <SafeAreaProvider style={styles.rootBackground}>
+          <AuthProvider>
+            <AppInner />
+          </AuthProvider>
+        </SafeAreaProvider>
+      </I18nextProvider>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  rootBackground: {
+    flex: 1,
+    backgroundColor: '#0B2545',
+  },
   safeArea: {
     flex: 1,
     backgroundColor: '#0B2545',

@@ -12,6 +12,8 @@ import {
   TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useTranslation } from 'react-i18next';
+import { changeAppLanguage } from '../services/i18n';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import {
   subscribeToDrivers,
@@ -85,6 +87,8 @@ export default function AdminHomeScreen({
   onChangeLanguage,
   onProfileUpdated,
 }) {
+  const { t, i18n } = useTranslation();
+  const currentLang = i18n.language || lang || 'en';
   const [driversList, setDriversList] = useState(DEFAULT_COOP_DRIVERS || []);
   const [selectedDriversByOrder, setSelectedDriversByOrder] = useState({});
   const [assigningOrderId, setAssigningOrderId] = useState(null);
@@ -385,16 +389,36 @@ export default function AdminHomeScreen({
           />
         </TouchableOpacity>
 
-        <Text style={styles.brandTitle}>GoviLink</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <TouchableOpacity
+            style={{
+              backgroundColor: '#E2E8F0',
+              paddingHorizontal: 10,
+              paddingVertical: 4,
+              borderRadius: 12,
+            }}
+            onPress={async () => {
+              const nextLang = currentLang === 'en' ? 'si' : currentLang === 'si' ? 'ta' : 'en';
+              await changeAppLanguage(nextLang);
+              if (onChangeLanguage) {
+                onChangeLanguage(nextLang);
+              }
+            }}
+          >
+            <Text style={{ fontSize: 11, fontWeight: '700', color: '#334155' }}>
+              {currentLang === 'en' ? 'EN' : currentLang === 'si' ? 'සිං' : 'தமிழ்'}
+            </Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.notifBtn}
-          activeOpacity={0.7}
-          onPress={() => Alert.alert('Notifications', 'No new system alerts for Cooperative Administrator.')}
-        >
-          <Ionicons name="notifications-outline" size={22} color="#006837" />
-          {pendingRequestsCount > 0 && <View style={styles.notifBadgeDot} />}
-        </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.notifBtn}
+            activeOpacity={0.7}
+            onPress={() => Alert.alert('Notifications', 'No new system alerts for Cooperative Administrator.')}
+          >
+            <Ionicons name="notifications-outline" size={22} color="#006837" />
+            {pendingRequestsCount > 0 && <View style={styles.notifBadgeDot} />}
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* MAIN SCROLLABLE CONTENT */}

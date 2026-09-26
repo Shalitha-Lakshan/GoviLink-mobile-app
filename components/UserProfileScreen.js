@@ -13,6 +13,8 @@ import {
   Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useTranslation } from 'react-i18next';
+import { changeAppLanguage } from '../services/i18n';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { updateUserProfileInFirestore, uploadProduceImage } from '../services/firebaseDatabase';
@@ -55,6 +57,8 @@ export default function UserProfileScreen({
   onChangeLanguage,
   onProfileUpdated,
 }) {
+  const { t, i18n } = useTranslation();
+  const currentLang = i18n.language || lang || 'en';
   const [fullName, setFullName] = useState(userProfile?.fullName || '');
   const [phoneNumber, setPhoneNumber] = useState(userProfile?.phoneNumber || '');
   const [email, setEmail] = useState(userProfile?.email || userProfile?.userEmail || '');
@@ -350,19 +354,20 @@ export default function UserProfileScreen({
               </Text>
             </View>
 
-            {onChangeLanguage && (
-              <TouchableOpacity
-                style={styles.langPillBtn}
-                onPress={() => {
-                  const nextLang = lang === 'en' ? 'si' : lang === 'si' ? 'ta' : 'en';
+            <TouchableOpacity
+              style={styles.langPillBtn}
+              onPress={async () => {
+                const nextLang = currentLang === 'en' ? 'si' : currentLang === 'si' ? 'ta' : 'en';
+                await changeAppLanguage(nextLang);
+                if (onChangeLanguage) {
                   onChangeLanguage(nextLang);
-                }}
-              >
-                <Text style={styles.langPillBtnText}>
-                  {lang === 'en' ? 'EN' : lang === 'si' ? 'සිං' : 'තමි'}
-                </Text>
-              </TouchableOpacity>
-            )}
+                }
+              }}
+            >
+              <Text style={styles.langPillBtnText}>
+                {currentLang === 'en' ? 'EN' : currentLang === 'si' ? 'සිං' : 'தமிழ்'}
+              </Text>
+            </TouchableOpacity>
           </View>
 
           <View style={styles.prefDivider} />

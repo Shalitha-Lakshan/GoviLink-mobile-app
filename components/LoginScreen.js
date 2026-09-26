@@ -6,7 +6,6 @@ import {
   TextInput,
   TouchableOpacity,
   ScrollView,
-  SafeAreaView,
   StatusBar,
   Alert,
   ActivityIndicator,
@@ -15,6 +14,9 @@ import {
   Keyboard,
   Image,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useTranslation } from 'react-i18next';
+import { changeAppLanguage } from '../services/i18n';
 import { loginWithFirebase } from '../services/firebaseDatabase';
 
 // ----------------------------------------------------
@@ -149,7 +151,9 @@ const getFriendlyLoginError = (errorCode) => {
 };
 
 export default function LoginScreen({ lang = 'en', onBackToLang, onNavigateToRegister, onLoginSuccess }) {
-  const t = TRANSLATIONS[lang] || TRANSLATIONS.en;
+  const { t: tHook, i18n } = useTranslation();
+  const currentLang = i18n.language || lang || 'en';
+  const t = TRANSLATIONS[currentLang] || TRANSLATIONS.en;
 
   const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -223,7 +227,22 @@ export default function LoginScreen({ lang = 'en', onBackToLang, onNavigateToReg
               <View style={{ width: 40 }} />
             )}
             <Text style={styles.navBrandText}>GoviLink</Text>
-            <View style={{ width: 40 }} />
+            <TouchableOpacity
+              style={{
+                backgroundColor: '#E2E8F0',
+                paddingHorizontal: 10,
+                paddingVertical: 4,
+                borderRadius: 12,
+              }}
+              onPress={async () => {
+                const nextLang = currentLang === 'en' ? 'si' : currentLang === 'si' ? 'ta' : 'en';
+                await changeAppLanguage(nextLang);
+              }}
+            >
+              <Text style={{ fontSize: 11, fontWeight: '700', color: '#334155' }}>
+                {currentLang === 'en' ? 'EN' : currentLang === 'si' ? 'සිං' : 'தமிழ்'}
+              </Text>
+            </TouchableOpacity>
           </View>
 
           {/* BRAND EMBLEM & HEADER */}

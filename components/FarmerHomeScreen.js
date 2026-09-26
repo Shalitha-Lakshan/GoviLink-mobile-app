@@ -13,6 +13,8 @@ import {
   StatusBar,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useTranslation } from 'react-i18next';
+import { changeAppLanguage } from '../services/i18n';
 import {
   addProduceListing,
   deleteProduceListing,
@@ -315,7 +317,9 @@ export default function FarmerHomeScreen({
   const [formLocation, setFormLocation] = useState(userProfile?.district?.nameEn || 'Nuwara Eliya');
   const [formGrade, setFormGrade] = useState('Grade A Fresh Harvest');
 
-  const t = TRANSLATIONS[lang] || TRANSLATIONS.en;
+  const { t: tHook, i18n } = useTranslation();
+  const currentLang = i18n.language || lang || 'en';
+  const t = TRANSLATIONS[currentLang] || TRANSLATIONS.en;
 
   // Real-time listener for buyer custom produce requests
   useEffect(() => {
@@ -539,7 +543,7 @@ export default function FarmerHomeScreen({
           activeOpacity={0.8}
         >
           <Image
-            source={require('../assets/splash-icon.png')}
+            source={require('../assets/logo.png')}
             style={styles.logoBadge}
             resizeMode="contain"
           />

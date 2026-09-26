@@ -11,6 +11,8 @@ import {
   StatusBar,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useTranslation } from 'react-i18next';
+import { changeAppLanguage } from '../services/i18n';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import {
   updateOrderStatus,
@@ -212,7 +214,9 @@ export default function DriverHomeScreen({
   const [vehiclesList, setVehiclesList] = useState([]);
   const [showProfileScreen, setShowProfileScreen] = useState(false);
 
-  const t = TRANSLATIONS[lang] || TRANSLATIONS.en;
+  const { t: tHook, i18n } = useTranslation();
+  const currentLang = i18n.language || lang || 'en';
+  const t = TRANSLATIONS[currentLang] || TRANSLATIONS.en;
 
   // Real-time vehicles subscription
   useEffect(() => {
@@ -385,19 +389,20 @@ export default function DriverHomeScreen({
         </View>
 
         <View style={styles.headerRightActions}>
-          {onChangeLanguage && (
-            <TouchableOpacity
-              style={styles.langPill}
-              onPress={() => {
-                const nextLang = lang === 'en' ? 'si' : lang === 'si' ? 'ta' : 'en';
+          <TouchableOpacity
+            style={styles.langPill}
+            onPress={async () => {
+              const nextLang = currentLang === 'en' ? 'si' : currentLang === 'si' ? 'ta' : 'en';
+              await changeAppLanguage(nextLang);
+              if (onChangeLanguage) {
                 onChangeLanguage(nextLang);
-              }}
-            >
-              <Text style={styles.langPillText}>
-                {lang === 'en' ? 'EN' : lang === 'si' ? 'සිං' : 'තමි'}
-              </Text>
-            </TouchableOpacity>
-          )}
+              }
+            }}
+          >
+            <Text style={styles.langPillText}>
+              {currentLang === 'en' ? 'EN' : currentLang === 'si' ? 'සිං' : 'தமிழ்'}
+            </Text>
+          </TouchableOpacity>
 
           <TouchableOpacity style={styles.notifBtn} activeOpacity={0.7} onPress={onLogout}>
             <Ionicons name="log-out-outline" size={20} color="#DC2626" />
