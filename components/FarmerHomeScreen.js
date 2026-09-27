@@ -11,6 +11,7 @@ import {
   Alert,
   ActivityIndicator,
   StatusBar,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -22,6 +23,7 @@ import {
 } from '../services/firebaseDatabase';
 import AddProduceScreen from './AddProduceScreen';
 import UserProfileScreen from './UserProfileScreen';
+import DeliveryTrackingScreen from './DeliveryTrackingScreen';
 
 // ----------------------------------------------------
 // COLOR TOKENS
@@ -305,6 +307,9 @@ export default function FarmerHomeScreen({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [updatingOrderId, setUpdatingOrderId] = useState(null);
   const [showProfileScreen, setShowProfileScreen] = useState(false);
+  const [produceToDelete, setProduceToDelete] = useState(null);
+  const [isDeletingProduce, setIsDeletingProduce] = useState(false);
+  const [selectedDeliveryForTracking, setSelectedDeliveryForTracking] = useState(null);
 
   // Add Produce Form State
   const [formNameEn, setFormNameEn] = useState('');
@@ -396,38 +401,67 @@ export default function FarmerHomeScreen({
   };
 
   const handleDeleteProduce = (item) => {
-    Alert.alert(
-      'Delete Listing',
-      `Are you sure you want to remove "${item.nameEn || item.nameSi}" from your inventory?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            if (item.id) {
-              await deleteProduceListing(item.id);
-            }
-            Alert.alert('Listing Removed', 'Produce was removed from marketplace.');
-          },
-        },
-      ]
-    );
+    setProduceToDelete(item);
+  };
+
+  const confirmDeleteProduce = async () => {
+    if (!produceToDelete?.id) return;
+    setIsDeletingProduce(true);
+    try {
+      const res = await deleteProduceListing(produceToDelete.id);
+      setIsDeletingProduce(false);
+      const deletedItemName = produceToDelete.nameEn || produceToDelete.nameSi || 'Produce';
+      setProduceToDelete(null);
+
+      if (res && !res.success) {
+        if (Platform.OS === 'web') {
+          window.alert(`Could not delete produce: ${res.error}`);
+        } else {
+          Alert.alert('Error', `Could not delete produce: ${res.error}`);
+        }
+      }
+    } catch (e) {
+      setIsDeletingProduce(false);
+      setProduceToDelete(null);
+      console.error('Delete produce error:', e);
+    }
   };
 
   const handleUpdateOrderStatus = async (orderId, newStatus) => {
     setUpdatingOrderId(orderId);
-    const res = await updateOrderStatus(orderId, newStatus);
+    const res = await updateOrderStatus(orderId, newStatus, {
+      farmerName: userProfile?.fullName || 'Farmer Partner',
+      farmerId: userProfile?.uid || '',
+      changedBy: userProfile?.fullName || 'Farmer Partner',
+      actorRole: 'farmer',
+    });
     setUpdatingOrderId(null);
 
     if (res.success) {
-      Alert.alert('Order Updated', `Status changed to: ${newStatus.replace(/_/g, ' ')}`);
+      if (Platform.OS === 'web') {
+        window.alert(`Order status updated to: ${newStatus.replace(/_/g, ' ')}`);
+      } else {
+        Alert.alert('Order Updated', `Status changed to: ${newStatus.replace(/_/g, ' ')}`);
+      }
     } else {
-      Alert.alert('Update Failed', res.error || 'Could not update order status.');
+      if (Platform.OS === 'web') {
+        window.alert(`Update Failed: ${res.error || 'Could not update order status.'}`);
+      } else {
+        Alert.alert('Update Failed', res.error || 'Could not update order status.');
+      }
     }
   };
 
   const handleConfirmDelivered = (order) => {
+    if (Platform.OS === 'web') {
+      const ok = window.confirm(
+        `${t.acceptedOrders.confirmDeliveryTitle}\n\n${t.acceptedOrders.confirmDeliveryMsg}\n\nProduce: ${order.produceName || 'Produce'} (${order.qty} ${order.unit || 'kg'})\nBuyer: ${order.buyerName || 'Buyer'}`
+      );
+      if (ok) {
+        handleUpdateOrderStatus(order.id, 'DELIVERED');
+      }
+      return;
+    }
     Alert.alert(
       t.acceptedOrders.confirmDeliveryTitle,
       `${t.acceptedOrders.confirmDeliveryMsg}\n\n📦 ${order.produceName || 'Produce'} (${order.qty} ${order.unit || 'kg'})\n👤 Buyer: ${order.buyerName || 'Buyer'}\n📍 Delivery: ${order.deliveryAddress || 'Self-Pickup'}`,
@@ -508,6 +542,18 @@ export default function FarmerHomeScreen({
           setShowAddProduceScreen(false);
           setEditingProduceItem(null);
         }}
+      />
+    );
+  }
+
+  if (selectedDeliveryForTracking) {
+    return (
+      <DeliveryTrackingScreen
+        delivery={selectedDeliveryForTracking}
+        userProfile={userProfile}
+        lang={lang}
+        onBack={() => setSelectedDeliveryForTracking(null)}
+        onLogout={onLogout}
       />
     );
   }
@@ -985,6 +1031,15 @@ export default function FarmerHomeScreen({
 
                     {/* ACTION BUTTONS */}
                     <View style={styles.acceptedOrderActionRow}>
+                      {/* TRACK DELIVERY SCREEN BUTTON (GOVI-113) */}
+                      <TouchableOpacity
+                        style={styles.btnTrackDelivery}
+                        onPress={() => setSelectedDeliveryForTracking(order)}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={styles.btnTrackDeliveryText}>🚚 Track Delivery ➔</Text>
+                      </TouchableOpacity>
+
                       {!isDelivered ? (
                         <>
                           {/* CONFIRM DELIVERED BUTTON */}
@@ -1038,6 +1093,52 @@ export default function FarmerHomeScreen({
           </View>
         )}
       </ScrollView>
+
+      {/* DELETE PRODUCE CONFIRMATION MODAL */}
+      <Modal
+        visible={!!produceToDelete}
+        transparent
+        animationType="fade"
+        onRequestClose={() => !isDeletingProduce && setProduceToDelete(null)}
+      >
+        <View style={styles.deleteModalOverlay}>
+          <View style={styles.deleteModalCard}>
+            <View style={styles.deleteIconWrap}>
+              <Text style={{ fontSize: 28 }}>🗑️</Text>
+            </View>
+            <Text style={styles.deleteModalTitle}>
+              {t.actions.delete || 'Delete Listing'}
+            </Text>
+            <Text style={styles.deleteModalMessage}>
+              Are you sure you want to remove <Text style={{ fontWeight: 'bold', color: THEME.textDark }}>"{produceToDelete?.nameEn || produceToDelete?.nameSi || 'this produce'}"</Text> from your inventory?
+            </Text>
+
+            <View style={styles.deleteModalBtnRow}>
+              <TouchableOpacity
+                style={styles.deleteModalCancelBtn}
+                onPress={() => setProduceToDelete(null)}
+                disabled={isDeletingProduce}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.deleteModalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.deleteModalConfirmBtn}
+                onPress={confirmDeleteProduce}
+                disabled={isDeletingProduce}
+                activeOpacity={0.7}
+              >
+                {isDeletingProduce ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.deleteModalConfirmText}>Delete</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1871,5 +1972,101 @@ const styles = StyleSheet.create({
     color: THEME.emeraldDark,
     fontSize: 13,
     fontWeight: '800',
+  },
+  btnTrackDelivery: {
+    width: '100%',
+    backgroundColor: '#0F172A',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  btnTrackDeliveryText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  deleteModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  deleteModalCard: {
+    width: '100%',
+    maxWidth: 380,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 24,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  deleteIconWrap: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: THEME.dangerLight,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  deleteModalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: THEME.textDark,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  deleteModalMessage: {
+    fontSize: 14,
+    color: THEME.textMuted,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+  deleteModalBtnRow: {
+    flexDirection: 'row',
+    width: '100%',
+    gap: 12,
+  },
+  deleteModalCancelBtn: {
+    flex: 1,
+    paddingVertical: 13,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: THEME.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+  },
+  deleteModalCancelText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: THEME.textMuted,
+  },
+  deleteModalConfirmBtn: {
+    flex: 1,
+    paddingVertical: 13,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: THEME.danger,
+    shadowColor: THEME.danger,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  deleteModalConfirmText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
 });

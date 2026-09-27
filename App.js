@@ -81,7 +81,7 @@ function AppInner() {
     const startFirestoreSubscriptions = () => {
       if (!unsubscribeProduce) {
         unsubscribeProduce = subscribeToProduceListings((items) => {
-          if (items && items.length > 0) {
+          if (items) {
             setProduceListings(items);
           }
         });

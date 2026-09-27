@@ -23,11 +23,48 @@ import {
   uploadString,
   getDownloadURL,
 } from 'firebase/storage';
+import { Platform } from 'react-native';
 import { db, auth, storage } from '../firebaseConfig';
 
 // -------------------------------------------------------
 // PRODUCE LISTINGS & IMAGE UPLOADS
 // -------------------------------------------------------
+
+/**
+ * Helper to compress base64 images on web so they stay well below Firestore's 1MB document limit.
+ */
+const compressWebDataUrl = async (dataUrl, maxDim = 800, quality = 0.65) => {
+  if (Platform.OS === 'web' && typeof Image !== 'undefined' && dataUrl && dataUrl.startsWith('data:image')) {
+    return new Promise((resolve) => {
+      try {
+        const img = new Image();
+        img.onload = () => {
+          let { width, height } = img;
+          if (width > maxDim || height > maxDim) {
+            if (width > height) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', quality));
+        };
+        img.onerror = () => resolve(dataUrl);
+        img.src = dataUrl;
+      } catch (_e) {
+        resolve(dataUrl);
+      }
+    });
+  }
+  return dataUrl;
+};
 
 /**
  * Upload produce image to Firebase Storage (with base64 fallback)
@@ -41,30 +78,37 @@ export const uploadProduceImage = async (imageUri, produceId) => {
     return imageUri;
   }
 
+  // 2. On Web: Browser CORS policy blocks XMLHttpRequests to Firebase Storage bucket
+  // unless CORS headers are deployed to Google Cloud Storage.
+  // Instead of triggering browser CORS preflight failures, compress to a lightweight
+  // ~35KB JPEG data URL and store directly. This works instantly on Web and Native
+  // while staying well under Firestore's 1MB limit.
+  if (Platform.OS === 'web') {
+    return await compressWebDataUrl(imageUri);
+  }
+
+  // 3. On Native (Android / iOS): Upload to Firebase Storage
+  // Native mobile platforms use native sockets/HTTP and do NOT have browser CORS restrictions.
   const uniqueId = produceId || `produce_${Date.now()}_${Math.random().toString(36).substring(7)}`;
   const storagePath = `produce_images/${uniqueId}.jpg`;
   const storageRef = ref(storage, storagePath);
 
-  // 2. Try uploading to Firebase Storage
   try {
     if (imageUri.startsWith('data:')) {
       await uploadString(storageRef, imageUri, 'data_url');
-      const downloadURL = await getDownloadURL(storageRef);
-      return downloadURL;
+      return await getDownloadURL(storageRef);
     } else {
       const response = await fetch(imageUri);
       const blob = await response.blob();
       await uploadBytes(storageRef, blob, { contentType: 'image/jpeg' });
-      const downloadURL = await getDownloadURL(storageRef);
-      return downloadURL;
+      return await getDownloadURL(storageRef);
     }
   } catch (storageError) {
-    // 3. Fallback: If it is already a base64 data URL, return it
+    console.warn('Native Firebase Storage upload error, falling back:', storageError);
     if (imageUri.startsWith('data:')) {
       return imageUri;
     }
 
-    // 4. Convert local file:// URI to base64 data URL fallback
     try {
       const response = await fetch(imageUri);
       const blob = await response.blob();
@@ -160,20 +204,123 @@ export const deleteProduceListing = async (produceId) => {
 };
 
 // -------------------------------------------------------
-// ORDERS
+// ORDERS & DELIVERY STATUS WORKFLOW (GOVI-108 -> GOVI-116)
 // -------------------------------------------------------
+
+export const DELIVERY_STATUSES = {
+  PENDING: 'PENDING',
+  ACCEPTED: 'ACCEPTED',
+  PREPARING: 'PREPARING',
+  READY_FOR_PICKUP: 'READY_FOR_PICKUP',
+  IN_TRANSIT: 'IN_TRANSIT',
+  DELIVERED: 'DELIVERED',
+  CANCELLED: 'CANCELLED',
+};
+
+/**
+ * Valid delivery status transitions matrix (GOVI-115)
+ * PENDING -> ACCEPTED / PREPARING / READY_FOR_PICKUP -> IN_TRANSIT -> DELIVERED
+ * DELIVERED and CANCELLED are terminal states (no further transitions allowed).
+ */
+export const VALID_DELIVERY_TRANSITIONS = {
+  PENDING: ['ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP', 'IN_TRANSIT', 'CANCELLED'],
+  ACCEPTED: ['PREPARING', 'READY_FOR_PICKUP', 'IN_TRANSIT', 'CANCELLED'],
+  PREPARING: ['READY_FOR_PICKUP', 'IN_TRANSIT', 'CANCELLED'],
+  READY_FOR_PICKUP: ['IN_TRANSIT', 'CANCELLED'],
+  IN_TRANSIT: ['DELIVERED', 'CANCELLED'],
+  DELIVERED: [], // Terminal: once delivered, cannot transition backwards!
+  CANCELLED: [], // Terminal: once cancelled, cannot transition!
+};
+
+/**
+ * Validates delivery status transition server-side (GOVI-115)
+ */
+export const isValidStatusTransition = (currentStatus, nextStatus) => {
+  if (!nextStatus) return false;
+  const current = (currentStatus || 'PENDING').toUpperCase();
+  const next = nextStatus.toUpperCase();
+
+  // Idempotent (same status)
+  if (current === next) return true;
+
+  const allowed = VALID_DELIVERY_TRANSITIONS[current];
+  if (!allowed) {
+    return ['PENDING', 'ACCEPTED', 'READY_FOR_PICKUP', 'IN_TRANSIT', 'DELIVERED'].includes(next);
+  }
+
+  return allowed.includes(next);
+};
+
+/**
+ * Trigger Delivery Notifications in Firestore (GOVI-114)
+ */
+export const triggerDeliveryNotification = async (orderId, order, newStatus, extraData = {}) => {
+  try {
+    const notificationsRef = collection(db, 'notifications');
+    const nowIso = new Date().toISOString();
+    const produceTitle = order.produceName || 'Produce Batch';
+    const driverName = extraData.driverName || order.driverName || 'Kamal Perera';
+
+    // 1. Notify Buyer
+    const buyerNotification = {
+      orderId,
+      recipientUid: order.buyerUid || '',
+      recipientRole: 'buyer',
+      title: newStatus === 'IN_TRANSIT' ? 'Order In Transit 🚛' : 'Order Delivered! 🎉',
+      message: newStatus === 'IN_TRANSIT'
+        ? `Your order for ${produceTitle} is now on the way with driver ${driverName}.`
+        : `Your order for ${produceTitle} has been delivered successfully to ${order.deliveryAddress || 'your address'}.`,
+      status: newStatus,
+      createdAt: serverTimestamp(),
+      createdIso: nowIso,
+      read: false,
+    };
+    await addDoc(notificationsRef, buyerNotification);
+
+    // 2. Notify Farmer
+    if (order.farmerId || order.farmerUid) {
+      const farmerNotification = {
+        orderId,
+        recipientUid: order.farmerId || order.farmerUid,
+        recipientRole: 'farmer',
+        title: newStatus === 'IN_TRANSIT' ? 'Cargo Dispatched 🚛' : 'Order Delivered ✅',
+        message: newStatus === 'IN_TRANSIT'
+          ? `Cargo for ${produceTitle} was picked up by driver ${driverName} and is in transit.`
+          : `Order for ${produceTitle} was delivered to buyer ${order.buyerName || 'Buyer'}.`,
+        status: newStatus,
+        createdAt: serverTimestamp(),
+        createdIso: nowIso,
+        read: false,
+      };
+      await addDoc(notificationsRef, farmerNotification);
+    }
+  } catch (notifyErr) {
+    console.warn('Delivery notification trigger warning (non-fatal):', notifyErr);
+  }
+};
 
 /**
  * Place a new Order in Firestore
+ * Initializes status to PENDING and seeds initial statusHistory entry.
  */
 export const placeOrderInFirestore = async (orderData) => {
   try {
     const ordersRef = collection(db, 'orders');
+    const nowIso = new Date().toISOString();
     const docRef = await addDoc(ordersRef, {
       ...orderData,
       status: 'PENDING',
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
+      statusHistory: [
+        {
+          status: 'PENDING',
+          timestamp: nowIso,
+          changedBy: orderData.buyerName || 'Buyer',
+          actorRole: 'buyer',
+          notes: 'Order placed by buyer',
+        },
+      ],
     });
     return { success: true, id: docRef.id };
   } catch (error) {
@@ -183,17 +330,105 @@ export const placeOrderInFirestore = async (orderData) => {
 };
 
 /**
- * Update order status (e.g. PENDING -> ACCEPTED -> IN_TRANSIT -> DELIVERED)
+ * Update order status with server-side transition validation (GOVI-109, GOVI-110, GOVI-111, GOVI-114, GOVI-115)
+ *
+ * @param {string} orderId
+ * @param {string} newStatus ('ACCEPTED' | 'READY_FOR_PICKUP' | 'IN_TRANSIT' | 'DELIVERED' | 'CANCELLED')
+ * @param {object} extraData
  */
 export const updateOrderStatus = async (orderId, newStatus, extraData = {}) => {
+  if (!orderId) {
+    return { success: false, error: 'Order ID is required' };
+  }
+  if (!newStatus) {
+    return { success: false, error: 'Target status is required' };
+  }
+
   try {
     const orderDocRef = doc(db, 'orders', orderId);
-    await updateDoc(orderDocRef, {
-      status: newStatus,
-      ...extraData,
+    const orderDocSnap = await getDoc(orderDocRef);
+
+    if (!orderDocSnap.exists()) {
+      return { success: false, error: 'Order not found in database' };
+    }
+
+    const currentOrder = orderDocSnap.data();
+    const currentStatus = (currentOrder.status || 'PENDING').toUpperCase();
+    const normalizedNewStatus = newStatus.toUpperCase();
+
+    // 1. Terminal state checks (GOVI-110 & GOVI-115)
+    if (currentStatus === 'DELIVERED') {
+      return {
+        success: false,
+        error: 'Order has already been Delivered. Status cannot be modified backwards.',
+      };
+    }
+
+    if (currentStatus === 'CANCELLED') {
+      return {
+        success: false,
+        error: 'Cannot update status of a cancelled order.',
+      };
+    }
+
+    // 2. Validate transition (GOVI-115)
+    if (!isValidStatusTransition(currentStatus, normalizedNewStatus)) {
+      return {
+        success: false,
+        error: `Invalid delivery status transition from ${currentStatus} to ${normalizedNewStatus}`,
+      };
+    }
+
+    // 3. Prepare status timestamps & history (GOVI-111)
+    const nowIso = new Date().toISOString();
+    const updatePayload = {
+      status: normalizedNewStatus,
       updatedAt: serverTimestamp(),
-    });
-    return { success: true };
+      ...extraData,
+    };
+
+    if (normalizedNewStatus === 'IN_TRANSIT') {
+      updatePayload.inTransitAt = serverTimestamp();
+      updatePayload.inTransitIso = nowIso;
+    } else if (normalizedNewStatus === 'DELIVERED') {
+      updatePayload.deliveredAt = serverTimestamp();
+      updatePayload.deliveredIso = nowIso;
+    } else if (normalizedNewStatus === 'READY_FOR_PICKUP' || normalizedNewStatus === 'PREPARING') {
+      updatePayload.readyAt = serverTimestamp();
+      updatePayload.readyIso = nowIso;
+    } else if (normalizedNewStatus === 'ACCEPTED') {
+      updatePayload.acceptedAt = serverTimestamp();
+      updatePayload.acceptedIso = nowIso;
+    }
+
+    // Append to statusHistory cleanly (GOVI-111)
+    const existingHistory = Array.isArray(currentOrder.statusHistory) ? currentOrder.statusHistory : [];
+    const lastEntry = existingHistory[existingHistory.length - 1];
+    if (!lastEntry || lastEntry.status !== normalizedNewStatus) {
+      const historyEntry = {
+        status: normalizedNewStatus,
+        timestamp: nowIso,
+        changedBy: extraData.changedBy || extraData.driverName || extraData.farmerName || 'Authorized User',
+        actorRole: extraData.actorRole || (extraData.driverName ? 'driver' : (extraData.farmerName ? 'farmer' : 'admin')),
+        notes: extraData.notes || extraData.specialNotes || '',
+      };
+      updatePayload.statusHistory = [...existingHistory, historyEntry];
+    }
+
+    await updateDoc(orderDocRef, updatePayload);
+
+    // 4. Trigger Notifications (GOVI-114)
+    if (normalizedNewStatus === 'IN_TRANSIT' || normalizedNewStatus === 'DELIVERED') {
+      await triggerDeliveryNotification(orderId, currentOrder, normalizedNewStatus, extraData);
+    }
+
+    return {
+      success: true,
+      orderId,
+      status: normalizedNewStatus,
+      inTransitAt: updatePayload.inTransitIso,
+      deliveredAt: updatePayload.deliveredIso,
+    };
   } catch (error) {
     console.error('Error updating order status in Firestore:', error);
     return { success: false, error: error.message };
@@ -201,7 +436,7 @@ export const updateOrderStatus = async (orderId, newStatus, extraData = {}) => {
 };
 
 /**
- * Real-time listener for Orders in Firestore
+ * Real-time listener for all Orders in Firestore
  */
 export const subscribeToOrders = (onUpdate) => {
   const ordersRef = collection(db, 'orders');
@@ -214,6 +449,41 @@ export const subscribeToOrders = (onUpdate) => {
     onUpdate(orders);
   }, (error) => {
     console.error('Firestore orders subscription error:', error);
+  });
+};
+
+/**
+ * Real-time listener for a single Order by ID (GOVI-112)
+ */
+export const subscribeToOrderById = (orderId, onUpdate) => {
+  if (!orderId) return () => {};
+  const orderDocRef = doc(db, 'orders', orderId);
+
+  return onSnapshot(orderDocRef, (docSnap) => {
+    if (docSnap.exists()) {
+      onUpdate({ id: docSnap.id, ...docSnap.data() });
+    }
+  }, (error) => {
+    console.error('Error subscribing to order by ID:', error);
+  });
+};
+
+/**
+ * Real-time listener for User Notifications (GOVI-114)
+ */
+export const subscribeToUserNotifications = (uid, onUpdate) => {
+  if (!uid) return () => {};
+  const notificationsRef = collection(db, 'notifications');
+  const q = query(notificationsRef, where('recipientUid', '==', uid));
+
+  return onSnapshot(q, (snapshot) => {
+    const notifs = snapshot.docs.map((docSnap) => ({
+      id: docSnap.id,
+      ...docSnap.data(),
+    }));
+    onUpdate(notifs);
+  }, (error) => {
+    console.error('Error subscribing to notifications:', error);
   });
 };
 

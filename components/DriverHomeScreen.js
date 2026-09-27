@@ -19,6 +19,7 @@ import {
 import AddVehicleScreen from './AddVehicleScreen';
 import DriverVehiclesListScreen from './DriverVehiclesListScreen';
 import UserProfileScreen from './UserProfileScreen';
+import DeliveryTrackingScreen from './DeliveryTrackingScreen';
 
 // ----------------------------------------------------
 // THEME COLORS
@@ -211,6 +212,7 @@ export default function DriverHomeScreen({
   const [editingVehicle, setEditingVehicle] = useState(null);
   const [vehiclesList, setVehiclesList] = useState([]);
   const [showProfileScreen, setShowProfileScreen] = useState(false);
+  const [selectedTripForTracking, setSelectedTripForTracking] = useState(null);
 
   const t = TRANSLATIONS[lang] || TRANSLATIONS.en;
 
@@ -283,12 +285,21 @@ export default function DriverHomeScreen({
 
     setUpdatingTripId(trip.id);
     if (trip.id) {
-      await updateOrderStatus(trip.id, nextStatus, {
+      const res = await updateOrderStatus(trip.id, nextStatus, {
         driverName: userProfile?.fullName || 'Assigned Driver',
         driverPhone: userProfile?.phoneNumber || '',
+        changedBy: userProfile?.fullName || 'Assigned Driver',
+        actorRole: 'driver',
       });
+      setUpdatingTripId(null);
+
+      if (!res.success) {
+        Alert.alert('Status Error', res.error || 'Failed to update order status');
+        return;
+      }
+    } else {
+      setUpdatingTripId(null);
     }
-    setUpdatingTripId(null);
 
     if (nextStatus === 'IN_TRANSIT') {
       Alert.alert(
@@ -337,6 +348,18 @@ export default function DriverHomeScreen({
           setEditingVehicle(null);
           setCurrentScreen('dashboard');
         }}
+      />
+    );
+  }
+
+  if (selectedTripForTracking) {
+    return (
+      <DeliveryTrackingScreen
+        delivery={selectedTripForTracking}
+        userProfile={userProfile}
+        lang={lang}
+        onBack={() => setSelectedTripForTracking(null)}
+        onLogout={onLogout}
       />
     );
   }
@@ -686,6 +709,17 @@ export default function DriverHomeScreen({
                         </Text>
                       </>
                     )}
+                  </TouchableOpacity>
+
+                  {/* VIEW LIVE TRACKING BUTTON */}
+                  <TouchableOpacity
+                    style={styles.viewTrackingBtn}
+                    onPress={() => setSelectedTripForTracking(trip)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.viewTrackingBtnText}>
+                      📦 View Live Route & Tracking Details ➔
+                    </Text>
                   </TouchableOpacity>
                 </View>
               );
@@ -1278,6 +1312,19 @@ const styles = StyleSheet.create({
   actionBtnText: {
     color: '#FFFFFF',
     fontSize: 14,
+    fontWeight: '700',
+  },
+  viewTrackingBtn: {
+    marginTop: 8,
+    paddingVertical: 10,
+    backgroundColor: '#F1F5F9',
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  viewTrackingBtnText: {
+    color: '#0B2545',
+    fontSize: 12,
     fontWeight: '700',
   },
 

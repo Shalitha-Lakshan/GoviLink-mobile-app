@@ -20,6 +20,7 @@ import {
 } from '../services/firebaseDatabase';
 import BuyerRequestProduceScreen from './BuyerRequestProduceScreen';
 import UserProfileScreen from './UserProfileScreen';
+import DeliveryTrackingScreen from './DeliveryTrackingScreen';
 
 // ----------------------------------------------------
 // THEME COLORS
@@ -272,6 +273,7 @@ export default function BuyerHomeScreen({
   const [deliveryNotes, setDeliveryNotes] = useState('');
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
   const [showProfileScreen, setShowProfileScreen] = useState(false);
+  const [selectedOrderForTracking, setSelectedOrderForTracking] = useState(null);
 
   const t = TRANSLATIONS[lang] || TRANSLATIONS.en;
 
@@ -449,6 +451,18 @@ export default function BuyerHomeScreen({
           setShowRequestScreen(false);
           setActiveTab('customRequests');
         }}
+      />
+    );
+  }
+
+  if (selectedOrderForTracking) {
+    return (
+      <DeliveryTrackingScreen
+        delivery={selectedOrderForTracking}
+        userProfile={userProfile}
+        lang={lang}
+        onBack={() => setSelectedOrderForTracking(null)}
+        onLogout={onLogout}
       />
     );
   }
@@ -1001,6 +1015,15 @@ export default function BuyerHomeScreen({
                         Total: {t.labels.currency} {Number(order.totalPrice || 0).toFixed(2)}
                       </Text>
                     </View>
+
+                    {/* LIVE TRACKING ACTION BUTTON (GOVI-112) */}
+                    <TouchableOpacity
+                      style={styles.trackDeliveryBtn}
+                      onPress={() => setSelectedOrderForTracking(order)}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={styles.trackDeliveryBtnText}>📦 Track Live Delivery ➔</Text>
+                    </TouchableOpacity>
                   </View>
                 );
               })
@@ -1642,6 +1665,19 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: 'bold',
     color: THEME.emeraldDark,
+  },
+  trackDeliveryBtn: {
+    marginTop: 10,
+    backgroundColor: '#0B2545',
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  trackDeliveryBtnText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 13,
   },
 
   // Empty
