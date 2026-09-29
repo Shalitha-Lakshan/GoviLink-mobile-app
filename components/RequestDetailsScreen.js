@@ -75,6 +75,9 @@ export default function RequestDetailsScreen({
   const farmerPhone = safeString(order?.farmerPhone, '0771234567');
   const farmerRating = safeString(order?.farmerRating, '4.9');
   const farmerTotalOrders = typeof order?.farmerTotalOrders === 'number' ? order.farmerTotalOrders : 142;
+  const buyerName = safeString(order?.buyerName, 'Cooperative Market Buyer');
+  const buyerPhone = safeString(order?.buyerPhone, '0714567890');
+  const buyerNotes = safeString(order?.notes, '');
   const pickupLocation = safeString(order?.pickupLocation, 'Silva Agri Farm, Plot 42');
   const pickupRegion = safeString(order?.pickupRegion, 'Dambulla, Central Province');
   const deliveryAddress = safeString(order?.deliveryAddress, 'Manning Market, Gate 3');
@@ -91,6 +94,16 @@ export default function RequestDetailsScreen({
       });
     } else {
       Alert.alert('Consignor Contact', 'Phone number not available.');
+    }
+  };
+
+  const handleCallBuyer = () => {
+    if (buyerPhone) {
+      Linking.openURL(`tel:${buyerPhone}`).catch(() => {
+        Alert.alert('Buyer Contact', `Buyer Phone: ${buyerPhone}`);
+      });
+    } else {
+      Alert.alert('Buyer Contact', 'Phone number not available.');
     }
   };
 
@@ -231,6 +244,38 @@ export default function RequestDetailsScreen({
           >
             <Ionicons name="call-outline" size={20} color="#2563EB" />
           </TouchableOpacity>
+        </View>
+
+        {/* CARD 2B: BUYER DETAILS (GOVI-149) */}
+        <View style={styles.cardConsignor}>
+          <View style={styles.consignorLeftRow}>
+            <View style={[styles.farmerAvatarWrapper, { backgroundColor: '#DBEAFE', borderColor: '#BFDBFE' }]}>
+              <Ionicons name="cart" size={20} color="#1D4ED8" />
+            </View>
+
+            <View style={styles.consignorTextCol}>
+              <Text style={[styles.cardSubHeaderLabel, { color: '#1D4ED8' }]}>BUYER / RECIPIENT</Text>
+              <Text style={styles.farmerName}>{buyerName}</Text>
+              <Text style={styles.ordersCountText} numberOfLines={1}>
+                {deliveryAddress}
+              </Text>
+              {buyerNotes ? (
+                <Text style={{ fontSize: 11, color: '#B45309', fontStyle: 'italic', marginTop: 2 }}>
+                  Note: {buyerNotes}
+                </Text>
+              ) : null}
+            </View>
+          </View>
+
+          {buyerPhone ? (
+            <TouchableOpacity
+              style={[styles.callBtn, { backgroundColor: '#EFF6FF' }]}
+              onPress={handleCallBuyer}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="call-outline" size={20} color="#1D4ED8" />
+            </TouchableOpacity>
+          ) : null}
         </View>
 
         {/* CARD 3: TRANSIT ROUTE */}

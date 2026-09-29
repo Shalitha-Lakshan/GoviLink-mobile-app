@@ -10,12 +10,14 @@ import {
   StatusBar,
   ActivityIndicator,
   TextInput,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import {
   subscribeToDrivers,
   assignDriverToOrder,
+  reassignDriverForOrder,
   checkDriverAvailability,
   DEFAULT_COOP_DRIVERS,
 } from '../services/firebaseDatabase';
@@ -95,6 +97,18 @@ export default function AdminHomeScreen({
   const [vehicleSearchQuery, setVehicleSearchQuery] = useState('');
   const [selectedVehicleCategory, setSelectedVehicleCategory] = useState('all');
   const [deliveryFilter, setDeliveryFilter] = useState('all'); // 'all' | 'in_transit' | 'pending' | 'delivered'
+  const [deliverySearchQuery, setDeliverySearchQuery] = useState('');
+  const [assignModalOrder, setAssignModalOrder] = useState(null);
+  const [selectedAssignDriver, setSelectedAssignDriver] = useState(null);
+  const [isAssigningFromModal, setIsAssigningFromModal] = useState(false);
+  const [assignDriverSearch, setAssignDriverSearch] = useState('');
+
+  const [reassignModalOrder, setReassignModalOrder] = useState(null);
+  const [selectedReassignDriver, setSelectedReassignDriver] = useState(null);
+  const [reassignReason, setReassignReason] = useState('');
+  const [isReassigningFromModal, setIsReassigningFromModal] = useState(false);
+  const [reassignDriverSearch, setReassignDriverSearch] = useState('');
+
   const [selectedDeliveryForTracking, setSelectedDeliveryForTracking] = useState(null);
   const [showProfileScreen, setShowProfileScreen] = useState(false);
 
@@ -262,7 +276,7 @@ export default function AdminHomeScreen({
     }
 
     setAssigningOrderId(order.id);
-    const res = await assignDriverToOrder(order, driver);
+    const res = await assignDriverToOrder(order, driver, userProfile);
     setAssigningOrderId(null);
 
     if (res.success) {
@@ -283,6 +297,123 @@ export default function AdminHomeScreen({
         return next;
       });
     }
+  };
+
+  // Deliveries List & Filtering (GOVI-143, GOVI-144)
+  const allDeliveries = ordersList || [];
+  const pendingDeliveries = allDeliveries.filter((o) => !o.driverId && o.status !== 'DELIVERED' && o.status !== 'CANCELLED');
+  const inTransitDeliveries = allDeliveries.filter((o) => o.status === 'IN_TRANSIT');
+  const assignedDeliveries = allDeliveries.filter((o) => o.driverId && o.status !== 'DELIVERED' && o.status !== 'CANCELLED' && o.status !== 'IN_TRANSIT');
+
+  const filteredDeliveriesList = allDeliveries.filter((item) => {
+    // Status tab filter
+    if (deliveryFilter === 'pending' && (item.driverId || item.status === 'DELIVERED' || item.status === 'CANCELLED')) {
+      return false;
+    }
+    if (deliveryFilter === 'assigned' && (!item.driverId || item.status === 'DELIVERED' || item.status === 'CANCELLED' || item.status === 'IN_TRANSIT')) {
+      return false;
+    }
+    if (deliveryFilter === 'in_transit' && item.status !== 'IN_TRANSIT') {
+      return false;
+    }
+    if (deliveryFilter === 'delivered' && item.status !== 'DELIVERED' && item.status !== 'COMPLETED') {
+      return false;
+    }
+
+    // Text search filter
+    if (!deliverySearchQuery.trim()) return true;
+    const q = deliverySearchQuery.toLowerCase().trim();
+    return (
+      (item.id && item.id.toLowerCase().includes(q)) ||
+      (item.orderNo && String(item.orderNo).toLowerCase().includes(q)) ||
+      (item.produceName && item.produceName.toLowerCase().includes(q)) ||
+      (item.farmerName && item.farmerName.toLowerCase().includes(q)) ||
+      (item.buyerName && item.buyerName.toLowerCase().includes(q)) ||
+      (item.driverName && item.driverName.toLowerCase().includes(q)) ||
+      (item.pickupLocation && item.pickupLocation.toLowerCase().includes(q)) ||
+      (item.deliveryAddress && item.deliveryAddress.toLowerCase().includes(q)) ||
+      (item.status && item.status.toLowerCase().includes(q))
+    );
+  });
+
+  const handleAssignDriverSubmit = async (order, driver) => {
+    if (!driver) {
+      Alert.alert('Select Driver', 'Please select an available fleet driver.');
+      return;
+    }
+
+    const availability = checkDriverAvailability(driver, ordersList);
+    if (!availability.isAvailable) {
+      Alert.alert(
+        'Driver Unavailable',
+        `"${driver.fullName}" is currently on an active route. Please select another driver.`
+      );
+      return;
+    }
+
+    Alert.alert(
+      'Confirm Driver Assignment',
+      `Assign "${driver.fullName}" (${driver.vehicleNumber || 'Vehicle'}) to Delivery #${String(order.id).slice(0, 8)}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Confirm & Dispatch',
+          onPress: async () => {
+            setIsAssigningFromModal(true);
+            const res = await assignDriverToOrder(order, driver, userProfile);
+            setIsAssigningFromModal(false);
+
+            if (res.success) {
+              Alert.alert(
+                'Driver Assigned Successfully! 🚛',
+                `"${driver.fullName}" has been assigned to transport ${order.produceName || 'produce'} from ${order.pickupLocation || 'Farm'} to ${order.deliveryAddress || 'Destination'}. Notifications sent.`
+              );
+              setAssignModalOrder(null);
+              setSelectedAssignDriver(null);
+            } else {
+              Alert.alert('Assignment Error', res.error || 'Failed to assign driver.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleReassignDriverSubmit = async (order, newDriver, reason) => {
+    if (!newDriver) {
+      Alert.alert('Select Driver', 'Please select a replacement fleet driver.');
+      return;
+    }
+
+    const currentDriverName = order.driverName || 'Current Driver';
+
+    Alert.alert(
+      'Confirm Driver Reassignment',
+      `Reassign Delivery #${String(order.id).slice(0, 8)} from ${currentDriverName} to "${newDriver.fullName}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Confirm Reassign',
+          onPress: async () => {
+            setIsReassigningFromModal(true);
+            const res = await reassignDriverForOrder(order, newDriver, userProfile, reason);
+            setIsReassigningFromModal(false);
+
+            if (res.success) {
+              Alert.alert(
+                'Driver Reassigned Successfully! 🚛',
+                `Reassigned to "${newDriver.fullName}". Both drivers, buyer, and farmer have been updated.`
+              );
+              setReassignModalOrder(null);
+              setSelectedReassignDriver(null);
+              setReassignReason('');
+            } else {
+              Alert.alert('Reassignment Failed', res.error || 'Failed to reassign driver.');
+            }
+          },
+        },
+      ]
+    );
   };
 
   if (selectedOrderForDetails) {
@@ -307,6 +438,8 @@ export default function AdminHomeScreen({
       <DeliveryTrackingScreen
         delivery={selectedDeliveryForTracking}
         userProfile={userProfile}
+        driversList={driversList}
+        ordersList={ordersList}
         lang={lang}
         onBack={() => setSelectedDeliveryForTracking(null)}
         onLogout={onLogout}
@@ -1054,24 +1187,113 @@ export default function AdminHomeScreen({
           </View>
         )}
 
-        {/* DELIVERIES TAB */}
+        {/* DELIVERIES MANAGEMENT TAB (GOVI-143 -> GOVI-151) */}
         {activeTab === 'deliveries' && (
           <View style={styles.tabContentContainer}>
-            <Text style={styles.requestsPageTitle}>Active Deliveries</Text>
-            <Text style={styles.requestsPageSub}>
-              Manage and track ongoing logistical deliveries across hubs.
-            </Text>
+            <View style={styles.deliveryPageHeaderRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.requestsPageTitle}>Delivery Operations</Text>
+                <Text style={styles.requestsPageSub}>
+                  Manage fleet assignments, track active shipments, and monitor delivery status.
+                </Text>
+              </View>
+              <View style={styles.badgeLiveDeliveries}>
+                <View style={styles.liveGreenDot} />
+                <Text style={styles.badgeLiveDeliveriesText}>LIVE FLEET</Text>
+              </View>
+            </View>
 
+            {/* KPI STATS ROW (GOVI-143, GOVI-144, GOVI-150) */}
+            <View style={styles.deliveryKpiGrid}>
+              <TouchableOpacity
+                style={[styles.deliveryKpiCard, deliveryFilter === 'all' && styles.deliveryKpiCardActive]}
+                onPress={() => setDeliveryFilter('all')}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.deliveryKpiNumber}>{allDeliveries.length}</Text>
+                <Text style={styles.deliveryKpiLabel}>All Deliveries</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.deliveryKpiCard,
+                  { borderLeftColor: '#F59E0B' },
+                  deliveryFilter === 'pending' && styles.deliveryKpiCardPendingActive,
+                ]}
+                onPress={() => setDeliveryFilter('pending')}
+                activeOpacity={0.8}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Text style={[styles.deliveryKpiNumber, { color: '#D97706' }]}>
+                    {pendingDeliveries.length}
+                  </Text>
+                  {pendingDeliveries.length > 0 && <View style={styles.kpiAlertDot} />}
+                </View>
+                <Text style={[styles.deliveryKpiLabel, { color: '#B45309' }]}>Pending</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.deliveryKpiCard,
+                  { borderLeftColor: '#10B981' },
+                  deliveryFilter === 'in_transit' && styles.deliveryKpiCardInTransitActive,
+                ]}
+                onPress={() => setDeliveryFilter('in_transit')}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.deliveryKpiNumber, { color: '#059669' }]}>
+                  {inTransitDeliveries.length}
+                </Text>
+                <Text style={[styles.deliveryKpiLabel, { color: '#059669' }]}>In Transit</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.deliveryKpiCard,
+                  { borderLeftColor: '#3B82F6' },
+                  deliveryFilter === 'delivered' && styles.deliveryKpiCardDeliveredActive,
+                ]}
+                onPress={() => setDeliveryFilter('delivered')}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.deliveryKpiNumber, { color: '#2563EB' }]}>
+                  {completedOrders.length}
+                </Text>
+                <Text style={[styles.deliveryKpiLabel, { color: '#2563EB' }]}>Delivered</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* SEARCH BAR (GOVI-143) */}
+            <View style={styles.searchFilterRow}>
+              <View style={styles.searchInputContainer}>
+                <Ionicons name="search-outline" size={20} color="#64748B" style={{ marginRight: 8 }} />
+                <TextInput
+                  style={styles.searchInputField}
+                  placeholder="Search deliveries by ID, produce, buyer, driver..."
+                  placeholderTextColor="#94A3B8"
+                  value={deliverySearchQuery}
+                  onChangeText={setDeliverySearchQuery}
+                />
+                {deliverySearchQuery.length > 0 && (
+                  <TouchableOpacity onPress={() => setDeliverySearchQuery('')}>
+                    <Ionicons name="close-circle" size={18} color="#94A3B8" />
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+
+            {/* FILTER CHIPS (GOVI-143, GOVI-144) */}
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.categoryChipsScroll}
             >
               {[
-                { id: 'all', label: 'All Deliveries' },
-                { id: 'in_transit', label: 'In Transit' },
-                { id: 'pending', label: 'Pending' },
-                { id: 'delivered', label: 'Delivered' },
+                { id: 'all', label: `All (${allDeliveries.length})` },
+                { id: 'pending', label: `Pending (${pendingDeliveries.length})` },
+                { id: 'assigned', label: `Assigned (${assignedDeliveries.length})` },
+                { id: 'in_transit', label: `In Transit (${inTransitDeliveries.length})` },
+                { id: 'delivered', label: `Delivered (${completedOrders.length})` },
               ].map((chip) => (
                 <TouchableOpacity
                   key={chip.id}
@@ -1094,59 +1316,466 @@ export default function AdminHomeScreen({
               ))}
             </ScrollView>
 
-            {displayActiveDeliveries.map((item) => (
-              <TouchableOpacity
-                key={item.id}
-                style={[styles.requestCard, { borderLeftColor: '#10B981' }]}
-                onPress={() => setSelectedDeliveryForTracking(item)}
-                activeOpacity={0.88}
-              >
-                <View style={styles.cardHeaderRow}>
-                  <Text style={styles.cardProduceTitle}>{item.orderNo || `#${item.id}`}</Text>
-                  {renderStatusBadge(item.status || 'IN_TRANSIT')}
-                </View>
-
-                <Text style={[styles.farmerNameText, { marginTop: 2, marginBottom: 10 }]}>
-                  Buyer: {item.buyerName || 'Cooperative Buyer'}
+            {/* DELIVERIES LIST (GOVI-144, GOVI-147, GOVI-148, GOVI-149, GOVI-150) */}
+            {filteredDeliveriesList.length === 0 ? (
+              <View style={styles.emptyBox}>
+                <MaterialCommunityIcons
+                  name={deliveryFilter === 'pending' ? 'clipboard-check-outline' : 'truck-outline'}
+                  size={46}
+                  color="#006837"
+                />
+                <Text style={styles.emptyTitle}>
+                  {deliveryFilter === 'pending' ? 'No Pending Deliveries' : 'No Deliveries Found'}
                 </Text>
+                <Text style={styles.emptySub}>
+                  {deliveryFilter === 'pending'
+                    ? 'All current farm shipments have been assigned to fleet drivers.'
+                    : deliverySearchQuery.trim()
+                    ? `No deliveries match "${deliverySearchQuery}". Try another search.`
+                    : 'No delivery shipments match the selected filter category.'}
+                </Text>
+                {deliveryFilter !== 'all' && (
+                  <TouchableOpacity
+                    style={[styles.detailsBtnSmall, { marginTop: 12 }]}
+                    onPress={() => {
+                      setDeliveryFilter('all');
+                      setDeliverySearchQuery('');
+                    }}
+                  >
+                    <Text style={styles.detailsBtnSmallText}>View All Deliveries</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            ) : (
+              filteredDeliveriesList.map((item) => {
+                const isAssigned = !!item.driverId;
+                const isPending = !isAssigned && item.status !== 'DELIVERED' && item.status !== 'CANCELLED';
+                const isDelivered = item.status === 'DELIVERED' || item.status === 'COMPLETED';
+                const canReassign = isAssigned && !isDelivered && item.status !== 'CANCELLED';
 
-                <View style={styles.deliveryRouteBox}>
-                  <View style={styles.deliveryRouteCol}>
-                    <Text style={styles.routeSublabel}>PICKUP</Text>
-                    <Text style={styles.locationTitle}>{item.pickupLocation}</Text>
+                return (
+                  <View
+                    key={item.id}
+                    style={[
+                      styles.deliveryManageCard,
+                      isPending && { borderLeftColor: '#F59E0B' },
+                      item.status === 'IN_TRANSIT' && { borderLeftColor: '#10B981' },
+                      isDelivered && { borderLeftColor: '#3B82F6' },
+                    ]}
+                  >
+                    {/* Header Row */}
+                    <View style={styles.cardHeaderRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.deliveryCardIdText}>
+                          Delivery #{item.orderNo || String(item.id).slice(-8).toUpperCase()}
+                        </Text>
+                        <Text style={styles.cardReqProduceText} numberOfLines={1}>
+                          {item.produceName || 'Produce Cargo'} • {item.qty || 500} {item.unit || 'kg'}
+                        </Text>
+                      </View>
+                      {renderStatusBadge(item.status || (isPending ? 'PENDING' : 'ASSIGNED'))}
+                    </View>
+
+                    <View style={styles.cardDividerSmall} />
+
+                    {/* Farmer & Buyer Route Summary (GOVI-148, GOVI-149) */}
+                    <View style={styles.deliveryPartyRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.metaLabelText}>
+                          Farmer: <Text style={styles.metaValText}>{item.farmerName || 'Farmer Consignor'}</Text>
+                        </Text>
+                        <Text style={styles.deliveryLocationSub} numberOfLines={1}>
+                          📍 {item.pickupLocation || 'Farm Origin'}
+                        </Text>
+                      </View>
+                      <View style={{ flex: 1, paddingLeft: 8 }}>
+                        <Text style={styles.metaLabelText}>
+                          Buyer: <Text style={styles.metaValText}>{item.buyerName || 'Buyer Consignee'}</Text>
+                        </Text>
+                        <Text style={styles.deliveryLocationSub} numberOfLines={1}>
+                          🎯 {item.deliveryAddress || 'Delivery Destination'}
+                        </Text>
+                      </View>
+                    </View>
+
+                    {/* Driver Status Banner (GOVI-145, GOVI-147) */}
+                    {isAssigned ? (
+                      <View style={styles.assignedDriverBanner}>
+                        <View style={styles.assignedDriverAvatarSmall}>
+                          <Ionicons name="person" size={14} color="#006837" />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.assignedDriverNameText} numberOfLines={1}>
+                            Driver: <Text style={{ fontWeight: '800', color: '#0F172A' }}>{item.driverName}</Text>
+                          </Text>
+                          <Text style={styles.assignedDriverVehicleSub} numberOfLines={1}>
+                            {item.driverVehicle || item.vehicleNumber || 'Co-op Vehicle'} • {item.driverPhone || 'Contact verified'}
+                          </Text>
+                        </View>
+                        <View style={styles.badgeAssignedPill}>
+                          <Text style={styles.badgeAssignedPillText}>
+                            {item.status === 'IN_TRANSIT' ? 'IN ROUTE' : 'ASSIGNED'}
+                          </Text>
+                        </View>
+                      </View>
+                    ) : (
+                      <View style={styles.unassignedAlertBanner}>
+                        <Ionicons name="alert-circle" size={16} color="#B45309" style={{ marginRight: 6 }} />
+                        <Text style={styles.unassignedAlertText}>
+                          Waiting for Driver Assignment
+                        </Text>
+                      </View>
+                    )}
+
+                    {/* Action Buttons Row (GOVI-146, GOVI-147, GOVI-150, GOVI-151) */}
+                    <View style={styles.deliveryCardActionRow}>
+                      <TouchableOpacity
+                        style={styles.detailsBtnSmall}
+                        onPress={() => setSelectedDeliveryForTracking(item)}
+                        activeOpacity={0.8}
+                      >
+                        <Ionicons name="eye-outline" size={15} color="#006837" style={{ marginRight: 4 }} />
+                        <Text style={styles.detailsBtnSmallText}>View Details</Text>
+                      </TouchableOpacity>
+
+                      {isPending && (
+                        <TouchableOpacity
+                          style={styles.assignActionBtn}
+                          onPress={() => {
+                            setAssignModalOrder(item);
+                            setSelectedAssignDriver(null);
+                          }}
+                          activeOpacity={0.85}
+                        >
+                          <MaterialCommunityIcons name="truck-fast" size={15} color="#FFFFFF" style={{ marginRight: 4 }} />
+                          <Text style={styles.assignActionBtnText}>Assign Driver</Text>
+                        </TouchableOpacity>
+                      )}
+
+                      {canReassign && (
+                        <TouchableOpacity
+                          style={styles.reassignActionBtn}
+                          onPress={() => {
+                            setReassignModalOrder(item);
+                            setSelectedReassignDriver(null);
+                            setReassignReason('');
+                          }}
+                          activeOpacity={0.85}
+                        >
+                          <MaterialCommunityIcons name="account-convert" size={15} color="#B45309" style={{ marginRight: 4 }} />
+                          <Text style={styles.reassignActionBtnText}>Reassign</Text>
+                        </TouchableOpacity>
+                      )}
+
+                      {!isPending && (
+                        <TouchableOpacity
+                          style={styles.trackActionBtn}
+                          onPress={() => setSelectedDeliveryForTracking(item)}
+                          activeOpacity={0.85}
+                        >
+                          <Ionicons name="navigate-outline" size={15} color="#FFFFFF" style={{ marginRight: 4 }} />
+                          <Text style={styles.trackActionBtnText}>Track</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
                   </View>
-
-                  <Ionicons name="arrow-forward-outline" size={20} color="#64748B" />
-
-                  <View style={[styles.deliveryRouteCol, { alignItems: 'flex-end' }]}>
-                    <Text style={styles.routeSublabel}>DESTINATION</Text>
-                    <Text style={styles.locationTitle}>{item.deliveryAddress}</Text>
-                  </View>
-                </View>
-
-                <View style={styles.deliveryDriverRow}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <Ionicons name="person-outline" size={14} color="#475569" style={{ marginRight: 6 }} />
-                    <Text style={styles.farmerNameText}>{item.driverName || 'Driver'}</Text>
-                  </View>
-
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <Ionicons name="car-outline" size={14} color="#475569" style={{ marginRight: 6 }} />
-                    <Text style={styles.farmerNameText}>{item.vehicleNumber || item.vehiclePlate || 'Fleet Vehicle'}</Text>
-                  </View>
-                </View>
-
-                <TouchableOpacity
-                  style={styles.assignPrimaryBtn}
-                  onPress={() => setSelectedDeliveryForTracking(item)}
-                  activeOpacity={0.85}
-                >
-                  <Ionicons name="navigate-circle-outline" size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
-                  <Text style={styles.assignPrimaryBtnText}>Track Delivery Status</Text>
-                </TouchableOpacity>
-              </TouchableOpacity>
-            ))}
+                );
+              })
+            )}
           </View>
+        )}
+
+        {/* DRIVER ASSIGNMENT MODAL (GOVI-145, GOVI-146) */}
+        {assignModalOrder && (
+          <Modal
+            visible={!!assignModalOrder}
+            transparent
+            animationType="slide"
+            onRequestClose={() => !isAssigningFromModal && setAssignModalOrder(null)}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={[styles.modalCard, { maxHeight: '85%' }]}>
+                <View style={styles.modalHeaderRow}>
+                  <View style={styles.modalIconBoxGreen}>
+                    <MaterialCommunityIcons name="truck-fast" size={24} color="#006837" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.modalTitleText}>Assign Fleet Driver</Text>
+                    <Text style={styles.modalMsgText}>
+                      Delivery #{String(assignModalOrder.id).slice(-8).toUpperCase()} • {assignModalOrder.produceName || 'Produce'}
+                    </Text>
+                  </View>
+                  <TouchableOpacity onPress={() => !isAssigningFromModal && setAssignModalOrder(null)}>
+                    <Ionicons name="close" size={22} color="#64748B" />
+                  </TouchableOpacity>
+                </View>
+
+                {/* Delivery Route Snapshot */}
+                <View style={styles.modalRouteSnapshot}>
+                  <Text style={styles.modalRouteSnapshotText} numberOfLines={1}>
+                    📍 {assignModalOrder.pickupLocation || 'Origin'} ➔ 🎯 {assignModalOrder.deliveryAddress || 'Destination'}
+                  </Text>
+                </View>
+
+                {/* Driver Search */}
+                <View style={styles.modalSearchBox}>
+                  <Ionicons name="search" size={16} color="#64748B" style={{ marginRight: 6 }} />
+                  <TextInput
+                    style={styles.modalSearchInput}
+                    placeholder="Search drivers by name, phone, plate..."
+                    placeholderTextColor="#94A3B8"
+                    value={assignDriverSearch}
+                    onChangeText={setAssignDriverSearch}
+                  />
+                  {assignDriverSearch.length > 0 && (
+                    <TouchableOpacity onPress={() => setAssignDriverSearch('')}>
+                      <Ionicons name="close-circle" size={16} color="#94A3B8" />
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                {/* Available Drivers List */}
+                <ScrollView style={{ maxHeight: 240, marginVertical: 8 }} showsVerticalScrollIndicator={false}>
+                  {evaluatedDrivers
+                    .filter((d) => {
+                      if (!assignDriverSearch.trim()) return true;
+                      const q = assignDriverSearch.toLowerCase().trim();
+                      return (
+                        (d.fullName && d.fullName.toLowerCase().includes(q)) ||
+                        (d.vehicleNumber && d.vehicleNumber.toLowerCase().includes(q)) ||
+                        (d.phoneNumber && d.phoneNumber.includes(q))
+                      );
+                    })
+                    .map((driver) => {
+                      const isSelected = selectedAssignDriver && (selectedAssignDriver.uid || selectedAssignDriver.id) === (driver.uid || driver.id);
+                      return (
+                        <TouchableOpacity
+                          key={driver.uid || driver.id}
+                          style={[
+                            styles.driverPickItem,
+                            isSelected && styles.driverPickItemSelected,
+                            !driver.isAvailable && styles.driverPickItemDisabled,
+                          ]}
+                          onPress={() => {
+                            if (!driver.isAvailable) {
+                              Alert.alert('Driver Busy', `"${driver.fullName}" is currently on an active route: ${driver.busyReason || 'In Transit'}`);
+                              return;
+                            }
+                            setSelectedAssignDriver(driver);
+                          }}
+                          activeOpacity={0.8}
+                        >
+                          <View style={[styles.driverOptionRadio, isSelected && styles.driverOptionRadioSelected]}>
+                            {isSelected && <View style={styles.driverOptionRadioInner} />}
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                              <Text style={styles.driverOptionName}>{driver.fullName}</Text>
+                              {driver.isAvailable ? (
+                                <View style={styles.availBadgeGreen}>
+                                  <Text style={styles.availBadgeGreenText}>Available</Text>
+                                </View>
+                              ) : (
+                                <View style={styles.availBadgeRed}>
+                                  <Text style={styles.availBadgeRedText}>Busy</Text>
+                                </View>
+                              )}
+                            </View>
+                            <Text style={styles.driverOptionSub}>
+                              {driver.vehicleNumber || 'Transport Fleet'} • {driver.phoneNumber || 'Phone available'}
+                            </Text>
+                            {!driver.isAvailable && driver.busyReason && (
+                              <Text style={styles.driverOptionBusyText} numberOfLines={1}>
+                                Busy: {driver.busyReason}
+                              </Text>
+                            )}
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
+                </ScrollView>
+
+                {/* Modal Buttons */}
+                <View style={styles.modalButtonsRow}>
+                  <TouchableOpacity
+                    style={styles.modalCancelBtn}
+                    onPress={() => setAssignModalOrder(null)}
+                    disabled={isAssigningFromModal}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.modalCancelBtnText}>Cancel</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.modalConfirmBtn,
+                      { backgroundColor: '#006837' },
+                      (!selectedAssignDriver || isAssigningFromModal) && { opacity: 0.6 },
+                    ]}
+                    onPress={() => handleAssignDriverSubmit(assignModalOrder, selectedAssignDriver)}
+                    disabled={!selectedAssignDriver || isAssigningFromModal}
+                    activeOpacity={0.8}
+                  >
+                    {isAssigningFromModal ? (
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                    ) : (
+                      <Text style={styles.modalConfirmBtnText}>Confirm & Dispatch</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          </Modal>
+        )}
+
+        {/* DRIVER REASSIGNMENT MODAL (GOVI-151) */}
+        {reassignModalOrder && (
+          <Modal
+            visible={!!reassignModalOrder}
+            transparent
+            animationType="slide"
+            onRequestClose={() => !isReassigningFromModal && setReassignModalOrder(null)}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={[styles.modalCard, { maxHeight: '85%' }]}>
+                <View style={styles.modalHeaderRow}>
+                  <View style={styles.modalIconBoxAmber}>
+                    <MaterialCommunityIcons name="account-convert" size={24} color="#B45309" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.modalTitleText}>Reassign Driver</Text>
+                    <Text style={styles.modalMsgText}>
+                      Delivery #{String(reassignModalOrder.id).slice(-8).toUpperCase()}
+                    </Text>
+                  </View>
+                  <TouchableOpacity onPress={() => !isReassigningFromModal && setReassignModalOrder(null)}>
+                    <Ionicons name="close" size={22} color="#64748B" />
+                  </TouchableOpacity>
+                </View>
+
+                {/* Current Driver Banner */}
+                <View style={styles.currentDriverBannerBox}>
+                  <Text style={styles.currentDriverBannerTitle}>Current Assigned Driver:</Text>
+                  <Text style={styles.currentDriverBannerDesc}>
+                    {reassignModalOrder.driverName || 'Current Driver'} ({reassignModalOrder.driverVehicle || 'Vehicle'})
+                  </Text>
+                </View>
+
+                {/* Driver Search */}
+                <View style={styles.modalSearchBox}>
+                  <Ionicons name="search" size={16} color="#64748B" style={{ marginRight: 6 }} />
+                  <TextInput
+                    style={styles.modalSearchInput}
+                    placeholder="Search replacement driver..."
+                    placeholderTextColor="#94A3B8"
+                    value={reassignDriverSearch}
+                    onChangeText={setReassignDriverSearch}
+                  />
+                  {reassignDriverSearch.length > 0 && (
+                    <TouchableOpacity onPress={() => setReassignDriverSearch('')}>
+                      <Ionicons name="close-circle" size={16} color="#94A3B8" />
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                {/* Replacement Drivers List */}
+                <ScrollView style={{ maxHeight: 200, marginVertical: 8 }} showsVerticalScrollIndicator={false}>
+                  {evaluatedDrivers
+                    .filter((d) => (d.uid || d.id) !== reassignModalOrder.driverId)
+                    .filter((d) => {
+                      if (!reassignDriverSearch.trim()) return true;
+                      const q = reassignDriverSearch.toLowerCase().trim();
+                      return (
+                        (d.fullName && d.fullName.toLowerCase().includes(q)) ||
+                        (d.vehicleNumber && d.vehicleNumber.toLowerCase().includes(q)) ||
+                        (d.phoneNumber && d.phoneNumber.includes(q))
+                      );
+                    })
+                    .map((driver) => {
+                      const isSelected = selectedReassignDriver && (selectedReassignDriver.uid || selectedReassignDriver.id) === (driver.uid || driver.id);
+                      return (
+                        <TouchableOpacity
+                          key={driver.uid || driver.id}
+                          style={[
+                            styles.driverPickItem,
+                            isSelected && styles.driverPickItemSelected,
+                            !driver.isAvailable && styles.driverPickItemDisabled,
+                          ]}
+                          onPress={() => {
+                            if (!driver.isAvailable) {
+                              Alert.alert('Driver Busy', `"${driver.fullName}" is currently on an active route: ${driver.busyReason || 'In Transit'}`);
+                              return;
+                            }
+                            setSelectedReassignDriver(driver);
+                          }}
+                          activeOpacity={0.8}
+                        >
+                          <View style={[styles.driverOptionRadio, isSelected && styles.driverOptionRadioSelected]}>
+                            {isSelected && <View style={styles.driverOptionRadioInner} />}
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                              <Text style={styles.driverOptionName}>{driver.fullName}</Text>
+                              {driver.isAvailable ? (
+                                <View style={styles.availBadgeGreen}>
+                                  <Text style={styles.availBadgeGreenText}>Available</Text>
+                                </View>
+                              ) : (
+                                <View style={styles.availBadgeRed}>
+                                  <Text style={styles.availBadgeRedText}>Busy</Text>
+                                </View>
+                              )}
+                            </View>
+                            <Text style={styles.driverOptionSub}>
+                              {driver.vehicleNumber || 'Transport Fleet'} • {driver.phoneNumber || 'Phone available'}
+                            </Text>
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
+                </ScrollView>
+
+                {/* Reason Input */}
+                <Text style={styles.reasonInputLabel}>Reason for Reassignment:</Text>
+                <TextInput
+                  style={styles.reasonInputField}
+                  placeholder="e.g. Driver emergency, vehicle breakdown, route delay..."
+                  placeholderTextColor="#94A3B8"
+                  value={reassignReason}
+                  onChangeText={setReassignReason}
+                />
+
+                {/* Modal Buttons */}
+                <View style={styles.modalButtonsRow}>
+                  <TouchableOpacity
+                    style={styles.modalCancelBtn}
+                    onPress={() => setReassignModalOrder(null)}
+                    disabled={isReassigningFromModal}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.modalCancelBtnText}>Cancel</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.modalConfirmBtn,
+                      { backgroundColor: '#B45309' },
+                      (!selectedReassignDriver || isReassigningFromModal) && { opacity: 0.6 },
+                    ]}
+                    onPress={() => handleReassignDriverSubmit(reassignModalOrder, selectedReassignDriver, reassignReason)}
+                    disabled={!selectedReassignDriver || isReassigningFromModal}
+                    activeOpacity={0.8}
+                  >
+                    {isReassigningFromModal ? (
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                    ) : (
+                      <Text style={styles.modalConfirmBtnText}>Confirm Reassign</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          </Modal>
         )}
       </ScrollView>
 
@@ -1997,5 +2626,453 @@ const styles = StyleSheet.create({
   navTabLabelActive: {
     color: '#006837',
     fontWeight: '700',
+  },
+
+  /* DELIVERY MANAGEMENT & OPERATIONS STYLES (GOVI-143 -> GOVI-151) */
+  deliveryPageHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 14,
+  },
+  badgeLiveDeliveries: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#86EFAC',
+  },
+  liveGreenDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#16A34A',
+    marginRight: 6,
+  },
+  badgeLiveDeliveriesText: {
+    color: '#15803D',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  deliveryKpiGrid: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 14,
+  },
+  deliveryKpiCard: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 10,
+    borderLeftWidth: 3,
+    borderLeftColor: '#006837',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  deliveryKpiCardActive: {
+    borderColor: '#006837',
+    backgroundColor: '#E6F4EA',
+  },
+  deliveryKpiCardPendingActive: {
+    borderColor: '#F59E0B',
+    backgroundColor: '#FEF3C7',
+  },
+  deliveryKpiCardInTransitActive: {
+    borderColor: '#10B981',
+    backgroundColor: '#DCFCE7',
+  },
+  deliveryKpiCardDeliveredActive: {
+    borderColor: '#3B82F6',
+    backgroundColor: '#DBEAFE',
+  },
+  deliveryKpiNumber: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  deliveryKpiLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#64748B',
+    marginTop: 2,
+    textAlign: 'center',
+  },
+  kpiAlertDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#DC2626',
+    marginLeft: 4,
+  },
+
+  /* DELIVERY MANAGE CARDS */
+  deliveryManageCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 12,
+    borderLeftWidth: 3.5,
+    borderLeftColor: '#006837',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 5,
+    elevation: 2,
+  },
+  deliveryCardIdText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  deliveryPartyRow: {
+    flexDirection: 'row',
+    marginBottom: 10,
+  },
+  deliveryLocationSub: {
+    fontSize: 12,
+    color: '#475569',
+    marginTop: 2,
+  },
+  assignedDriverBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F0FDF4',
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 12,
+    gap: 8,
+  },
+  assignedDriverAvatarSmall: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#DCFCE7',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  assignedDriverNameText: {
+    fontSize: 12,
+    color: '#166534',
+    fontWeight: '600',
+  },
+  assignedDriverVehicleSub: {
+    fontSize: 11,
+    color: '#15803D',
+    marginTop: 1,
+  },
+  badgeAssignedPill: {
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  badgeAssignedPillText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#15803D',
+  },
+  unassignedAlertBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#FCD34D',
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 12,
+  },
+  unassignedAlertText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#B45309',
+  },
+  deliveryCardActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    justifyContent: 'flex-end',
+  },
+  assignActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#006837',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
+  },
+  assignActionBtnText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  reassignActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#FCD34D',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
+  },
+  reassignActionBtnText: {
+    color: '#B45309',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  trackActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#0284C7',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
+  },
+  trackActionBtnText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+
+  /* MODALS STYLING */
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalCard: {
+    width: '100%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  modalHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    gap: 10,
+  },
+  modalIconBoxGreen: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#E6F4EA',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalIconBoxAmber: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#FEF3C7',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalTitleText: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  modalMsgText: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  modalRouteSnapshot: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 8,
+    marginBottom: 10,
+  },
+  modalRouteSnapshotText: {
+    fontSize: 11,
+    color: '#475569',
+    fontWeight: '600',
+  },
+  modalSearchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F1F5F9',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 6,
+  },
+  modalSearchInput: {
+    flex: 1,
+    fontSize: 13,
+    color: '#0F172A',
+    padding: 0,
+  },
+  driverPickItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginBottom: 8,
+    backgroundColor: '#FFFFFF',
+    gap: 10,
+  },
+  driverPickItemSelected: {
+    borderColor: '#006837',
+    backgroundColor: '#F0FDF4',
+  },
+  driverPickItemDisabled: {
+    opacity: 0.55,
+    backgroundColor: '#F8FAFC',
+  },
+  driverOptionRadio: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 1.5,
+    borderColor: '#94A3B8',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  driverOptionRadioSelected: {
+    borderColor: '#006837',
+  },
+  driverOptionRadioInner: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#006837',
+  },
+  driverOptionName: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0F172A',
+    marginRight: 6,
+  },
+  driverOptionSub: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  driverOptionBusyText: {
+    fontSize: 10,
+    color: '#DC2626',
+    marginTop: 2,
+    fontStyle: 'italic',
+  },
+  availBadgeGreen: {
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  availBadgeGreenText: {
+    color: '#16A34A',
+    fontSize: 9,
+    fontWeight: '800',
+  },
+  availBadgeRed: {
+    backgroundColor: '#FEE2E2',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  availBadgeRedText: {
+    color: '#DC2626',
+    fontSize: 9,
+    fontWeight: '800',
+  },
+  currentDriverBannerBox: {
+    backgroundColor: '#FFFBEB',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 10,
+  },
+  currentDriverBannerTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#92400E',
+  },
+  currentDriverBannerDesc: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#78350F',
+    marginTop: 2,
+  },
+  reasonInputLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#475569',
+    marginBottom: 4,
+  },
+  reasonInputField: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 12,
+    color: '#0F172A',
+    marginBottom: 14,
+  },
+  modalButtonsRow: {
+    flexDirection: 'row',
+    width: '100%',
+    gap: 12,
+  },
+  modalCancelBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: '#CBD5E1',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+  },
+  modalCancelBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  modalConfirmBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  modalConfirmBtnText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
 });

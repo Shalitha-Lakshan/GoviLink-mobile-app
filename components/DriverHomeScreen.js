@@ -265,7 +265,11 @@ export default function DriverHomeScreen({
   const allDriverTrips = realOrdersForDriver;
 
   const activeDeliveries = allDriverTrips.filter(
-    (trip) => trip.status === 'READY_FOR_PICKUP' || trip.status === 'IN_TRANSIT' || trip.status === 'ACCEPTED'
+    (trip) =>
+      trip.status === 'READY_FOR_PICKUP' ||
+      trip.status === 'IN_TRANSIT' ||
+      trip.status === 'ACCEPTED' ||
+      trip.status === 'ASSIGNED'
   );
   const completedDeliveries = allDriverTrips.filter((trip) => trip.status === 'DELIVERED');
   const totalDriverEarnings = completedDeliveries.reduce(
@@ -275,7 +279,12 @@ export default function DriverHomeScreen({
 
   const handleTripProgression = async (trip) => {
     let nextStatus = '';
-    if (trip.status === 'READY_FOR_PICKUP' || trip.status === 'ACCEPTED' || trip.status === 'PENDING') {
+    if (
+      trip.status === 'READY_FOR_PICKUP' ||
+      trip.status === 'ACCEPTED' ||
+      trip.status === 'PENDING' ||
+      trip.status === 'ASSIGNED'
+    ) {
       nextStatus = 'IN_TRANSIT';
     } else if (trip.status === 'IN_TRANSIT') {
       nextStatus = 'DELIVERED';
@@ -618,7 +627,8 @@ export default function DriverHomeScreen({
           ) : (
             activeDeliveries.map((trip) => {
               const isInTransit = trip.status === 'IN_TRANSIT';
-              const isReady = trip.status === 'READY_FOR_PICKUP' || trip.status === 'ACCEPTED' || trip.status === 'PENDING';
+              const isAssigned = trip.status === 'ASSIGNED';
+              const isReady = trip.status === 'READY_FOR_PICKUP' || trip.status === 'ACCEPTED' || trip.status === 'PENDING' || isAssigned;
 
               return (
                 <View key={trip.id} style={styles.deliveryCard}>
@@ -627,13 +637,13 @@ export default function DriverHomeScreen({
                     <Text style={styles.cargoTitle}>{trip.produceName}</Text>
                     <View style={[
                       styles.tripBadge,
-                      isInTransit ? styles.badgeInTransit : styles.badgePending,
+                      isInTransit ? styles.badgeInTransit : isAssigned ? { backgroundColor: '#EFF6FF', borderColor: '#BFDBFE', borderWidth: 1 } : styles.badgePending,
                     ]}>
                       <Text style={[
                         styles.tripBadgeText,
-                        isInTransit ? { color: '#059669' } : { color: '#64748B' },
+                        isInTransit ? { color: '#059669' } : isAssigned ? { color: '#2563EB' } : { color: '#64748B' },
                       ]}>
-                        {isInTransit ? 'IN TRANSIT' : 'READY FOR PICKUP'}
+                        {isInTransit ? 'IN TRANSIT' : isAssigned ? 'ASSIGNED' : 'READY FOR PICKUP'}
                       </Text>
                     </View>
                   </View>

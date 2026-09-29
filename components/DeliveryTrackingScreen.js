@@ -12,6 +12,7 @@ import {
   ActivityIndicator,
   Modal,
   Platform,
+  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -20,6 +21,9 @@ import {
   subscribeToOrderById,
   DELIVERY_STATUSES,
   VALID_DELIVERY_TRANSITIONS,
+  reassignDriverForOrder,
+  checkDriverAvailability,
+  DEFAULT_COOP_DRIVERS,
 } from '../services/firebaseDatabase';
 
 // Map background placeholder matching design mockup
@@ -64,6 +68,8 @@ const formatTimestamp = (isoOrObj) => {
 export default function DeliveryTrackingScreen({
   delivery = {},
   userProfile,
+  driversList = [],
+  ordersList = [],
   lang = 'en',
   onBack,
   onLogout,
@@ -72,6 +78,16 @@ export default function DeliveryTrackingScreen({
   const [currentDelivery, setCurrentDelivery] = useState(delivery);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [statusActionModal, setStatusActionModal] = useState(null);
+  const [showReassignModal, setShowReassignModal] = useState(false);
+  const [selectedReplacementDriver, setSelectedReplacementDriver] = useState(null);
+  const [reassignReason, setReassignReason] = useState('');
+  const [isReassigning, setIsReassigning] = useState(false);
+  const [driverSearchQuery, setDriverSearchQuery] = useState('');
+
+  // Admin Role Verification
+  const userRole = userProfile?.role;
+  const userEmail = userProfile?.email?.toLowerCase();
+  const isAdmin = userRole === 'cooperative_admin' || userRole === 'admin' || userEmail === 'govilink@admin.lk';
 
   // Sync state if prop changes
   useEffect(() => {
@@ -101,6 +117,18 @@ export default function DeliveryTrackingScreen({
   const driverRuns = currentDelivery?.driverRuns || '124 runs';
   const driverPhone = currentDelivery?.driverPhone || '0771234567';
   const driverAvatar = currentDelivery?.driverAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80';
+
+  // Farmer / Consignor details (GOVI-148)
+  const farmerName = currentDelivery?.farmerName || 'Sunil Gamage';
+  const farmerPhone = currentDelivery?.farmerPhone || '0779876543';
+  const pickupLocation = currentDelivery?.pickupLocation || 'Farm Origin Hub, Dambulla';
+  const pickupRegion = currentDelivery?.pickupRegion || 'Central Province';
+
+  // Buyer / Consignee details (GOVI-149)
+  const buyerName = currentDelivery?.buyerName || 'Cooperative Market Buyer';
+  const buyerPhone = currentDelivery?.buyerPhone || '0714567890';
+  const deliveryAddress = currentDelivery?.deliveryAddress || 'Distribution Center, Colombo';
+  const deliveryNotes = currentDelivery?.notes || '';
 
   // Vehicle details
   const vehiclePlate = currentDelivery?.vehiclePlate || 'WP LI-4920';
@@ -235,6 +263,88 @@ export default function DeliveryTrackingScreen({
     }
   };
 
+  // Available replacement drivers evaluation (GOVI-145, GOVI-151)
+  const allDriversToConsider = driversList.length > 0 ? driversList : DEFAULT_COOP_DRIVERS;
+  const currentDriverId = currentDelivery?.driverId;
+  const evaluatedFleetDrivers = allDriversToConsider
+    .filter((d) => (d.uid || d.id) !== currentDriverId)
+    .map((driver) => {
+      const avail = checkDriverAvailability(driver, ordersList);
+      return {
+        ...driver,
+        isAvailable: avail.isAvailable,
+        busyReason: avail.reason,
+      };
+    });
+
+  const filteredReplacementDrivers = evaluatedFleetDrivers.filter((d) => {
+    if (!driverSearchQuery.trim()) return true;
+    const q = driverSearchQuery.toLowerCase().trim();
+    return (
+      (d.fullName && d.fullName.toLowerCase().includes(q)) ||
+      (d.vehicleNumber && d.vehicleNumber.toLowerCase().includes(q)) ||
+      (d.phoneNumber && d.phoneNumber.includes(q))
+    );
+  });
+
+  const handleExecuteReassign = async () => {
+    if (!selectedReplacementDriver) {
+      Alert.alert('Select Driver', 'Please select an available replacement driver.');
+      return;
+    }
+    if (currentStatus === 'DELIVERED') {
+      Alert.alert('Restricted', 'Driver cannot be reassigned after delivery completion.');
+      return;
+    }
+    if (currentStatus === 'CANCELLED') {
+      Alert.alert('Restricted', 'Cannot reassign driver for a cancelled delivery order.');
+      return;
+    }
+
+    Alert.alert(
+      'Confirm Driver Reassignment',
+      `Replace ${driverName} with "${selectedReplacementDriver.fullName}" for ${deliveryId}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Confirm Reassign',
+          onPress: async () => {
+            setIsReassigning(true);
+            const res = await reassignDriverForOrder(
+              currentDelivery,
+              selectedReplacementDriver,
+              userProfile,
+              reassignReason || 'Reassigned by administrator'
+            );
+            setIsReassigning(false);
+            if (res.success) {
+              setCurrentDelivery((prev) => ({
+                ...prev,
+                driverId: selectedReplacementDriver.uid || selectedReplacementDriver.id,
+                driverName: selectedReplacementDriver.fullName,
+                driverPhone: selectedReplacementDriver.phoneNumber,
+                driverVehicle: selectedReplacementDriver.vehicleNumber || prev.driverVehicle,
+                driverRating: selectedReplacementDriver.rating || prev.driverRating,
+              }));
+              setShowReassignModal(false);
+              setSelectedReplacementDriver(null);
+              setReassignReason('');
+              Alert.alert(
+                'Driver Reassigned! 🚛',
+                `Successfully reassigned to "${selectedReplacementDriver.fullName}". Notifications sent to all parties.`
+              );
+              if (onStatusUpdated) {
+                onStatusUpdated(currentDelivery.id, currentDelivery.status);
+              }
+            } else {
+              Alert.alert('Reassignment Failed', res.error || 'Failed to reassign driver.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
@@ -341,6 +451,111 @@ export default function DeliveryTrackingScreen({
               <Ionicons name="call-outline" size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
               <Text style={styles.callBtnText}>Call</Text>
             </TouchableOpacity>
+          </View>
+
+          {/* ADMIN REASSIGN DRIVER BUTTON (GOVI-151) */}
+          {isAdmin && (
+            <TouchableOpacity
+              style={[
+                styles.reassignDriverBtn,
+                (currentStatus === 'DELIVERED' || currentStatus === 'CANCELLED') && styles.reassignDriverBtnDisabled,
+              ]}
+              onPress={() => {
+                if (currentStatus === 'DELIVERED') {
+                  Alert.alert('Reassignment Restricted', 'Driver cannot be reassigned after delivery completion.');
+                  return;
+                }
+                if (currentStatus === 'CANCELLED') {
+                  Alert.alert('Reassignment Restricted', 'Cannot reassign driver for a cancelled delivery order.');
+                  return;
+                }
+                setShowReassignModal(true);
+              }}
+              activeOpacity={0.8}
+            >
+              <MaterialCommunityIcons
+                name="account-convert"
+                size={18}
+                color={currentStatus === 'DELIVERED' || currentStatus === 'CANCELLED' ? '#94A3B8' : '#B45309'}
+                style={{ marginRight: 6 }}
+              />
+              <Text
+                style={[
+                  styles.reassignDriverBtnText,
+                  (currentStatus === 'DELIVERED' || currentStatus === 'CANCELLED') && { color: '#94A3B8' },
+                ]}
+              >
+                {currentStatus === 'DELIVERED' ? 'Reassignment Closed (Delivered)' : 'Reassign Driver (Admin)'}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* FARMER / CONSIGNOR DETAILS CARD (GOVI-148) */}
+        <View style={styles.cardBox}>
+          <View style={styles.partyHeaderRow}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Ionicons name="leaf-outline" size={18} color="#006837" style={{ marginRight: 8 }} />
+              <Text style={styles.manifestTitle}>Farmer & Farm Origin</Text>
+            </View>
+            <View style={styles.partyRoleBadgeFarmer}>
+              <Text style={styles.partyRoleTextFarmer}>CONSIGNOR</Text>
+            </View>
+          </View>
+
+          <View style={styles.partyDetailsRow}>
+            <View style={styles.partyAvatarBox}>
+              <Ionicons name="person" size={20} color="#006837" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.partyName}>{farmerName}</Text>
+              <Text style={styles.partySub}>{pickupLocation}</Text>
+              <Text style={styles.partyRegionText}>{pickupRegion}</Text>
+            </View>
+            {farmerPhone ? (
+              <TouchableOpacity
+                style={styles.partyCallBtn}
+                onPress={() => Linking.openURL(`tel:${farmerPhone}`)}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="call" size={16} color="#006837" />
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        </View>
+
+        {/* BUYER / DESTINATION DETAILS CARD (GOVI-149) */}
+        <View style={styles.cardBox}>
+          <View style={styles.partyHeaderRow}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Ionicons name="business-outline" size={18} color="#2563EB" style={{ marginRight: 8 }} />
+              <Text style={styles.manifestTitle}>Buyer & Delivery Destination</Text>
+            </View>
+            <View style={styles.partyRoleBadgeBuyer}>
+              <Text style={styles.partyRoleTextBuyer}>RECIPIENT</Text>
+            </View>
+          </View>
+
+          <View style={styles.partyDetailsRow}>
+            <View style={[styles.partyAvatarBox, { backgroundColor: '#DBEAFE' }]}>
+              <Ionicons name="cart" size={20} color="#2563EB" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.partyName}>{buyerName}</Text>
+              <Text style={styles.partySub}>{deliveryAddress}</Text>
+              {deliveryNotes ? (
+                <Text style={styles.partyNotes}>Instructions: {deliveryNotes}</Text>
+              ) : null}
+            </View>
+            {buyerPhone ? (
+              <TouchableOpacity
+                style={[styles.partyCallBtn, { backgroundColor: '#DBEAFE' }]}
+                onPress={() => Linking.openURL(`tel:${buyerPhone}`)}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="call" size={16} color="#2563EB" />
+              </TouchableOpacity>
+            ) : null}
           </View>
         </View>
 
@@ -661,6 +876,153 @@ export default function DeliveryTrackingScreen({
                   <ActivityIndicator size="small" color="#FFFFFF" />
                 ) : (
                   <Text style={styles.modalConfirmBtnText}>Confirm</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* REASSIGN DRIVER MODAL (GOVI-151) */}
+      <Modal
+        visible={showReassignModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => !isReassigning && setShowReassignModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, { maxHeight: '85%' }]}>
+            <View style={styles.reassignModalHeader}>
+              <View style={styles.reassignModalIconBox}>
+                <MaterialCommunityIcons name="account-convert" size={26} color="#B45309" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalTitleText}>Reassign Delivery Driver</Text>
+                <Text style={styles.modalMsgText}>Select a replacement fleet driver for {deliveryId}</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => !isReassigning && setShowReassignModal(false)}
+                style={{ padding: 4 }}
+              >
+                <Ionicons name="close" size={22} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Current Driver Banner */}
+            <View style={styles.currentDriverBanner}>
+              <Text style={styles.currentDriverBannerLabel}>Current Driver:</Text>
+              <Text style={styles.currentDriverBannerVal}>{driverName} ({driverPhone || 'No phone'})</Text>
+            </View>
+
+            {/* Search Drivers */}
+            <View style={styles.driverSearchInputBox}>
+              <Ionicons name="search" size={16} color="#64748B" style={{ marginRight: 6 }} />
+              <TextInput
+                style={styles.driverSearchInputField}
+                placeholder="Search drivers by name, plate, phone..."
+                placeholderTextColor="#94A3B8"
+                value={driverSearchQuery}
+                onChangeText={setDriverSearchQuery}
+              />
+              {driverSearchQuery.length > 0 && (
+                <TouchableOpacity onPress={() => setDriverSearchQuery('')}>
+                  <Ionicons name="close-circle" size={16} color="#94A3B8" />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Driver List */}
+            <ScrollView style={{ maxHeight: 220, marginVertical: 8 }} showsVerticalScrollIndicator={false}>
+              {filteredReplacementDrivers.length === 0 ? (
+                <View style={{ padding: 20, alignItems: 'center' }}>
+                  <Text style={{ fontSize: 13, color: '#64748B' }}>No replacement drivers found.</Text>
+                </View>
+              ) : (
+                filteredReplacementDrivers.map((driver) => {
+                  const isSelected = selectedReplacementDriver && (selectedReplacementDriver.uid || selectedReplacementDriver.id) === (driver.uid || driver.id);
+                  return (
+                    <TouchableOpacity
+                      key={driver.uid || driver.id}
+                      style={[
+                        styles.driverOptionCard,
+                        isSelected && styles.driverOptionCardSelected,
+                        !driver.isAvailable && styles.driverOptionCardDisabled,
+                      ]}
+                      onPress={() => {
+                        if (!driver.isAvailable) {
+                          Alert.alert('Driver Busy', `"${driver.fullName}" is currently busy: ${driver.busyReason || 'Active route'}`);
+                          return;
+                        }
+                        setSelectedReplacementDriver(driver);
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <View style={[styles.driverOptionRadio, isSelected && styles.driverOptionRadioSelected]}>
+                        {isSelected && <View style={styles.driverOptionRadioInner} />}
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                          <Text style={styles.driverOptionName}>{driver.fullName}</Text>
+                          {driver.isAvailable ? (
+                            <View style={styles.availBadgeGreen}>
+                              <Text style={styles.availBadgeGreenText}>Available</Text>
+                            </View>
+                          ) : (
+                            <View style={styles.availBadgeRed}>
+                              <Text style={styles.availBadgeRedText}>Busy</Text>
+                            </View>
+                          )}
+                        </View>
+                        <Text style={styles.driverOptionSub}>
+                          {driver.vehicleNumber || 'Fleet Vehicle'} • {driver.phoneNumber || 'Contact available'}
+                        </Text>
+                        {!driver.isAvailable && driver.busyReason && (
+                          <Text style={styles.driverOptionBusyText} numberOfLines={1}>
+                            Busy: {driver.busyReason}
+                          </Text>
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })
+              )}
+            </ScrollView>
+
+            {/* Optional Reason Input */}
+            <Text style={styles.reasonInputLabel}>Reason for Reassignment (Optional):</Text>
+            <TextInput
+              style={styles.reasonInputField}
+              placeholder="e.g., Driver requested swap, vehicle breakdown, route change..."
+              placeholderTextColor="#94A3B8"
+              value={reassignReason}
+              onChangeText={setReassignReason}
+            />
+
+            {/* Action Buttons */}
+            <View style={styles.modalButtonsRow}>
+              <TouchableOpacity
+                style={styles.modalCancelBtn}
+                onPress={() => setShowReassignModal(false)}
+                disabled={isReassigning}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.modalCancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.modalConfirmBtn,
+                  { backgroundColor: '#B45309' },
+                  (!selectedReplacementDriver || isReassigning) && { opacity: 0.6 },
+                ]}
+                onPress={handleExecuteReassign}
+                disabled={!selectedReplacementDriver || isReassigning}
+                activeOpacity={0.8}
+              >
+                {isReassigning ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.modalConfirmBtnText}>Confirm Reassignment</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -1281,5 +1643,249 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '800',
     color: '#FFFFFF',
+  },
+
+  /* ADMIN REASSIGN BUTTON */
+  reassignDriverBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1.5,
+    borderColor: '#FCD34D',
+    borderRadius: 12,
+    paddingVertical: 11,
+    marginTop: 12,
+  },
+  reassignDriverBtnDisabled: {
+    backgroundColor: '#F1F5F9',
+    borderColor: '#E2E8F0',
+    opacity: 0.7,
+  },
+  reassignDriverBtnText: {
+    color: '#B45309',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+
+  /* PARTY CARDS (FARMER & BUYER) */
+  partyHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  partyRoleBadgeFarmer: {
+    backgroundColor: '#E6F4EA',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  partyRoleTextFarmer: {
+    color: '#006837',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  partyRoleBadgeBuyer: {
+    backgroundColor: '#DBEAFE',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  partyRoleTextBuyer: {
+    color: '#1D4ED8',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  partyDetailsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  partyAvatarBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#E6F4EA',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  partyName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  partySub: {
+    fontSize: 13,
+    color: '#475569',
+    marginTop: 2,
+    lineHeight: 18,
+  },
+  partyRegionText: {
+    fontSize: 11,
+    color: '#94A3B8',
+    marginTop: 1,
+  },
+  partyNotes: {
+    fontSize: 12,
+    color: '#B45309',
+    fontStyle: 'italic',
+    marginTop: 3,
+  },
+  partyCallBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#E6F4EA',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  /* REASSIGN MODAL STYLES */
+  reassignModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    gap: 10,
+  },
+  reassignModalIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#FEF3C7',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  currentDriverBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 10,
+    gap: 8,
+  },
+  currentDriverBannerLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  currentDriverBannerVal: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0F172A',
+    flex: 1,
+  },
+  driverSearchInputBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F1F5F9',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 6,
+  },
+  driverSearchInputField: {
+    flex: 1,
+    fontSize: 13,
+    color: '#0F172A',
+    padding: 0,
+  },
+  driverOptionCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginBottom: 8,
+    backgroundColor: '#FFFFFF',
+    gap: 10,
+  },
+  driverOptionCardSelected: {
+    borderColor: '#B45309',
+    backgroundColor: '#FFFBEB',
+  },
+  driverOptionCardDisabled: {
+    opacity: 0.55,
+    backgroundColor: '#F8FAFC',
+  },
+  driverOptionRadio: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 1.5,
+    borderColor: '#94A3B8',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  driverOptionRadioSelected: {
+    borderColor: '#B45309',
+  },
+  driverOptionRadioInner: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#B45309',
+  },
+  driverOptionName: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0F172A',
+    marginRight: 6,
+  },
+  driverOptionSub: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  driverOptionBusyText: {
+    fontSize: 10,
+    color: '#DC2626',
+    marginTop: 2,
+    fontStyle: 'italic',
+  },
+  availBadgeGreen: {
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  availBadgeGreenText: {
+    color: '#16A34A',
+    fontSize: 9,
+    fontWeight: '800',
+  },
+  availBadgeRed: {
+    backgroundColor: '#FEE2E2',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  availBadgeRedText: {
+    color: '#DC2626',
+    fontSize: 9,
+    fontWeight: '800',
+  },
+  reasonInputLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#475569',
+    marginBottom: 4,
+  },
+  reasonInputField: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 12,
+    color: '#0F172A',
+    marginBottom: 14,
   },
 });
