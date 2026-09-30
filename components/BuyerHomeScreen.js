@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   StyleSheet,
   Text,
@@ -16,12 +16,17 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { changeAppLanguage } from '../services/i18n';
 import {
-  placeOrderInFirestore,
   subscribeToBuyerRequests,
   deleteBuyerRequest,
+  cancelBuyerRequest,
+  subscribeToBuyerOrders,
+  subscribeToBuyerNotifications,
+  markBuyerNotificationsRead,
+  placeOrderWithStockReduction,
 } from '../services/firebaseDatabase';
 import BuyerRequestProduceScreen from './BuyerRequestProduceScreen';
 import UserProfileScreen from './UserProfileScreen';
+import ProduceImage from './ProduceImage';
 
 // ----------------------------------------------------
 // THEME COLORS & DESIGN TOKENS (GOVILINK CLEAN STYLE)
@@ -80,15 +85,19 @@ export default function BuyerHomeScreen({
   const { t, i18n } = useTranslation();
   const currentLang = i18n.language || lang || 'en';
 
-  const [activeTab, setActiveTab] = useState('market'); // 'market' (Dashboard) | 'marketplace' | 'customRequests' | 'myOrders'
+  const [activeTab, setActiveTab] = useState('market'); // 'market' | 'marketplace' | 'customRequests' | 'myOrders'
   const [showRequestScreen, setShowRequestScreen] = useState(false);
   const [showProfileScreen, setShowProfileScreen] = useState(false);
   const [buyerRequests, setBuyerRequests] = useState([]);
+  // Real-time buyer orders (own only via Firestore query)
+  const [myBuyerOrdersRealtime, setMyBuyerOrdersRealtime] = useState([]);
+  // Real-time buyer notifications
+  const [buyerNotifications, setBuyerNotifications] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState(0);
   const [selectedDistrict, setSelectedDistrict] = useState('All');
   const [sortBy, setSortBy] = useState('newest');
-  
+
   // Filter States
   const [requestFilter, setRequestFilter] = useState('ALL');
   const [orderFilter, setOrderFilter] = useState('ALL');
@@ -99,6 +108,7 @@ export default function BuyerHomeScreen({
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [showTrackingModal, setShowTrackingModal] = useState(false);
+  const [showNotifModal, setShowNotifModal] = useState(false);
   const [selectedTrackingOrder, setSelectedTrackingOrder] = useState(null);
 
   const [orderQty, setOrderQty] = useState(5);
@@ -122,13 +132,36 @@ export default function BuyerHomeScreen({
     const unsub = subscribeToBuyerRequests((requests) => {
       setBuyerRequests(requests || []);
     }, userProfile?.uid);
-
     return () => unsub && unsub();
   }, [userProfile?.uid]);
 
-  const handleDeleteRequest = (requestId, cropName) => {
+  // Real-time listener for buyer's own orders (direct Firestore query)
+  useEffect(() => {
+    const unsub = subscribeToBuyerOrders(userProfile?.uid, (orders) => {
+      setMyBuyerOrdersRealtime(orders || []);
+    });
+    return () => unsub && unsub();
+  }, [userProfile?.uid]);
+
+  // Real-time listener for buyer notifications
+  useEffect(() => {
+    const unsub = subscribeToBuyerNotifications(userProfile?.uid, (notifs) => {
+      setBuyerNotifications(notifs || []);
+    });
+    return () => unsub && unsub();
+  }, [userProfile?.uid]);
+
+  const handleDeleteRequest = (requestId, cropName, currentStatus) => {
+    // Only allow cancellation for OPEN / PENDING requests
+    if (currentStatus && !['OPEN', 'PENDING', undefined, null].includes(currentStatus)) {
+      Alert.alert(
+        'Cannot Cancel',
+        `This request is already ${currentStatus.toLowerCase()} and cannot be cancelled.`
+      );
+      return;
+    }
     Alert.alert(
-      t('common.cancel', 'Cancel Request'),
+      'Cancel Request',
       `Are you sure you want to cancel this produce request? (${cropName})`,
       [
         { text: 'No', style: 'cancel' },
@@ -136,7 +169,13 @@ export default function BuyerHomeScreen({
           text: 'Yes, Cancel',
           style: 'destructive',
           onPress: async () => {
-            await deleteBuyerRequest(requestId);
+            // For OPEN status: soft-cancel (update status to CANCELLED)
+            // For requests without status: hard delete
+            if (currentStatus === 'OPEN' || currentStatus === 'PENDING') {
+              await cancelBuyerRequest(requestId, 'Cancelled by buyer');
+            } else {
+              await deleteBuyerRequest(requestId);
+            }
           },
         },
       ]
@@ -195,40 +234,50 @@ export default function BuyerHomeScreen({
     });
 
   // Latest single offer item for the main dashboard card
-  const latestOfferItem = filteredListings[0] || {
-    id: 'offer_latest_1',
-    nameEn: 'Grade A Red Onions',
-    nameSi: 'රතු ළූණු (ශ්‍රේණිය A)',
-    nameTa: 'சிவப்பு வெங்காயம்',
-    farmerName: 'Dambulla Vegetable Hub',
-    price: 240,
-    stockQty: 2400,
-    unitEn: 'kg',
-    grade: 'A',
-    location: 'Dambulla Hub',
-    category: 'Vegetables',
-    timeAgo: '3m ago',
-  };
+  const latestOfferItem = filteredListings[0] || null;
 
-  // Filter orders for current logged in buyer
-  const myBuyerOrders = (ordersList || []).filter(
-    (o) => !userProfile?.uid || o.buyerId === userProfile.uid || o.buyerUid === userProfile.uid
-  );
+  // Use real-time buyer orders (own subscription), fallback to prop-filtered list
+  const myBuyerOrders = myBuyerOrdersRealtime.length > 0
+    ? myBuyerOrdersRealtime
+    : (ordersList || []).filter(
+      (o) => o.buyerId === userProfile?.uid || o.buyerUid === userProfile?.uid
+    );
 
   const pendingOrdersCount = myBuyerOrders.filter((o) => o.status === 'PENDING').length;
   const confirmedOrdersCount = myBuyerOrders.filter(
     (o) => o.status === 'ACCEPTED' || o.status === 'READY_FOR_PICKUP' || o.status === 'IN_TRANSIT'
   ).length;
 
+  // Compute month spent from real orders (current calendar month)
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime() / 1000;
+  const monthSpent = myBuyerOrders
+    .filter((o) => (o.createdAt?.seconds || 0) >= monthStart)
+    .reduce((sum, o) => sum + (Number(o.totalPrice) || 0), 0);
+
+  // Active delivery: the most recent IN_TRANSIT or PICKED_UP order
+  const activeDelivery = myBuyerOrders.find(
+    (o) => o.status === 'IN_TRANSIT' || o.status === 'PICKED_UP' || o.status === 'READY_FOR_PICKUP'
+  ) || null;
+
+  // Unread notification count
+  const unreadNotifCount = buyerNotifications.filter((n) => !n.read).length;
+
   const handleOpenDetailModal = (item) => {
-    setDetailProduce(item || latestOfferItem);
-    setShowDetailModal(true);
+    const target = item || latestOfferItem;
+    if (target) {
+      setDetailProduce(target);
+      setShowDetailModal(true);
+    }
   };
 
   const handleOpenOrderModal = (item) => {
-    setSelectedProduce(item || latestOfferItem);
-    setOrderQty(5);
-    setShowOrderModal(true);
+    const target = item || latestOfferItem;
+    if (target) {
+      setSelectedProduce(target);
+      setOrderQty(5);
+      setShowOrderModal(true);
+    }
   };
 
   const handleOpenOrderFromDetail = () => {
@@ -241,30 +290,35 @@ export default function BuyerHomeScreen({
   };
 
   const handleOpenTrackingModal = (order) => {
-    setSelectedTrackingOrder(order || {
-      id: 'GL-8842',
-      produceName: 'Grade A Red Onions',
-      farmerName: 'Dambulla Hub',
-      fleetName: 'Co-op Fleet 4T (WP-LG-4401)',
-      driverName: 'Suneth Perera (077-4589210)',
-      eta: '11:30 AM',
-      route: 'Dambulla Hub ➔ Colombo Central',
-      status: 'IN_TRANSIT',
-    });
-    setShowTrackingModal(true);
+    if (order) {
+      setSelectedTrackingOrder(order);
+      setShowTrackingModal(true);
+    }
   };
 
   const handleConfirmOrder = async () => {
     if (!selectedProduce) return;
+
+    const qtyP = Number(orderQty) || 1;
+    const availableStock = Number(selectedProduce.stockQty) || 0;
+
+    // ── STOCK VALIDATION ─────────────────────────────────────────────
+    if (availableStock > 0 && qtyP > availableStock) {
+      Alert.alert(
+        'Quantity Exceeds Stock',
+        `Only ${availableStock} ${getProduceUnit(selectedProduce)} available. Please reduce your order quantity.`
+      );
+      return;
+    }
+
     setIsPlacingOrder(true);
     try {
       const unitP = Number(selectedProduce.price) || 0;
-      const qtyP = Number(orderQty) || 1;
       const orderPayload = {
         buyerId: userProfile?.uid || 'buyer',
         buyerName: userProfile?.fullName || 'GoviLink Buyer',
         buyerPhone: userProfile?.phoneNumber || '',
-        farmerId: selectedProduce.farmerId || 'farmer',
+        farmerId: selectedProduce.farmerId || '',
         farmerName: selectedProduce.farmerName || 'GoviLink Farmer',
         produceId: selectedProduce.id,
         produceName: getProduceTitle(selectedProduce),
@@ -276,14 +330,16 @@ export default function BuyerHomeScreen({
         totalPrice: unitP * qtyP + 350,
         deliveryAddress: deliveryAddress || 'Address on file',
         notes: deliveryNotes || '',
-        status: 'PENDING',
       };
-      const res = await placeOrderInFirestore(orderPayload);
+      // Use transactional order placement with stock reduction
+      const res = await placeOrderWithStockReduction(orderPayload);
       if (res.success) {
-        Alert.alert('Order Placed! 🎉', 'Your produce order has been submitted to the farmer.');
+        Alert.alert(
+          'Order Placed! 🎉',
+          `Your order for ${qtyP} ${getProduceUnit(selectedProduce)} of ${getProduceTitle(selectedProduce)} has been submitted to the farmer.`
+        );
         setShowOrderModal(false);
         setSelectedProduce(null);
-        setShowProfileScreen(false);
         setActiveTab('myOrders');
       } else {
         Alert.alert('Order Failed', res.error || 'Could not place order. Please try again.');
@@ -494,31 +550,33 @@ export default function BuyerHomeScreen({
             </TouchableOpacity>
 
             {/* 4. LATEST HARVEST OFFER */}
-            <View style={styles.bidAlertCard}>
-              <View style={styles.bidAlertTopRow}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <View style={styles.greenDot} />
-                  <Text style={styles.bidAlertLabel}>{t('buyer.latestHarvestOffer')}</Text>
+            {latestOfferItem ? (
+              <View style={styles.bidAlertCard}>
+                <View style={styles.bidAlertTopRow}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <View style={styles.greenDot} />
+                    <Text style={styles.bidAlertLabel}>{t('buyer.latestHarvestOffer')}</Text>
+                  </View>
+                  <Text style={styles.bidAlertTime}>{latestOfferItem.timeAgo || '3m ago'}</Text>
                 </View>
-                <Text style={styles.bidAlertTime}>{latestOfferItem.timeAgo || '3m ago'}</Text>
-              </View>
 
-              <View style={styles.bidAlertContentRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.bidAlertTitle}>{latestOfferItem.farmerName || 'Dambulla Vegetable Hub'}</Text>
-                  <Text style={styles.bidAlertSub}>
-                    Offered <Text style={{ fontWeight: '800', color: THEME.emeraldDark }}>Rs. {latestOfferItem.price}/kg</Text> on {latestOfferItem.stockQty?.toLocaleString()} kg {getProduceTitle(latestOfferItem)} (Grade {latestOfferItem.grade || 'A'})
-                  </Text>
+                <View style={styles.bidAlertContentRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.bidAlertTitle}>{latestOfferItem.farmerName || 'Dambulla Vegetable Hub'}</Text>
+                    <Text style={styles.bidAlertSub}>
+                      Offered <Text style={{ fontWeight: '800', color: THEME.emeraldDark }}>Rs. {latestOfferItem.price}/kg</Text> on {(latestOfferItem.stockQty || 0).toLocaleString()} kg {getProduceTitle(latestOfferItem)} (Grade {latestOfferItem.grade || 'A'})
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.reviewBtn}
+                    onPress={() => handleOpenDetailModal(latestOfferItem)}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.reviewBtnText}>{t('buyer.review')}</Text>
+                  </TouchableOpacity>
                 </View>
-                <TouchableOpacity
-                  style={styles.reviewBtn}
-                  onPress={() => handleOpenDetailModal(latestOfferItem)}
-                  activeOpacity={0.85}
-                >
-                  <Text style={styles.reviewBtnText}>{t('buyer.review')}</Text>
-                </TouchableOpacity>
               </View>
-            </View>
+            ) : null}
 
             {/* 5. QUICK OVERVIEW (2X2 GRID) */}
             <View style={styles.sectionHeaderRow}>
@@ -717,10 +775,11 @@ export default function BuyerHomeScreen({
                     onPress={() => handleOpenDetailModal(item)}
                   >
                     <View style={styles.produceLotMainRow}>
-                      <Image
-                        source={{ uri: item.image }}
+                      <ProduceImage
+                        item={item}
                         style={styles.produceLotImg}
                         resizeMode="cover"
+                        iconSize={32}
                       />
                       <View style={styles.produceLotCol}>
                         <View style={styles.produceLotTopRow}>
@@ -917,7 +976,7 @@ export default function BuyerHomeScreen({
         {activeTab === 'myOrders' && (
           <View>
             <Text style={styles.sectionTitleText}>{t('navigation.orders')}</Text>
-            
+
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 8 }}>
               {['ALL', 'PENDING', 'ACCEPTED', 'IN_TRANSIT', 'DELIVERED'].map((f) => (
                 <TouchableOpacity
@@ -1152,6 +1211,12 @@ export default function BuyerHomeScreen({
               </View>
 
               <ScrollView showsVerticalScrollIndicator={false}>
+                <ProduceImage
+                  item={detailProduce}
+                  style={{ width: '100%', height: 180, borderRadius: 14, marginBottom: 12 }}
+                  resizeMode="cover"
+                  iconSize={44}
+                />
                 <View style={{ marginTop: 4 }}>
                   <Text style={styles.modalProduceName}>{getProduceTitle(detailProduce)}</Text>
                   <Text style={styles.detailPriceTag}>

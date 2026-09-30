@@ -207,10 +207,10 @@ export default function UserProfileScreen({
                 {role === 'ADMIN'
                   ? '🛡️ ADMINISTRATOR'
                   : role === 'FARMER'
-                  ? '🧑‍🌾 VERIFIED GROWER'
-                  : role === 'DRIVER'
-                  ? '🚛 LOGISTICS PARTNER'
-                  : '🛒 VERIFIED BUYER'}
+                    ? '🧑‍🌾 VERIFIED GROWER'
+                    : role === 'DRIVER'
+                      ? '🚛 LOGISTICS PARTNER'
+                      : '🛒 VERIFIED BUYER'}
               </Text>
             </View>
           </View>

@@ -110,9 +110,7 @@ function AppInner() {
     const startFirestoreSubscriptions = () => {
       if (!unsubscribeProduce) {
         unsubscribeProduce = subscribeToProduceListings((items) => {
-          if (items && items.length > 0) {
-            setProduceListings(items);
-          }
+          setProduceListings(items || []);
         });
       }
       if (!unsubscribeOrders) {

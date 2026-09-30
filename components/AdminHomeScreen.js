@@ -10,6 +10,7 @@ import {
   StatusBar,
   ActivityIndicator,
   TextInput,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
@@ -17,7 +18,11 @@ import { changeAppLanguage } from '../services/i18n';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import {
   subscribeToDrivers,
-  assignDriverToOrder,
+  subscribeToAllTransportRequests,
+  assignDriverAndVehicleTransaction,
+  completeDeliveryTransaction,
+  deleteVehicleWithGuard,
+  updateDriverStatusByAdmin,
   checkDriverAvailability,
   DEFAULT_COOP_DRIVERS,
 } from '../services/firebaseDatabase';
@@ -25,6 +30,7 @@ import DriverAssignmentDropdown from './DriverAssignmentDropdown';
 import RequestDetailsScreen from './RequestDetailsScreen';
 import DeliveryTrackingScreen from './DeliveryTrackingScreen';
 import UserProfileScreen from './UserProfileScreen';
+import AddVehicleScreen from './AddVehicleScreen';
 
 const THEME = {
   primaryGreen: '#006837',
@@ -89,18 +95,37 @@ export default function AdminHomeScreen({
 }) {
   const { t, i18n } = useTranslation();
   const currentLang = i18n.language || lang || 'en';
-  const [driversList, setDriversList] = useState(DEFAULT_COOP_DRIVERS || []);
-  const [selectedDriversByOrder, setSelectedDriversByOrder] = useState({});
-  const [assigningOrderId, setAssigningOrderId] = useState(null);
+  const [driversList, setDriversList] = useState([]);
   const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard' | 'requests' | 'drivers' | 'vehicles' | 'deliveries'
+
+  // Search & Filter state
+  const [requestFilter, setRequestFilter] = useState('all'); // 'all' | 'pending' | 'assigned' | 'in_progress' | 'completed' | 'cancelled'
   const [searchQuery, setSearchQuery] = useState('');
-  const [driverModalOrderId, setDriverModalOrderId] = useState(null);
-  const [selectedOrderForDetails, setSelectedOrderForDetails] = useState(null);
+  const [driverFilter, setDriverFilter] = useState('all'); // 'all' | 'available' | 'on_delivery' | 'offline'
+  const [driverSearchQuery, setDriverSearchQuery] = useState('');
   const [vehicleSearchQuery, setVehicleSearchQuery] = useState('');
-  const [selectedVehicleCategory, setSelectedVehicleCategory] = useState('all');
-  const [deliveryFilter, setDeliveryFilter] = useState('all'); // 'all' | 'in_transit' | 'pending' | 'delivered'
+  const [selectedVehicleCategory, setSelectedVehicleCategory] = useState('all'); // 'all' | 'available' | 'assigned' | 'maintenance'
+  const [deliveryFilter, setDeliveryFilter] = useState('all'); // 'all' | 'active' | 'in_transit' | 'delivered' | 'completed'
+  const [deliverySearchQuery, setDeliverySearchQuery] = useState('');
+
+  // Selection & Modal states
+  const [selectedOrderForDetails, setSelectedOrderForDetails] = useState(null);
   const [selectedDeliveryForTracking, setSelectedDeliveryForTracking] = useState(null);
   const [showProfileScreen, setShowProfileScreen] = useState(false);
+  const [selectedDriverForDetails, setSelectedDriverForDetails] = useState(null);
+  const [selectedVehicleForDetails, setSelectedVehicleForDetails] = useState(null);
+
+  // Vehicle CRUD & Realtime Transport state
+  const [showAddVehicleScreen, setShowAddVehicleScreen] = useState(false);
+  const [editingVehicle, setEditingVehicle] = useState(null);
+  const [realtimeTransportRequests, setRealtimeTransportRequests] = useState([]);
+
+  // Multi-step Assignment Flow Modal State
+  const [assignmentModalOrder, setAssignmentModalOrder] = useState(null);
+  const [assignmentStep, setAssignmentStep] = useState(1); // 1: Driver, 2: Vehicle, 3: Review, 4: Success
+  const [selectedDriverForAssign, setSelectedDriverForAssign] = useState(null);
+  const [selectedVehicleForAssign, setSelectedVehicleForAssign] = useState(null);
+  const [isSubmittingAssignment, setIsSubmittingAssignment] = useState(false);
 
   // Role Access Guard Verification
   const userRole = userProfile?.role;
@@ -122,64 +147,8 @@ export default function AdminHomeScreen({
     );
   }
 
-  // Standard Fleet fallback merged with real Firebase vehicles
-  const VEHICLE_FLEET = vehiclesList.length > 0 ? vehiclesList : [
-    {
-      id: 'v1',
-      title: 'Lorry - 5 Tonne',
-      plateNumber: 'WP LL-4092',
-      type: 'lorry',
-      capacity: '5,000 kg',
-      status: 'AVAILABLE',
-      image: 'https://images.unsplash.com/photo-1601584115197-04ecc0da31d7?auto=format&fit=crop&w=400&q=80',
-    },
-    {
-      id: 'v2',
-      title: 'Pickup Double Cab',
-      plateNumber: 'CP PK-8821',
-      type: 'pickup',
-      capacity: '1,000 kg',
-      status: 'ASSIGNED',
-      driverName: 'Sunil Perera',
-      driverStatus: 'In Transit',
-      location: 'En route to Dambulla Market',
-      image: 'https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&w=400&q=80',
-    },
-    {
-      id: 'v3',
-      title: '4WD Tractor',
-      plateNumber: 'NW TR-0012',
-      type: 'tractor',
-      capacity: '2,500 kg',
-      status: 'MAINTENANCE',
-      maintenanceNote: 'Est. ready tomorrow',
-      image: 'https://images.unsplash.com/photo-1592838064575-70ed626d3a0e?auto=format&fit=crop&w=400&q=80',
-    },
-    {
-      id: 'v4',
-      title: 'Lorry - 10 Tonne',
-      plateNumber: 'SP LC-5544',
-      type: 'lorry',
-      capacity: '10,000 kg',
-      status: 'ASSIGNED',
-      driverName: 'Kamal Silva',
-      driverStatus: 'Loading',
-      location: 'Nuwara Eliya Hub',
-      image: 'https://images.unsplash.com/photo-1586191582056-96fcfded1b17?auto=format&fit=crop&w=400&q=80',
-    },
-  ];
-
-  const filteredVehicles = VEHICLE_FLEET.filter((v) => {
-    const matchesCategory = selectedVehicleCategory === 'all' || v.type === selectedVehicleCategory;
-    if (!vehicleSearchQuery.trim()) return matchesCategory;
-    const q = vehicleSearchQuery.toLowerCase().trim();
-    const matchesSearch =
-      (v.title && v.title.toLowerCase().includes(q)) ||
-      (v.plateNumber && v.plateNumber.toLowerCase().includes(q)) ||
-      (v.driverName && v.driverName.toLowerCase().includes(q)) ||
-      (v.location && v.location.toLowerCase().includes(q));
-    return matchesCategory && matchesSearch;
-  });
+  // Real Fleet vehicles array directly from Firebase Firestore
+  const VEHICLE_FLEET = vehiclesList || [];
 
   // Subscribe to real-time driver fleet
   useEffect(() => {
@@ -194,6 +163,81 @@ export default function AdminHomeScreen({
     };
   }, []);
 
+  // Subscribe to real-time transport requests
+  useEffect(() => {
+    const unsub = subscribeToAllTransportRequests((reqs) => {
+      setRealtimeTransportRequests(reqs || []);
+    });
+    return () => unsub && unsub();
+  }, []);
+
+  // Handler for Vehicle Deletion with Guard
+  const handleDeleteVehicle = (vehicle) => {
+    if (!vehicle?.id) return;
+    Alert.alert(
+      'Delete Vehicle',
+      `Are you sure you want to remove vehicle "${vehicle.title || vehicle.plateNumber}" from the fleet?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            const res = await deleteVehicleWithGuard(vehicle.id, vehicle.status, vehicle.availability);
+            if (res.success) {
+              Alert.alert('Vehicle Deleted', 'Vehicle has been removed from the fleet.');
+              setSelectedVehicleForDetails(null);
+            } else {
+              Alert.alert('Cannot Delete Vehicle', res.error);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // Handler for Driver Status Toggle
+  const handleToggleDriverStatus = async (driver) => {
+    const nextStatus = driver.isAvailable ? 'BUSY' : 'AVAILABLE';
+    const res = await updateDriverStatusByAdmin(driver.uid || driver.id, nextStatus);
+    if (res.success) {
+      Alert.alert('Driver Status Updated', `Driver "${driver.fullName}" set to ${nextStatus}.`);
+      setSelectedDriverForDetails(null);
+    } else {
+      Alert.alert('Error', res.error || 'Could not update driver status.');
+    }
+  };
+
+  // Handler for Completing Delivery
+  const handleCompleteDelivery = async (deliveryOrder) => {
+    Alert.alert(
+      'Complete Delivery',
+      `Mark shipment #${deliveryOrder.orderNo || deliveryOrder.id} as DELIVERED and release assigned driver/vehicle?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Mark Complete',
+          onPress: async () => {
+            const res = await completeDeliveryTransaction({
+              orderId: deliveryOrder.id,
+              transportRequestId: deliveryOrder.requestId,
+              driverId: deliveryOrder.driverId,
+              vehicleId: deliveryOrder.vehicleId,
+              farmerId: deliveryOrder.farmerId,
+              buyerId: deliveryOrder.buyerId,
+            });
+            if (res.success) {
+              Alert.alert('Delivery Completed! 🎉', 'Order status updated to DELIVERED and driver released.');
+              setSelectedDeliveryForTracking(null);
+            } else {
+              Alert.alert('Error', res.error || 'Failed to complete delivery.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   // Compute driver availability metrics
   const evaluatedDrivers = (driversList || []).map((driver) => {
     const availability = checkDriverAvailability(driver, ordersList || []);
@@ -205,15 +249,27 @@ export default function AdminHomeScreen({
     };
   });
 
-  const availableDriversCount = evaluatedDrivers.filter((d) => d.isAvailable).length;
-  const availableVehiclesCount = VEHICLE_FLEET.filter((v) => v.status === 'AVAILABLE' || (!v.status && v.isActive)).length;
+  const availableDriversList = evaluatedDrivers.filter((d) => d.isAvailable);
+  const busyDriversList = evaluatedDrivers.filter((d) => !d.isAvailable);
+
+  const availableDriversCount = availableDriversList.length;
+  const busyDriversCount = busyDriversList.length;
+  const offlineDriversCount = evaluatedDrivers.filter((d) => d.status === 'OFFLINE').length;
+
+  const availableVehiclesList = VEHICLE_FLEET.filter((v) => v.status === 'AVAILABLE' || (!v.status && v.isActive));
+  const assignedVehiclesList = VEHICLE_FLEET.filter((v) => v.status === 'ASSIGNED');
+  const maintenanceVehiclesList = VEHICLE_FLEET.filter((v) => v.status === 'MAINTENANCE');
+
+  const availableVehiclesCount = availableVehiclesList.length;
+  const assignedVehiclesCount = assignedVehiclesList.length;
+  const maintenanceVehiclesCount = maintenanceVehiclesList.length;
 
   // Filter orders dynamically from Firebase
   const unassignedOrders = (ordersList || []).filter(
-    (o) => !o.driverId && o.status !== 'DELIVERED' && o.status !== 'CANCELLED'
+    (o) => !o.driverId && o.status !== 'DELIVERED' && o.status !== 'CANCELLED' && o.status !== 'COMPLETED'
   );
   const assignedOrders = (ordersList || []).filter(
-    (o) => o.driverId && o.status !== 'DELIVERED' && o.status !== 'CANCELLED'
+    (o) => o.driverId && o.status !== 'DELIVERED' && o.status !== 'CANCELLED' && o.status !== 'COMPLETED'
   );
   const completedOrders = (ordersList || []).filter(
     (o) => o.status === 'DELIVERED' || o.status === 'COMPLETED'
@@ -224,69 +280,175 @@ export default function AdminHomeScreen({
   const activeDeliveriesCount = assignedOrders.length;
   const completedCount = completedOrders.length;
 
-  // Display requests directly from real Firebase Firestore data
-  const displayRequests = unassignedOrders || [];
+  // Filter requests list by tab & search query
+  const filteredRequests = ordersList.filter((item) => {
+    let matchesStatus = true;
+    const s = (item.status || 'PENDING').toUpperCase();
+    if (requestFilter === 'pending') matchesStatus = !item.driverId && s !== 'DELIVERED' && s !== 'CANCELLED';
+    else if (requestFilter === 'assigned') matchesStatus = item.driverId && s !== 'IN_TRANSIT' && s !== 'DELIVERED';
+    else if (requestFilter === 'in_progress') matchesStatus = s === 'IN_TRANSIT' || s === 'IN TRANSIT';
+    else if (requestFilter === 'completed') matchesStatus = s === 'DELIVERED' || s === 'COMPLETED';
+    else if (requestFilter === 'cancelled') matchesStatus = s === 'CANCELLED';
 
-  // Display active deliveries directly from real Firebase Firestore data
-  const displayActiveDeliveries = assignedOrders || [];
-
-  const filteredRequests = displayRequests.filter((item) => {
+    if (!matchesStatus) return false;
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase().trim();
     return (
       (item.produceName && item.produceName.toLowerCase().includes(q)) ||
       (item.farmerName && item.farmerName.toLowerCase().includes(q)) ||
+      (item.buyerName && item.buyerName.toLowerCase().includes(q)) ||
       (item.pickupLocation && item.pickupLocation.toLowerCase().includes(q)) ||
       (item.deliveryAddress && item.deliveryAddress.toLowerCase().includes(q)) ||
       (item.id && item.id.toLowerCase().includes(q))
     );
   });
 
-  const handleSelectDriverForOrder = (orderId, driver) => {
-    setSelectedDriversByOrder((prev) => ({
-      ...prev,
-      [orderId]: driver,
-    }));
+  // Filter drivers list by tab & search query
+  const filteredDrivers = evaluatedDrivers.filter((driver) => {
+    let matchesStatus = true;
+    if (driverFilter === 'available') matchesStatus = driver.isAvailable;
+    else if (driverFilter === 'on_delivery') matchesStatus = !driver.isAvailable;
+    else if (driverFilter === 'offline') matchesStatus = driver.status === 'OFFLINE';
+
+    if (!matchesStatus) return false;
+    if (!driverSearchQuery.trim()) return true;
+    const q = driverSearchQuery.toLowerCase().trim();
+    return (
+      (driver.fullName && driver.fullName.toLowerCase().includes(q)) ||
+      (driver.phoneNumber && driver.phoneNumber.includes(q)) ||
+      (driver.district?.nameEn && driver.district.nameEn.toLowerCase().includes(q)) ||
+      (driver.vehicleNumber && driver.vehicleNumber.toLowerCase().includes(q))
+    );
+  });
+
+  // Filter vehicles list by category & search query
+  const filteredVehicles = VEHICLE_FLEET.filter((v) => {
+    let matchesCat = true;
+    if (selectedVehicleCategory === 'available') matchesCat = v.status === 'AVAILABLE';
+    else if (selectedVehicleCategory === 'assigned') matchesCat = v.status === 'ASSIGNED';
+    else if (selectedVehicleCategory === 'maintenance') matchesCat = v.status === 'MAINTENANCE';
+
+    if (!matchesCat) return false;
+    if (!vehicleSearchQuery.trim()) return true;
+    const q = vehicleSearchQuery.toLowerCase().trim();
+    return (
+      (v.title && v.title.toLowerCase().includes(q)) ||
+      (v.plateNumber && v.plateNumber.toLowerCase().includes(q)) ||
+      (v.driverName && v.driverName.toLowerCase().includes(q)) ||
+      (v.location && v.location.toLowerCase().includes(q))
+    );
+  });
+
+  // Filter deliveries list
+  const filteredDeliveries = ordersList.filter((item) => {
+    if (!item.driverId && item.status !== 'IN_TRANSIT' && item.status !== 'DELIVERED') return false;
+    let matchesFilter = true;
+    const s = (item.status || 'ASSIGNED').toUpperCase();
+    if (deliveryFilter === 'in_transit') matchesFilter = s === 'IN_TRANSIT' || s === 'IN TRANSIT';
+    else if (deliveryFilter === 'pending') matchesFilter = s === 'PENDING' || s === 'ASSIGNED';
+    else if (deliveryFilter === 'delivered') matchesFilter = s === 'DELIVERED' || s === 'COMPLETED';
+
+    if (!matchesFilter) return false;
+    if (!deliverySearchQuery.trim()) return true;
+    const q = deliverySearchQuery.toLowerCase().trim();
+    return (
+      (item.orderNo && item.orderNo.toLowerCase().includes(q)) ||
+      (item.produceName && item.produceName.toLowerCase().includes(q)) ||
+      (item.driverName && item.driverName.toLowerCase().includes(q)) ||
+      (item.pickupLocation && item.pickupLocation.toLowerCase().includes(q)) ||
+      (item.deliveryAddress && item.deliveryAddress.toLowerCase().includes(q))
+    );
+  });
+
+  // Recent system logs derived from real orders
+  const recentActivities = ordersList.slice(0, 4).map((item, idx) => {
+    let text = `Transport request #${item.id || idx + 101} received for ${item.produceName || 'Harvest'}`;
+    let icon = 'document-text-outline';
+    let color = '#3B82F6';
+
+    if (item.status === 'DELIVERED' || item.status === 'COMPLETED') {
+      text = `Delivery completed for order #${item.orderNo || item.id} (${item.produceName})`;
+      icon = 'checkmark-circle-outline';
+      color = '#10B981';
+    } else if (item.status === 'IN_TRANSIT' || item.status === 'IN TRANSIT') {
+      text = `Shipment in transit by ${item.driverName || 'Driver'} to ${item.deliveryAddress || 'Market'}`;
+      icon = 'truck-fast-outline';
+      color = '#006837';
+    } else if (item.driverId) {
+      text = `Driver ${item.driverName || 'assigned'} assigned to order #${item.orderNo || item.id}`;
+      icon = 'person-add-outline';
+      color = '#6366F1';
+    }
+
+    return {
+      id: `act_${item.id || idx}`,
+      text,
+      time: formatDateString(item.createdAt),
+      icon,
+      color,
+    };
+  });
+
+  // Handlers for starting the multi-step assignment flow modal
+  const handleOpenAssignmentFlow = (order) => {
+    setAssignmentModalOrder(order);
+    setAssignmentStep(1);
+    setSelectedDriverForAssign(null);
+    setSelectedVehicleForAssign(availableVehiclesList[0] || VEHICLE_FLEET[0]);
   };
 
-  const handleConfirmAssignment = async (order) => {
-    const driver = selectedDriversByOrder[order.id];
-    if (!driver) {
-      Alert.alert('Select Driver', 'Please select an available driver first.');
-      return;
-    }
+  const handleConfirmAssignmentFlow = async () => {
+    if (!assignmentModalOrder || !selectedDriverForAssign) return;
 
-    const availability = checkDriverAvailability(driver, ordersList);
-    if (!availability.isAvailable) {
-      Alert.alert(
-        'Driver Unavailable',
-        `"${driver.fullName}" is currently on an active route. Please select another driver.`
-      );
-      return;
-    }
-
-    setAssigningOrderId(order.id);
-    const res = await assignDriverToOrder(order, driver);
-    setAssigningOrderId(null);
+    setIsSubmittingAssignment(true);
+    const res = await assignDriverAndVehicleTransaction({
+      transportRequestId: assignmentModalOrder.requestId || assignmentModalOrder.id,
+      orderId: assignmentModalOrder.id || assignmentModalOrder.orderId,
+      driver: selectedDriverForAssign,
+      vehicle: selectedVehicleForAssign,
+    });
+    setIsSubmittingAssignment(false);
 
     if (res.success) {
-      Alert.alert(
-        'Driver Assigned Successfully! 🚛',
-        `"${driver.fullName}" has been assigned to transport ${order.produceName || 'produce'} from ${order.pickupLocation || 'Farm'} to ${order.deliveryAddress || 'Destination'}.`
-      );
-      setSelectedDriversByOrder((prev) => {
-        const next = { ...prev };
-        delete next[order.id];
-        return next;
-      });
+      setAssignmentStep(4); // Show success step
     } else {
-      Alert.alert('Assignment Completed', `Assigned "${driver.fullName}" to order #${String(order.id).slice(0, 6)}.`);
-      setSelectedDriversByOrder((prev) => {
-        const next = { ...prev };
-        delete next[order.id];
-        return next;
-      });
+      Alert.alert('Assignment Error', res.error || 'Could not complete assignment.');
     }
+  };
+
+  // Renderer for Status Badges
+  const renderStatusBadge = (status) => {
+    const s = (status || 'PENDING').toUpperCase();
+    if (s === 'PENDING') {
+      return (
+        <View style={[styles.statusBadge, { backgroundColor: THEME.pendingBg }]}>
+          <Ionicons name="time-outline" size={12} color={THEME.pendingText} style={{ marginRight: 4 }} />
+          <Text style={[styles.statusBadgeText, { color: THEME.pendingText }]}>PENDING</Text>
+        </View>
+      );
+    }
+    if (s === 'ASSIGNED') {
+      return (
+        <View style={[styles.statusBadge, { backgroundColor: THEME.assignedBg }]}>
+          <Ionicons name="person-outline" size={12} color={THEME.assignedText} style={{ marginRight: 4 }} />
+          <Text style={[styles.statusBadgeText, { color: THEME.assignedText }]}>ASSIGNED</Text>
+        </View>
+      );
+    }
+    if (s === 'IN_TRANSIT' || s === 'IN TRANSIT') {
+      return (
+        <View style={[styles.statusBadge, { backgroundColor: THEME.inTransitBg }]}>
+          <MaterialCommunityIcons name="truck-fast-outline" size={12} color={THEME.inTransitText} style={{ marginRight: 4 }} />
+          <Text style={[styles.statusBadgeText, { color: THEME.inTransitText }]}>IN TRANSIT</Text>
+        </View>
+      );
+    }
+    return (
+      <View style={[styles.statusBadge, { backgroundColor: THEME.completedBg }]}>
+        <Ionicons name="checkmark-done-circle-outline" size={12} color={THEME.completedText} style={{ marginRight: 4 }} />
+        <Text style={[styles.statusBadgeText, { color: THEME.completedText }]}>{s}</Text>
+      </View>
+    );
   };
 
   if (selectedOrderForDetails) {
@@ -333,70 +495,45 @@ export default function AdminHomeScreen({
     );
   }
 
-  // Helper renderer for Status Badges
-  const renderStatusBadge = (status) => {
-    const s = (status || 'PENDING').toUpperCase();
-    if (s === 'PENDING') {
-      return (
-        <View style={[styles.statusBadge, { backgroundColor: THEME.pendingBg }]}>
-          <Ionicons name="time-outline" size={12} color={THEME.pendingText} style={{ marginRight: 4 }} />
-          <Text style={[styles.statusBadgeText, { color: THEME.pendingText }]}>PENDING</Text>
-        </View>
-      );
-    }
-    if (s === 'ASSIGNED') {
-      return (
-        <View style={[styles.statusBadge, { backgroundColor: THEME.assignedBg }]}>
-          <Ionicons name="person-outline" size={12} color={THEME.assignedText} style={{ marginRight: 4 }} />
-          <Text style={[styles.statusBadgeText, { color: THEME.assignedText }]}>ASSIGNED</Text>
-        </View>
-      );
-    }
-    if (s === 'IN_TRANSIT' || s === 'IN TRANSIT') {
-      return (
-        <View style={[styles.statusBadge, { backgroundColor: THEME.inTransitBg }]}>
-          <MaterialCommunityIcons name="truck-fast-outline" size={12} color={THEME.inTransitText} style={{ marginRight: 4 }} />
-          <Text style={[styles.statusBadgeText, { color: THEME.inTransitText }]}>IN TRANSIT</Text>
-        </View>
-      );
-    }
+  if (showAddVehicleScreen) {
     return (
-      <View style={[styles.statusBadge, { backgroundColor: THEME.completedBg }]}>
-        <Ionicons name="checkmark-done-circle-outline" size={12} color={THEME.completedText} style={{ marginRight: 4 }} />
-        <Text style={[styles.statusBadgeText, { color: THEME.completedText }]}>{s}</Text>
-      </View>
+      <AddVehicleScreen
+        userProfile={userProfile}
+        lang={lang}
+        initialVehicle={editingVehicle}
+        onBack={() => {
+          setShowAddVehicleScreen(false);
+          setEditingVehicle(null);
+        }}
+        onVehicleSaved={() => {
+          setShowAddVehicleScreen(false);
+          setEditingVehicle(null);
+        }}
+      />
     );
-  };
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
-      {/* TOP APP HEADER */}
+      {/* TOP HEADER */}
       <View style={styles.topHeader}>
-        <TouchableOpacity
-          style={styles.profileAvatarWrapper}
-          onPress={() => setShowProfileScreen(true)}
-          activeOpacity={0.8}
-        >
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
           <Image
-            source={
-              userProfile?.photoURL
-                ? { uri: userProfile.photoURL }
-                : require('../assets/splash-icon.png')
-            }
-            style={styles.profileAvatar}
+            source={require('../assets/splash-icon.png')}
+            style={{ width: 28, height: 28, borderRadius: 6 }}
           />
-        </TouchableOpacity>
+          <Text style={styles.brandTitle}>GoviLink</Text>
+          <View style={styles.adminRoleBadge}>
+            <Ionicons name="shield-checkmark" size={12} color="#1E40AF" style={{ marginRight: 4 }} />
+            <Text style={styles.adminRoleBadgeText}>COOP ADMIN</Text>
+          </View>
+        </View>
 
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <TouchableOpacity
-            style={{
-              backgroundColor: '#E2E8F0',
-              paddingHorizontal: 10,
-              paddingVertical: 4,
-              borderRadius: 12,
-            }}
+            style={styles.langBadgeBtn}
             onPress={async () => {
               const nextLang = currentLang === 'en' ? 'si' : currentLang === 'si' ? 'ta' : 'en';
               await changeAppLanguage(nextLang);
@@ -405,7 +542,7 @@ export default function AdminHomeScreen({
               }
             }}
           >
-            <Text style={{ fontSize: 11, fontWeight: '700', color: '#334155' }}>
+            <Text style={styles.langBadgeText}>
               {currentLang === 'en' ? 'EN' : currentLang === 'si' ? 'සිං' : 'தமிழ்'}
             </Text>
           </TouchableOpacity>
@@ -413,10 +550,25 @@ export default function AdminHomeScreen({
           <TouchableOpacity
             style={styles.notifBtn}
             activeOpacity={0.7}
-            onPress={() => Alert.alert('Notifications', 'No new system alerts for Cooperative Administrator.')}
+            onPress={() => Alert.alert('Notifications', `You have ${pendingRequestsCount} pending transport requests waiting for assignment.`)}
           >
             <Ionicons name="notifications-outline" size={22} color="#006837" />
             {pendingRequestsCount > 0 && <View style={styles.notifBadgeDot} />}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.profileAvatarWrapper}
+            onPress={() => setShowProfileScreen(true)}
+            activeOpacity={0.8}
+          >
+            <Image
+              source={
+                userProfile?.photoURL
+                  ? { uri: userProfile.photoURL }
+                  : require('../assets/splash-icon.png')
+              }
+              style={styles.profileAvatar}
+            />
           </TouchableOpacity>
         </View>
       </View>
@@ -428,239 +580,118 @@ export default function AdminHomeScreen({
       >
         {activeTab === 'dashboard' && (
           <>
-            {/* WELCOME BANNER & ROLE BADGE */}
-            <View style={styles.welcomeSection}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.welcomeSubhead}>Welcome back,</Text>
-                <Text style={styles.adminTitle}>Admin Portal</Text>
-              </View>
-
-              <View style={styles.adminRoleBadge}>
-                <Ionicons name="shield-checkmark" size={12} color="#1E40AF" style={{ marginRight: 4 }} />
-                <Text style={styles.adminRoleBadgeText}>ADMINISTRATOR</Text>
-              </View>
-            </View>
-
-            {/* STATISTICS CARDS GRID */}
-            <View style={styles.metricsGrid}>
-              <View style={styles.cardRow}>
-                <View style={[styles.statCard, styles.statCardHalf, { borderLeftColor: THEME.accentTotal, borderTopColor: THEME.accentTotal }]}>
-                  <View style={styles.statCardHeader}>
-                    <View style={[styles.statIconBox, { backgroundColor: '#E6F4EA' }]}>
-                      <Ionicons name="clipboard-outline" size={18} color="#006837" />
-                    </View>
-                  </View>
-                  <Text style={styles.statLabel}>Total Requests</Text>
-                  <Text style={styles.statValue}>{totalRequestsCount}</Text>
+            {/* 2. ADMIN WELCOME / HUB CARD */}
+            <View style={styles.welcomeHubCard}>
+              <View style={styles.welcomeHubTopRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.welcomeHubSubhead}>{t('admin.welcome')}</Text>
+                  <Text style={styles.welcomeHubAdminName}>
+                    {userProfile?.fullName || 'System Administrator'}
+                  </Text>
+                  <Text style={styles.welcomeHubLocation}>
+                    📍 {userProfile?.district || 'Dambulla Regional Hub'} • Central Province
+                  </Text>
                 </View>
-
-                <View style={[styles.statCard, styles.statCardHalf, { borderLeftColor: THEME.accentPending, borderTopColor: THEME.accentPending }]}>
-                  <View style={styles.statCardHeader}>
-                    <View style={[styles.statIconBox, { backgroundColor: '#FEE2E2' }]}>
-                      <Ionicons name="hourglass-outline" size={18} color="#DC2626" />
-                    </View>
-                  </View>
-                  <Text style={styles.statLabel}>Pending Requests</Text>
-                  <Text style={styles.statValue}>{pendingRequestsCount}</Text>
-                </View>
-              </View>
-
-              <View style={styles.cardRow}>
-                <View style={[styles.statCard, styles.statCardHalf, { borderLeftColor: THEME.accentDeliveries, borderTopColor: THEME.accentDeliveries }]}>
-                  <View style={styles.statCardHeader}>
-                    <View style={[styles.statIconBox, { backgroundColor: '#DCFCE7' }]}>
-                      <MaterialCommunityIcons name="truck-delivery-outline" size={20} color="#059669" />
-                    </View>
-                  </View>
-                  <Text style={styles.statLabel}>Active Deliveries</Text>
-                  <Text style={styles.statValue}>{activeDeliveriesCount}</Text>
-                </View>
-
-                <View style={[styles.statCard, styles.statCardHalf, { borderLeftColor: THEME.accentCompleted, borderTopColor: THEME.accentCompleted }]}>
-                  <View style={styles.statCardHeader}>
-                    <View style={[styles.statIconBox, { backgroundColor: '#DBEAFE' }]}>
-                      <Ionicons name="checkmark-circle-outline" size={19} color="#2563EB" />
-                    </View>
-                  </View>
-                  <Text style={styles.statLabel}>Completed Deliveries</Text>
-                  <Text style={styles.statValue}>{completedCount}</Text>
-                </View>
-              </View>
-
-              <View style={styles.cardRow}>
-                <View style={[styles.statCard, styles.statCardHalf, { borderLeftColor: THEME.accentDrivers, borderTopColor: THEME.accentDrivers }]}>
-                  <View style={styles.statCardHeader}>
-                    <View style={[styles.statIconBox, { backgroundColor: '#EEF2FF' }]}>
-                      <Ionicons name="people-outline" size={18} color="#4F46E5" />
-                    </View>
-                  </View>
-                  <Text style={styles.statLabel}>Available Drivers</Text>
-                  <Text style={styles.statValue}>{availableDriversCount}</Text>
-                </View>
-
-                <View style={[styles.statCard, styles.statCardHalf, { borderLeftColor: THEME.accentVehicles, borderTopColor: THEME.accentVehicles }]}>
-                  <View style={styles.statCardHeader}>
-                    <View style={[styles.statIconBox, { backgroundColor: '#F3E8FF' }]}>
-                      <Ionicons name="bus-outline" size={18} color="#7C3AED" />
-                    </View>
-                  </View>
-                  <Text style={styles.statLabel}>Available Vehicles</Text>
-                  <Text style={styles.statValue}>{availableVehiclesCount}</Text>
+                <View style={styles.opsStatusBadge}>
+                  <View style={styles.opsDotGreen} />
+                  <Text style={styles.opsStatusText}>ACTIVE OPS</Text>
                 </View>
               </View>
             </View>
 
-            {/* ATTENTION REQUIRED SECTION (CONDITIONAL) */}
-            {(pendingRequestsCount > 0 || availableDriversCount === 0 || availableVehiclesCount === 0) && (
-              <View style={styles.sectionContainer}>
-                <View style={styles.attentionHeaderRow}>
-                  <Ionicons name="warning-outline" size={18} color="#DC2626" style={{ marginRight: 6 }} />
-                  <Text style={styles.attentionHeaderTitle}>Attention Required</Text>
-                </View>
-
-                {pendingRequestsCount > 0 && (
-                  <View style={styles.attentionCardAlert}>
-                    <View style={styles.attentionIconCircle}>
-                      <Ionicons name="time" size={18} color="#B45309" />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.attentionAlertTitle}>Pending Transport Requests ({pendingRequestsCount})</Text>
-                      <Text style={styles.attentionAlertSub}>Transport requests waiting for driver & vehicle dispatch.</Text>
-                    </View>
-                    <TouchableOpacity
-                      style={styles.attentionActionBtn}
-                      onPress={() => setActiveTab('requests')}
-                      activeOpacity={0.8}
-                    >
-                      <Text style={styles.attentionActionBtnText}>Assign Now</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-
-                {availableDriversCount === 0 && (
-                  <View style={[styles.attentionCardAlert, { backgroundColor: '#FEF2F2', borderColor: '#FCA5A5' }]}>
-                    <View style={[styles.attentionIconCircle, { backgroundColor: '#FEE2E2' }]}>
-                      <Ionicons name="person-remove" size={18} color="#DC2626" />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.attentionAlertTitle, { color: '#991B1B' }]}>No Available Drivers</Text>
-                      <Text style={styles.attentionAlertSub}>All fleet drivers are currently assigned to active routes.</Text>
-                    </View>
-                    <TouchableOpacity
-                      style={[styles.attentionActionBtn, { backgroundColor: '#DC2626' }]}
-                      onPress={() => setActiveTab('drivers')}
-                      activeOpacity={0.8}
-                    >
-                      <Text style={styles.attentionActionBtnText}>Roster</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-
-                {availableVehiclesCount === 0 && (
-                  <View style={[styles.attentionCardAlert, { backgroundColor: '#FFF7ED', borderColor: '#FDBA74' }]}>
-                    <View style={[styles.attentionIconCircle, { backgroundColor: '#FFEDD5' }]}>
-                      <MaterialCommunityIcons name="truck-alert" size={18} color="#C2410C" />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.attentionAlertTitle, { color: '#9A3412' }]}>Vehicle Fleet Capacity Low</Text>
-                      <Text style={styles.attentionAlertSub}>No unassigned vehicles available in cooperative fleet.</Text>
-                    </View>
-                    <TouchableOpacity
-                      style={[styles.attentionActionBtn, { backgroundColor: '#C2410C' }]}
-                      onPress={() => setActiveTab('vehicles')}
-                      activeOpacity={0.8}
-                    >
-                      <Text style={styles.attentionActionBtnText}>Manage</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-              </View>
-            )}
-
-            {/* QUICK ACTIONS SECTION */}
+            {/* 3. QUICK OVERVIEW (2x2 GRID) */}
             <View style={styles.sectionContainer}>
-              <Text style={styles.sectionHeaderTitle}>Quick Actions</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickActionsScroll}>
-                <TouchableOpacity
-                  style={[styles.quickActionCard, styles.quickActionPrimary]}
-                  onPress={() => setActiveTab('requests')}
-                  activeOpacity={0.85}
-                >
-                  <View style={styles.quickActionIconBoxWhite}>
-                    <Ionicons name="list-outline" size={20} color="#006837" />
-                  </View>
-                  <Text style={styles.quickActionTextPrimary}>View Transport{'\n'}Requests</Text>
-                </TouchableOpacity>
+              <Text style={styles.sectionHeaderTitle}>Logistics Operations Overview</Text>
+              <View style={styles.metricsGrid}>
+                <View style={styles.cardRow}>
+                  <TouchableOpacity
+                    style={[styles.statCard, styles.statCardHalf, { borderLeftColor: THEME.accentPending }]}
+                    onPress={() => setActiveTab('requests')}
+                    activeOpacity={0.8}
+                  >
+                    <View style={styles.statCardHeader}>
+                      <View style={[styles.statIconBox, { backgroundColor: '#FEE2E2' }]}>
+                        <Ionicons name="hourglass-outline" size={18} color="#DC2626" />
+                      </View>
+                      <Ionicons name="chevron-forward-outline" size={16} color="#94A3B8" />
+                    </View>
+                    <Text style={styles.statLabel}>{t('admin.pendingRequests')}</Text>
+                    <Text style={styles.statValue}>{pendingRequestsCount}</Text>
+                  </TouchableOpacity>
 
-                <TouchableOpacity
-                  style={styles.quickActionCard}
-                  onPress={() => setActiveTab('requests')}
-                  activeOpacity={0.85}
-                >
-                  <View style={styles.quickActionIconBoxSecondary}>
-                    <Ionicons name="swap-horizontal-outline" size={20} color="#0D9488" />
-                  </View>
-                  <Text style={styles.quickActionTextSecondary}>Assign Driver{'\n'}& Vehicle</Text>
-                </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.statCard, styles.statCardHalf, { borderLeftColor: THEME.accentDeliveries }]}
+                    onPress={() => setActiveTab('deliveries')}
+                    activeOpacity={0.8}
+                  >
+                    <View style={styles.statCardHeader}>
+                      <View style={[styles.statIconBox, { backgroundColor: '#DCFCE7' }]}>
+                        <MaterialCommunityIcons name="truck-delivery-outline" size={20} color="#059669" />
+                      </View>
+                      <Ionicons name="chevron-forward-outline" size={16} color="#94A3B8" />
+                    </View>
+                    <Text style={styles.statLabel}>{t('admin.activeDeliveries')}</Text>
+                    <Text style={styles.statValue}>{activeDeliveriesCount}</Text>
+                  </TouchableOpacity>
+                </View>
 
-                <TouchableOpacity
-                  style={styles.quickActionCard}
-                  onPress={() => setActiveTab('drivers')}
-                  activeOpacity={0.85}
-                >
-                  <View style={styles.quickActionIconBoxSecondary}>
-                    <Ionicons name="people-outline" size={20} color="#1E40AF" />
-                  </View>
-                  <Text style={styles.quickActionTextSecondary}>Manage{'\n'}Drivers</Text>
-                </TouchableOpacity>
+                <View style={styles.cardRow}>
+                  <TouchableOpacity
+                    style={[styles.statCard, styles.statCardHalf, { borderLeftColor: THEME.accentDrivers }]}
+                    onPress={() => setActiveTab('drivers')}
+                    activeOpacity={0.8}
+                  >
+                    <View style={styles.statCardHeader}>
+                      <View style={[styles.statIconBox, { backgroundColor: '#EEF2FF' }]}>
+                        <Ionicons name="people-outline" size={18} color="#4F46E5" />
+                      </View>
+                      <Ionicons name="chevron-forward-outline" size={16} color="#94A3B8" />
+                    </View>
+                    <Text style={styles.statLabel}>{t('admin.availableDrivers')}</Text>
+                    <Text style={styles.statValue}>{availableDriversCount}</Text>
+                  </TouchableOpacity>
 
-                <TouchableOpacity
-                  style={styles.quickActionCard}
-                  onPress={() => setActiveTab('vehicles')}
-                  activeOpacity={0.85}
-                >
-                  <View style={styles.quickActionIconBoxSecondary}>
-                    <MaterialCommunityIcons name="truck-outline" size={20} color="#7C3AED" />
-                  </View>
-                  <Text style={styles.quickActionTextSecondary}>Manage{'\n'}Vehicles</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.quickActionCard}
-                  onPress={() => setActiveTab('deliveries')}
-                  activeOpacity={0.85}
-                >
-                  <View style={styles.quickActionIconBoxSecondary}>
-                    <Ionicons name="navigate-outline" size={20} color="#0284C7" />
-                  </View>
-                  <Text style={styles.quickActionTextSecondary}>View{'\n'}Deliveries</Text>
-                </TouchableOpacity>
-              </ScrollView>
+                  <TouchableOpacity
+                    style={[styles.statCard, styles.statCardHalf, { borderLeftColor: THEME.accentVehicles }]}
+                    onPress={() => setActiveTab('vehicles')}
+                    activeOpacity={0.8}
+                  >
+                    <View style={styles.statCardHeader}>
+                      <View style={[styles.statIconBox, { backgroundColor: '#F3E8FF' }]}>
+                        <Ionicons name="bus-outline" size={18} color="#7C3AED" />
+                      </View>
+                      <Ionicons name="chevron-forward-outline" size={16} color="#94A3B8" />
+                    </View>
+                    <Text style={styles.statLabel}>{t('admin.availableVehicles')}</Text>
+                    <Text style={styles.statValue}>{availableVehiclesCount}</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
             </View>
 
-            {/* RECENT TRANSPORT REQUESTS SECTION */}
+            {/* 4. PRIORITY TRANSPORT REQUESTS */}
             <View style={styles.sectionContainer}>
               <View style={styles.recentActivityHeader}>
-                <Text style={styles.sectionHeaderTitle}>Recent Transport Requests</Text>
+                <Text style={styles.sectionHeaderTitle}>{t('admin.priorityRequests')}</Text>
                 <TouchableOpacity onPress={() => setActiveTab('requests')}>
-                  <Text style={styles.viewAllBtnText}>View All</Text>
+                  <Text style={styles.viewAllBtnText}>{t('admin.viewAllRequests')}</Text>
                 </TouchableOpacity>
               </View>
 
-              {displayRequests.length === 0 ? (
+              {unassignedOrders.length === 0 ? (
                 <View style={styles.emptyBoxSection}>
-                  <Ionicons name="document-text-outline" size={38} color="#94A3B8" />
-                  <Text style={styles.emptyTitle}>No Transport Requests</Text>
-                  <Text style={styles.emptySub}>No recent transport requests created yet.</Text>
+                  <Ionicons name="checkmark-done-circle-outline" size={38} color="#10B981" />
+                  <Text style={styles.emptyTitle}>No Pending Requests</Text>
+                  <Text style={styles.emptySub}>{t('admin.noRequests')}</Text>
                 </View>
               ) : (
-                displayRequests.slice(0, 3).map((item) => (
+                unassignedOrders.slice(0, 3).map((item) => (
                   <View key={item.id} style={styles.requestCardSummary}>
                     <View style={styles.cardHeaderRow}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-                        <Text style={styles.cardReqIdText}>#{item.id}</Text>
+                        <Text style={styles.cardReqIdText}>#{String(item.id).slice(-6).toUpperCase()}</Text>
                         <Text style={styles.cardReqProduceText} numberOfLines={1}>
-                          • {item.produceName || 'Produce'} ({item.qty || 1000}{item.unit || 'kg'})
+                          • {item.produceName || 'Produce'} ({item.qty || 1000} {item.unit || 'kg'})
                         </Text>
                       </View>
                       {renderStatusBadge(item.status)}
@@ -670,18 +701,20 @@ export default function AdminHomeScreen({
 
                     <View style={styles.requestMetaRow}>
                       <View style={{ flex: 1 }}>
-                        <Text style={styles.metaLabelText}>Farmer: <Text style={styles.metaValText}>{item.farmerName || 'Farmer'}</Text></Text>
-                        <Text style={styles.metaLabelText}>Pickup: <Text style={styles.metaValText}>{item.pickupLocation || 'Origin'}</Text></Text>
-                        <Text style={styles.metaLabelText}>Destination: <Text style={styles.metaValText}>{item.deliveryAddress || 'Destination'}</Text></Text>
+                        <Text style={styles.metaLabelText}>Farmer: <Text style={styles.metaValText}>{item.farmerName || 'Consignor'}</Text></Text>
+                        <Text style={styles.metaLabelText}>Buyer: <Text style={styles.metaValText}>{item.buyerName || 'Buyer'}</Text></Text>
+                        <Text style={styles.metaLabelText}>Pickup: <Text style={styles.metaValText}>{item.pickupLocation || 'Farm'}</Text></Text>
+                        <Text style={styles.metaLabelText}>Deliver: <Text style={styles.metaValText}>{item.deliveryAddress || 'Market'}</Text></Text>
                       </View>
+
                       <View style={{ alignItems: 'flex-end', justifyContent: 'space-between' }}>
                         <Text style={styles.dateMetaText}>{formatDateString(item.createdAt)}</Text>
                         <TouchableOpacity
-                          style={styles.detailsBtnSmall}
-                          onPress={() => setSelectedOrderForDetails(item)}
+                          style={styles.actionBtnSmallGreen}
+                          onPress={() => handleOpenAssignmentFlow(item)}
                           activeOpacity={0.8}
                         >
-                          <Text style={styles.detailsBtnSmallText}>View Details</Text>
+                          <Text style={styles.actionBtnSmallGreenText}>Assign Driver</Text>
                         </TouchableOpacity>
                       </View>
                     </View>
@@ -690,28 +723,28 @@ export default function AdminHomeScreen({
               )}
             </View>
 
-            {/* ACTIVE DELIVERIES SECTION */}
+            {/* 5. ACTIVE DELIVERIES */}
             <View style={styles.sectionContainer}>
               <View style={styles.recentActivityHeader}>
-                <Text style={styles.sectionHeaderTitle}>Active Deliveries</Text>
+                <Text style={styles.sectionHeaderTitle}>{t('admin.activeDeliveries')}</Text>
                 <TouchableOpacity onPress={() => setActiveTab('deliveries')}>
-                  <Text style={styles.viewAllBtnText}>Manage Deliveries</Text>
+                  <Text style={styles.viewAllBtnText}>{t('admin.viewAllDeliveries')}</Text>
                 </TouchableOpacity>
               </View>
 
-              {displayActiveDeliveries.length === 0 ? (
+              {assignedOrders.length === 0 ? (
                 <View style={styles.emptyBoxSection}>
                   <MaterialCommunityIcons name="truck-check-outline" size={38} color="#94A3B8" />
                   <Text style={styles.emptyTitle}>No Active Deliveries</Text>
-                  <Text style={styles.emptySub}>All assigned shipments have completed delivery.</Text>
+                  <Text style={styles.emptySub}>{t('admin.noDeliveries')}</Text>
                 </View>
               ) : (
-                displayActiveDeliveries.slice(0, 2).map((item) => (
+                assignedOrders.slice(0, 2).map((item) => (
                   <View key={item.id} style={styles.deliveryCardSummary}>
                     <View style={styles.cardHeaderRow}>
                       <View style={{ flex: 1 }}>
                         <Text style={styles.cardReqIdText}>{item.orderNo || `#${item.id}`}</Text>
-                        <Text style={styles.cardReqProduceText}>{item.produceName || 'Agricultural Produce'}</Text>
+                        <Text style={styles.cardReqProduceText}>{item.produceName || 'Produce Shipment'}</Text>
                       </View>
                       {renderStatusBadge(item.status || 'IN_TRANSIT')}
                     </View>
@@ -722,7 +755,7 @@ export default function AdminHomeScreen({
                       <View style={{ flex: 1 }}>
                         <Text style={styles.routeSublabel}>DRIVER & VEHICLE</Text>
                         <Text style={styles.locationTitle}>
-                          {item.driverName || 'Driver'} • {item.vehicleNumber || item.vehiclePlate || 'Vehicle'}
+                          {item.driverName || 'Driver'} • {item.vehicleNumber || 'Standard Lorry'}
                         </Text>
                       </View>
                       <View style={{ flex: 1, alignItems: 'flex-end' }}>
@@ -739,10 +772,116 @@ export default function AdminHomeScreen({
                       activeOpacity={0.85}
                     >
                       <Ionicons name="navigate-circle-outline" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
-                      <Text style={styles.trackPrimaryBtnText}>Track Delivery</Text>
+                      <Text style={styles.trackPrimaryBtnText}>{t('admin.viewDelivery')}</Text>
                     </TouchableOpacity>
                   </View>
                 ))
+              )}
+            </View>
+
+            {/* 6. DRIVER AVAILABILITY SUMMARY */}
+            <View style={styles.sectionContainer}>
+              <View style={styles.recentActivityHeader}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Text style={styles.sectionHeaderTitle}>{t('admin.driverAvailability')}</Text>
+                  <View style={styles.miniPillGreen}>
+                    <Text style={styles.miniPillGreenText}>{availableDriversCount} Available</Text>
+                  </View>
+                </View>
+                <TouchableOpacity onPress={() => setActiveTab('drivers')}>
+                  <Text style={styles.viewAllBtnText}>{t('admin.viewDrivers')}</Text>
+                </TouchableOpacity>
+              </View>
+
+              {evaluatedDrivers.slice(0, 3).map((driver) => (
+                <TouchableOpacity
+                  key={driver.uid || driver.id}
+                  style={styles.driverCardCompact}
+                  onPress={() => setSelectedDriverForDetails(driver)}
+                  activeOpacity={0.85}
+                >
+                  <View style={styles.driverAvatarCircle}>
+                    <Ionicons name="person" size={16} color="#006837" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.driverNameText}>{driver.fullName}</Text>
+                    <Text style={styles.driverMetaSub}>📞 {driver.phoneNumber || 'N/A'} • {driver.vehicleNumber || 'Coop Truck'}</Text>
+                  </View>
+                  <View style={[
+                    styles.pendingBadge,
+                    driver.isAvailable ? { backgroundColor: '#DCFCE7' } : { backgroundColor: '#FEE2E2' }
+                  ]}>
+                    <Text style={[
+                      styles.pendingBadgeText,
+                      driver.isAvailable ? { color: '#059669' } : { color: '#DC2626' }
+                    ]}>
+                      {driver.isAvailable ? 'AVAILABLE' : 'ON ROUTE'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* 7. VEHICLE AVAILABILITY SUMMARY */}
+            <View style={styles.sectionContainer}>
+              <View style={styles.recentActivityHeader}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Text style={styles.sectionHeaderTitle}>{t('admin.vehicleAvailability')}</Text>
+                  <View style={styles.miniPillBlue}>
+                    <Text style={styles.miniPillBlueText}>{availableVehiclesCount} Ready</Text>
+                  </View>
+                </View>
+                <TouchableOpacity onPress={() => setActiveTab('vehicles')}>
+                  <Text style={styles.viewAllBtnText}>{t('admin.viewVehicles')}</Text>
+                </TouchableOpacity>
+              </View>
+
+              {VEHICLE_FLEET.slice(0, 3).map((vehicle) => (
+                <TouchableOpacity
+                  key={vehicle.id}
+                  style={styles.vehicleCardCompact}
+                  onPress={() => setSelectedVehicleForDetails(vehicle)}
+                  activeOpacity={0.85}
+                >
+                  <MaterialCommunityIcons name="truck-outline" size={24} color="#006837" style={{ marginRight: 10 }} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.driverNameText}>{vehicle.title}</Text>
+                    <Text style={styles.driverMetaSub}>{vehicle.plateNumber} • Capacity: {vehicle.capacityText || `${vehicle.capacity} kg`}</Text>
+                  </View>
+                  <View style={[
+                    styles.pendingBadge,
+                    vehicle.status === 'AVAILABLE' ? { backgroundColor: '#DCFCE7' } : vehicle.status === 'MAINTENANCE' ? { backgroundColor: '#FEE2E2' } : { backgroundColor: '#DBEAFE' }
+                  ]}>
+                    <Text style={[
+                      styles.pendingBadgeText,
+                      vehicle.status === 'AVAILABLE' ? { color: '#059669' } : vehicle.status === 'MAINTENANCE' ? { color: '#DC2626' } : { color: '#1D4ED8' }
+                    ]}>
+                      {vehicle.status || 'AVAILABLE'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* 8. RECENT TRANSPORT ACTIVITY */}
+            <View style={styles.sectionContainer}>
+              <Text style={styles.sectionHeaderTitle}>{t('admin.recentActivity')}</Text>
+              {recentActivities.length === 0 ? (
+                <Text style={styles.emptySub}>{t('admin.noActivity')}</Text>
+              ) : (
+                <View style={styles.activityBoxContainer}>
+                  {recentActivities.map((act) => (
+                    <View key={act.id} style={styles.activityRowItem}>
+                      <View style={[styles.activityIconCircle, { backgroundColor: '#F1F5F9' }]}>
+                        <Ionicons name={act.icon} size={16} color={act.color} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.activityText}>{act.text}</Text>
+                        <Text style={styles.activityTime}>{act.time}</Text>
+                      </View>
+                    </View>
+                  ))}
+                </View>
               )}
             </View>
           </>
@@ -753,10 +892,32 @@ export default function AdminHomeScreen({
           <View style={styles.tabContentContainer}>
             <Text style={styles.requestsPageTitle}>Transport Requests</Text>
             <Text style={styles.requestsPageSub}>
-              Manage transport requests submitted by farmers and buyers.
+              Manage transport requests submitted by farmers and buyers across regional hubs.
             </Text>
 
-            {/* SEARCH & FILTER BAR */}
+            {/* REQUEST FILTER CHIPS */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryChipsScroll}>
+              {[
+                { id: 'all', label: 'All Requests' },
+                { id: 'pending', label: 'Pending' },
+                { id: 'assigned', label: 'Assigned' },
+                { id: 'in_progress', label: 'In Progress' },
+                { id: 'completed', label: 'Completed' },
+              ].map((chip) => (
+                <TouchableOpacity
+                  key={chip.id}
+                  style={[styles.categoryChip, requestFilter === chip.id && styles.categoryChipActive]}
+                  onPress={() => setRequestFilter(chip.id)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.categoryChipText, requestFilter === chip.id && styles.categoryChipTextActive]}>
+                    {chip.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            {/* SEARCH BAR */}
             <View style={styles.searchFilterRow}>
               <View style={styles.searchInputContainer}>
                 <Ionicons name="search-outline" size={20} color="#64748B" style={{ marginRight: 8 }} />
@@ -779,122 +940,73 @@ export default function AdminHomeScreen({
               <View style={styles.emptyBox}>
                 <Ionicons name="search-outline" size={44} color="#006837" />
                 <Text style={styles.emptyTitle}>No Requests Found</Text>
-                <Text style={styles.emptySub}>No transport requests match your search criteria.</Text>
+                <Text style={styles.emptySub}>{t('admin.noRequests')}</Text>
               </View>
             ) : (
-              filteredRequests.map((order) => {
-                const selectedDriver = selectedDriversByOrder[order.id] || null;
-                const isAssigning = assigningOrderId === order.id;
+              filteredRequests.map((order) => (
+                <TouchableOpacity
+                  key={order.id}
+                  style={styles.requestCard}
+                  onPress={() => setSelectedOrderForDetails(order)}
+                  activeOpacity={0.88}
+                >
+                  <View style={styles.cardHeaderRow}>
+                    <Text style={styles.cardProduceTitle}>
+                      {order.produceName || `${order.produceType || 'Produce'}, ${order.qty || 1000}${order.unit || 'kg'}`}
+                    </Text>
+                    {renderStatusBadge(order.status)}
+                  </View>
 
-                return (
+                  <View style={styles.farmerRow}>
+                    <Ionicons name="person-outline" size={14} color="#64748B" style={{ marginRight: 6 }} />
+                    <Text style={styles.farmerNameText}>
+                      Farmer: {order.farmerName || 'Farmer Partner'} • Buyer: {order.buyerName || 'Commercial Buyer'}
+                    </Text>
+                  </View>
+
+                  <View style={styles.cardDivider} />
+
+                  <View style={styles.routeContainer}>
+                    <View style={styles.routeNodeRow}>
+                      <View style={styles.pickupCircleOuter}>
+                        <View style={styles.pickupCircleInner} />
+                      </View>
+                      <View style={styles.routeTextCol}>
+                        <Text style={styles.routeLabelPickup}>PICKUP LOCATION</Text>
+                        <Text style={styles.locationTitle}>{order.pickupLocation || 'Farm Origin'}</Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.routeConnectingLine} />
+
+                    <View style={styles.routeNodeRow}>
+                      <View style={styles.destCircleOuter} />
+                      <View style={styles.routeTextCol}>
+                        <Text style={styles.routeLabelDest}>DELIVERY DESTINATION</Text>
+                        <Text style={styles.locationTitle}>{order.deliveryAddress || 'Distribution Center'}</Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  <View style={styles.dateBannerBox}>
+                    <Ionicons name="calendar-outline" size={16} color="#0284C7" style={{ marginRight: 8 }} />
+                    <Text style={styles.dateBannerText}>
+                      Requested: {formatDateString(order.createdAt || order.requestedDate)}
+                    </Text>
+                  </View>
+
                   <TouchableOpacity
-                    key={order.id}
-                    style={styles.requestCard}
-                    onPress={() => setSelectedOrderForDetails(order)}
-                    activeOpacity={0.88}
+                    style={styles.assignPrimaryBtn}
+                    onPress={() => handleOpenAssignmentFlow(order)}
+                    activeOpacity={0.85}
                   >
-                    <View style={styles.cardHeaderRow}>
-                      <Text style={styles.cardProduceTitle}>
-                        {order.produceName || `${order.produceType || 'Produce'}, ${order.qty || 1000}${order.unit || 'kg'}`}
-                      </Text>
-                      {renderStatusBadge(order.status)}
-                    </View>
-
-                    <View style={styles.farmerRow}>
-                      <Ionicons name="person-outline" size={14} color="#64748B" style={{ marginRight: 6 }} />
-                      <Text style={styles.farmerNameText}>
-                        Farmer: {order.farmerName || 'Farmer Partner'}
-                      </Text>
-                    </View>
-
-                    <View style={styles.cardDivider} />
-
-                    <View style={styles.routeContainer}>
-                      <View style={styles.routeNodeRow}>
-                        <View style={styles.pickupCircleOuter}>
-                          <View style={styles.pickupCircleInner} />
-                        </View>
-                        <View style={styles.routeTextCol}>
-                          <Text style={styles.routeLabelPickup}>PICKUP LOCATION</Text>
-                          <Text style={styles.locationTitle}>{order.pickupLocation || 'Farm Origin'}</Text>
-                        </View>
-                      </View>
-
-                      <View style={styles.routeConnectingLine} />
-
-                      <View style={styles.routeNodeRow}>
-                        <View style={styles.destCircleOuter} />
-                        <View style={styles.routeTextCol}>
-                          <Text style={styles.routeLabelDest}>DELIVERY DESTINATION</Text>
-                          <Text style={styles.locationTitle}>{order.deliveryAddress || 'Distribution Center'}</Text>
-                        </View>
-                      </View>
-                    </View>
-
-                    <View style={styles.dateBannerBox}>
-                      <Ionicons name="calendar-outline" size={16} color="#0284C7" style={{ marginRight: 8 }} />
-                      <Text style={styles.dateBannerText}>
-                        Requested: {formatDateString(order.createdAt || order.requestedDate)}
-                      </Text>
-                    </View>
-
-                    {selectedDriver ? (
-                      <View style={styles.selectedDriverBox}>
-                        <View style={styles.selectedDriverInfo}>
-                          <Text style={styles.selectedDriverText} numberOfLines={1}>
-                            Driver: <Text style={{ fontWeight: 'bold', color: '#006837' }}>{selectedDriver.fullName}</Text>
-                          </Text>
-                          <TouchableOpacity onPress={() => handleSelectDriverForOrder(order.id, null)}>
-                            <Text style={styles.changeDriverText}>Change</Text>
-                          </TouchableOpacity>
-                        </View>
-
-                        <TouchableOpacity
-                          style={[styles.assignPrimaryBtn, isAssigning && styles.assignBtnDisabled]}
-                          disabled={isAssigning}
-                          onPress={() => handleConfirmAssignment(order)}
-                          activeOpacity={0.85}
-                        >
-                          {isAssigning ? (
-                            <ActivityIndicator size="small" color="#FFFFFF" />
-                          ) : (
-                            <>
-                              <MaterialCommunityIcons name="truck-fast" size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
-                              <Text style={styles.assignPrimaryBtnText}>Confirm & Dispatch</Text>
-                            </>
-                          )}
-                        </TouchableOpacity>
-                      </View>
-                    ) : (
-                      <TouchableOpacity
-                        style={styles.assignPrimaryBtn}
-                        onPress={() => setDriverModalOrderId(order.id)}
-                        activeOpacity={0.85}
-                      >
-                        <MaterialCommunityIcons name="truck" size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
-                        <Text style={styles.assignPrimaryBtnText}>Assign Driver & Vehicle</Text>
-                      </TouchableOpacity>
-                    )}
-
-                    {driverModalOrderId === order.id && (
-                      <View style={{ marginTop: 10 }}>
-                        <Text style={styles.dropdownTitle}>Select Available Fleet Driver:</Text>
-                        <DriverAssignmentDropdown
-                          drivers={driversList}
-                          ordersList={ordersList}
-                          selectedDriver={selectedDriver}
-                          onSelectDriver={(driver) => {
-                            handleSelectDriverForOrder(order.id, driver);
-                            setDriverModalOrderId(null);
-                          }}
-                          placeholder="Choose driver..."
-                          lang={lang}
-                        />
-                      </View>
-                    )}
+                    <MaterialCommunityIcons name="truck-fast" size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
+                    <Text style={styles.assignPrimaryBtnText}>
+                      {order.driverId ? 'Reassign Driver & Vehicle' : t('admin.assignDriverVehicle')}
+                    </Text>
                   </TouchableOpacity>
-                );
-              })
+                </TouchableOpacity>
+              ))
             )}
           </View>
         )}
@@ -902,18 +1014,54 @@ export default function AdminHomeScreen({
         {/* DRIVERS TAB */}
         {activeTab === 'drivers' && (
           <View style={styles.tabContentContainer}>
-            <Text style={styles.requestsPageTitle}>Cooperative Drivers Roster</Text>
+            <Text style={styles.requestsPageTitle}>Driver Management</Text>
             <Text style={styles.requestsPageSub}>
-              Real-time roster and status of cooperative transport drivers.
+              Real-time availability and assignment roster of cooperative transport drivers.
             </Text>
 
-            {evaluatedDrivers.map((driver) => (
-              <View
+            {/* DRIVER FILTERS */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryChipsScroll}>
+              {[
+                { id: 'all', label: `All Drivers (${evaluatedDrivers.length})` },
+                { id: 'available', label: `Available (${availableDriversCount})` },
+                { id: 'on_delivery', label: `On Delivery (${busyDriversCount})` },
+              ].map((chip) => (
+                <TouchableOpacity
+                  key={chip.id}
+                  style={[styles.categoryChip, driverFilter === chip.id && styles.categoryChipActive]}
+                  onPress={() => setDriverFilter(chip.id)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.categoryChipText, driverFilter === chip.id && styles.categoryChipTextActive]}>
+                    {chip.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            {/* SEARCH BAR */}
+            <View style={styles.searchFilterRow}>
+              <View style={styles.searchInputContainer}>
+                <Ionicons name="search-outline" size={20} color="#64748B" style={{ marginRight: 8 }} />
+                <TextInput
+                  style={styles.searchInputField}
+                  placeholder="Search driver by name, phone, district..."
+                  placeholderTextColor="#94A3B8"
+                  value={driverSearchQuery}
+                  onChangeText={setDriverSearchQuery}
+                />
+              </View>
+            </View>
+
+            {filteredDrivers.map((driver) => (
+              <TouchableOpacity
                 key={driver.uid || driver.id}
                 style={[
                   styles.requestCard,
                   { borderLeftColor: driver.isAvailable ? '#10B981' : '#EF4444' }
                 ]}
+                onPress={() => setSelectedDriverForDetails(driver)}
+                activeOpacity={0.88}
               >
                 <View style={styles.cardHeaderRow}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
@@ -949,7 +1097,7 @@ export default function AdminHomeScreen({
                     📍 {driver.district?.nameEn || 'Western Hub'}
                   </Text>
                 </View>
-              </View>
+              </TouchableOpacity>
             ))}
           </View>
         )}
@@ -957,224 +1105,496 @@ export default function AdminHomeScreen({
         {/* VEHICLES TAB */}
         {activeTab === 'vehicles' && (
           <View style={styles.tabContentContainer}>
-            <Text style={styles.requestsPageTitle}>Cooperative Vehicle Fleet</Text>
-            <Text style={styles.requestsPageSub}>
-              Logistics vehicle fleet capacity and availability records.
-            </Text>
-
-            <View style={[styles.searchFilterRow, { marginTop: 12, marginBottom: 4 }]}>
-              <View style={styles.searchInputContainer}>
-                <Ionicons name="search-outline" size={20} color="#64748B" style={{ marginRight: 8 }} />
-                <TextInput
-                  style={styles.searchInputField}
-                  placeholder="Search license plate, title..."
-                  placeholderTextColor="#94A3B8"
-                  value={vehicleSearchQuery}
-                  onChangeText={setVehicleSearchQuery}
-                />
-                {vehicleSearchQuery.length > 0 && (
-                  <TouchableOpacity onPress={() => setVehicleSearchQuery('')}>
-                    <Ionicons name="close-circle" size={18} color="#94A3B8" />
-                  </TouchableOpacity>
-                )}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.requestsPageTitle}>Vehicle Fleet</Text>
+                <Text style={styles.requestsPageSub}>
+                  Logistics vehicle fleet capacity and availability records.
+                </Text>
               </View>
+              <TouchableOpacity
+                style={[styles.assignPrimaryBtn, { paddingHorizontal: 12, paddingVertical: 8 }]}
+                onPress={() => {
+                  setEditingVehicle(null);
+                  setShowAddVehicleScreen(true);
+                }}
+              >
+                <Text style={[styles.assignPrimaryBtnText, { fontSize: 12 }]}>+ Add Vehicle</Text>
+              </TouchableOpacity>
             </View>
 
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.categoryChipsScroll}
-            >
+            {/* VEHICLE FILTERS */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryChipsScroll}>
               {[
-                { id: 'all', label: 'All Fleet' },
-                { id: 'lorry', label: 'Lorries' },
-                { id: 'pickup', label: 'Pickups' },
-                { id: 'tractor', label: 'Tractors' },
+                { id: 'all', label: `All Vehicles (${VEHICLE_FLEET.length})` },
+                { id: 'available', label: `Available (${availableVehiclesCount})` },
+                { id: 'assigned', label: `Assigned (${assignedVehiclesCount})` },
+                { id: 'maintenance', label: `Maintenance (${maintenanceVehiclesCount})` },
               ].map((chip) => (
                 <TouchableOpacity
                   key={chip.id}
-                  style={[
-                    styles.categoryChip,
-                    selectedVehicleCategory === chip.id && styles.categoryChipActive,
-                  ]}
+                  style={[styles.categoryChip, selectedVehicleCategory === chip.id && styles.categoryChipActive]}
                   onPress={() => setSelectedVehicleCategory(chip.id)}
                   activeOpacity={0.8}
                 >
-                  <Text
-                    style={[
-                      styles.categoryChipText,
-                      selectedVehicleCategory === chip.id && styles.categoryChipTextActive,
-                    ]}
-                  >
+                  <Text style={[styles.categoryChipText, selectedVehicleCategory === chip.id && styles.categoryChipTextActive]}>
                     {chip.label}
                   </Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
 
-            {filteredVehicles.length === 0 ? (
-              <View style={styles.emptyBox}>
-                <Ionicons name="car-outline" size={44} color="#006837" />
-                <Text style={styles.emptyTitle}>No Vehicles Found</Text>
-                <Text style={styles.emptySub}>No vehicles match your search or filter selection.</Text>
+            {/* SEARCH BAR */}
+            <View style={styles.searchFilterRow}>
+              <View style={styles.searchInputContainer}>
+                <Ionicons name="search-outline" size={20} color="#64748B" style={{ marginRight: 8 }} />
+                <TextInput
+                  style={styles.searchInputField}
+                  placeholder="Search license plate, vehicle title..."
+                  placeholderTextColor="#94A3B8"
+                  value={vehicleSearchQuery}
+                  onChangeText={setVehicleSearchQuery}
+                />
               </View>
-            ) : (
-              filteredVehicles.map((vehicle) => {
-                let accentColor = '#10B981';
-                if (vehicle.status === 'ASSIGNED') accentColor = '#3B82F6';
-                if (vehicle.status === 'MAINTENANCE') accentColor = '#EF4444';
+            </View>
 
-                return (
-                  <View
-                    key={vehicle.id}
-                    style={[styles.requestCard, { borderLeftColor: accentColor }]}
-                  >
-                    <View style={styles.vehicleCardTopRow}>
-                      <Image
-                        source={{ uri: vehicle.image || 'https://images.unsplash.com/photo-1601584115197-04ecc0da31d7?auto=format&fit=crop&w=400&q=80' }}
-                        style={styles.vehicleCardImage}
-                        resizeMode="cover"
-                      />
+            {filteredVehicles.map((vehicle) => {
+              let accentColor = '#10B981';
+              if (vehicle.status === 'ASSIGNED') accentColor = '#3B82F6';
+              if (vehicle.status === 'MAINTENANCE') accentColor = '#EF4444';
 
-                      <View style={styles.vehicleCardMainCol}>
-                        <View style={styles.vehicleCardHeaderRow}>
-                          <Text style={styles.cardProduceTitle} numberOfLines={1}>
-                            {vehicle.title || vehicle.makeModel || 'Coop Truck'}
+              return (
+                <TouchableOpacity
+                  key={vehicle.id}
+                  style={[styles.requestCard, { borderLeftColor: accentColor }]}
+                  onPress={() => setSelectedVehicleForDetails(vehicle)}
+                  activeOpacity={0.88}
+                >
+                  <View style={styles.vehicleCardTopRow}>
+                    <Image
+                      source={{ uri: vehicle.image || 'https://images.unsplash.com/photo-1601584115197-04ecc0da31d7?auto=format&fit=crop&w=400&q=80' }}
+                      style={styles.vehicleCardImage}
+                      resizeMode="cover"
+                    />
+
+                    <View style={styles.vehicleCardMainCol}>
+                      <View style={styles.vehicleCardHeaderRow}>
+                        <Text style={styles.cardProduceTitle} numberOfLines={1}>
+                          {vehicle.title}
+                        </Text>
+                        <View style={[
+                          styles.pendingBadge,
+                          vehicle.status === 'AVAILABLE' ? { backgroundColor: '#DCFCE7' } : vehicle.status === 'MAINTENANCE' ? { backgroundColor: '#FEE2E2' } : { backgroundColor: '#DBEAFE' }
+                        ]}>
+                          <Text style={[
+                            styles.pendingBadgeText,
+                            vehicle.status === 'AVAILABLE' ? { color: '#059669' } : vehicle.status === 'MAINTENANCE' ? { color: '#DC2626' } : { color: '#1D4ED8' }
+                          ]}>
+                            {vehicle.status || 'AVAILABLE'}
                           </Text>
-
-                          {vehicle.status === 'AVAILABLE' && (
-                            <View style={styles.badgeAvailable}>
-                              <Text style={styles.badgeAvailableText}>AVAILABLE</Text>
-                            </View>
-                          )}
-
-                          {vehicle.status === 'ASSIGNED' && (
-                            <View style={styles.badgeAssigned}>
-                              <Text style={styles.badgeAssignedText}>ASSIGNED</Text>
-                            </View>
-                          )}
-
-                          {vehicle.status === 'MAINTENANCE' && (
-                            <View style={styles.badgeMaintenance}>
-                              <Text style={styles.badgeMaintenanceText}>MAINTENANCE</Text>
-                            </View>
-                          )}
                         </View>
-
-                        <Text style={styles.vehiclePlateText}>{vehicle.plateNumber || vehicle.vehicleNumber || 'WP-COL-0000'}</Text>
-
-                        {vehicle.capacity && (
-                          <View style={styles.vehicleCapacityRow}>
-                            <Ionicons name="bag-handle-outline" size={14} color="#0F172A" style={{ marginRight: 6 }} />
-                            <Text style={styles.vehicleCapacityText}>{vehicle.capacity}</Text>
-                          </View>
-                        )}
                       </View>
+
+                      <Text style={styles.vehiclePlateText}>{vehicle.plateNumber}</Text>
+                      <Text style={styles.vehicleCapacityText}>Capacity: {vehicle.capacityText || `${vehicle.capacity} kg`}</Text>
                     </View>
                   </View>
-                );
-              })
-            )}
+                </TouchableOpacity>
+              );
+            })}
           </View>
         )}
 
         {/* DELIVERIES TAB */}
         {activeTab === 'deliveries' && (
           <View style={styles.tabContentContainer}>
-            <Text style={styles.requestsPageTitle}>Active Deliveries</Text>
+            <Text style={styles.requestsPageTitle}>Active & Tracked Deliveries</Text>
             <Text style={styles.requestsPageSub}>
-              Manage and track ongoing logistical deliveries across hubs.
+              Manage and track ongoing logistical deliveries across regional hubs.
             </Text>
 
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.categoryChipsScroll}
-            >
+            {/* DELIVERY FILTERS */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryChipsScroll}>
               {[
                 { id: 'all', label: 'All Deliveries' },
                 { id: 'in_transit', label: 'In Transit' },
-                { id: 'pending', label: 'Pending' },
+                { id: 'pending', label: 'Assigned / Scheduled' },
                 { id: 'delivered', label: 'Delivered' },
               ].map((chip) => (
                 <TouchableOpacity
                   key={chip.id}
-                  style={[
-                    styles.categoryChip,
-                    deliveryFilter === chip.id && styles.categoryChipActive,
-                  ]}
+                  style={[styles.categoryChip, deliveryFilter === chip.id && styles.categoryChipActive]}
                   onPress={() => setDeliveryFilter(chip.id)}
                   activeOpacity={0.8}
                 >
-                  <Text
-                    style={[
-                      styles.categoryChipText,
-                      deliveryFilter === chip.id && styles.categoryChipTextActive,
-                    ]}
-                  >
+                  <Text style={[styles.categoryChipText, deliveryFilter === chip.id && styles.categoryChipTextActive]}>
                     {chip.label}
                   </Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
 
-            {displayActiveDeliveries.map((item) => (
-              <TouchableOpacity
-                key={item.id}
-                style={[styles.requestCard, { borderLeftColor: '#10B981' }]}
-                onPress={() => setSelectedDeliveryForTracking(item)}
-                activeOpacity={0.88}
-              >
-                <View style={styles.cardHeaderRow}>
-                  <Text style={styles.cardProduceTitle}>{item.orderNo || `#${item.id}`}</Text>
-                  {renderStatusBadge(item.status || 'IN_TRANSIT')}
-                </View>
+            {/* SEARCH BAR */}
+            <View style={styles.searchFilterRow}>
+              <View style={styles.searchInputContainer}>
+                <Ionicons name="search-outline" size={20} color="#64748B" style={{ marginRight: 8 }} />
+                <TextInput
+                  style={styles.searchInputField}
+                  placeholder="Search by order ID, driver, destination..."
+                  placeholderTextColor="#94A3B8"
+                  value={deliverySearchQuery}
+                  onChangeText={setDeliverySearchQuery}
+                />
+              </View>
+            </View>
 
-                <Text style={[styles.farmerNameText, { marginTop: 2, marginBottom: 10 }]}>
-                  Buyer: {item.buyerName || 'Cooperative Buyer'}
-                </Text>
-
-                <View style={styles.deliveryRouteBox}>
-                  <View style={styles.deliveryRouteCol}>
-                    <Text style={styles.routeSublabel}>PICKUP</Text>
-                    <Text style={styles.locationTitle}>{item.pickupLocation}</Text>
-                  </View>
-
-                  <Ionicons name="arrow-forward-outline" size={20} color="#64748B" />
-
-                  <View style={[styles.deliveryRouteCol, { alignItems: 'flex-end' }]}>
-                    <Text style={styles.routeSublabel}>DESTINATION</Text>
-                    <Text style={styles.locationTitle}>{item.deliveryAddress}</Text>
-                  </View>
-                </View>
-
-                <View style={styles.deliveryDriverRow}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <Ionicons name="person-outline" size={14} color="#475569" style={{ marginRight: 6 }} />
-                    <Text style={styles.farmerNameText}>{item.driverName || 'Driver'}</Text>
-                  </View>
-
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <Ionicons name="car-outline" size={14} color="#475569" style={{ marginRight: 6 }} />
-                    <Text style={styles.farmerNameText}>{item.vehicleNumber || item.vehiclePlate || 'Fleet Vehicle'}</Text>
-                  </View>
-                </View>
-
+            {filteredDeliveries.length === 0 ? (
+              <View style={styles.emptyBox}>
+                <MaterialCommunityIcons name="truck-check-outline" size={44} color="#006837" />
+                <Text style={styles.emptyTitle}>No Deliveries Found</Text>
+                <Text style={styles.emptySub}>{t('admin.noDeliveries')}</Text>
+              </View>
+            ) : (
+              filteredDeliveries.map((item) => (
                 <TouchableOpacity
-                  style={styles.assignPrimaryBtn}
+                  key={item.id}
+                  style={[styles.requestCard, { borderLeftColor: '#10B981' }]}
                   onPress={() => setSelectedDeliveryForTracking(item)}
-                  activeOpacity={0.85}
+                  activeOpacity={0.88}
                 >
-                  <Ionicons name="navigate-circle-outline" size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
-                  <Text style={styles.assignPrimaryBtnText}>Track Delivery Status</Text>
+                  <View style={styles.cardHeaderRow}>
+                    <Text style={styles.cardProduceTitle}>{item.orderNo || `#${item.id}`}</Text>
+                    {renderStatusBadge(item.status || 'IN_TRANSIT')}
+                  </View>
+
+                  <Text style={[styles.farmerNameText, { marginTop: 2, marginBottom: 10 }]}>
+                    Produce: {item.produceName || 'Agricultural Produce'} ({item.qty || 500} kg)
+                  </Text>
+
+                  <View style={styles.deliveryRouteBox}>
+                    <View style={styles.deliveryRouteCol}>
+                      <Text style={styles.routeSublabel}>PICKUP</Text>
+                      <Text style={styles.locationTitle}>{item.pickupLocation}</Text>
+                    </View>
+
+                    <Ionicons name="arrow-forward-outline" size={20} color="#64748B" />
+
+                    <View style={[styles.deliveryRouteCol, { alignItems: 'flex-end' }]}>
+                      <Text style={styles.routeSublabel}>DESTINATION</Text>
+                      <Text style={styles.locationTitle}>{item.deliveryAddress}</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.deliveryDriverRow}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <Ionicons name="person-outline" size={14} color="#475569" style={{ marginRight: 6 }} />
+                      <Text style={styles.farmerNameText}>{item.driverName || 'Driver'}</Text>
+                    </View>
+
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <Ionicons name="car-outline" size={14} color="#475569" style={{ marginRight: 6 }} />
+                      <Text style={styles.farmerNameText}>{item.vehicleNumber || 'Standard Lorry'}</Text>
+                    </View>
+                  </View>
+
+                  <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+                    <TouchableOpacity
+                      style={[styles.assignPrimaryBtn, { flex: 1 }]}
+                      onPress={() => setSelectedDeliveryForTracking(item)}
+                      activeOpacity={0.85}
+                    >
+                      <Ionicons name="navigate-circle-outline" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
+                      <Text style={styles.assignPrimaryBtnText}>{t('admin.viewDelivery')}</Text>
+                    </TouchableOpacity>
+
+                    {item.status !== 'DELIVERED' && item.status !== 'COMPLETED' && (
+                      <TouchableOpacity
+                        style={[styles.btnSecondary, { flex: 1, backgroundColor: '#DCFCE7', borderColor: '#86EFAC' }]}
+                        onPress={() => handleCompleteDelivery(item)}
+                        activeOpacity={0.85}
+                      >
+                        <Ionicons name="checkmark-done-circle-outline" size={18} color="#059669" style={{ marginRight: 6 }} />
+                        <Text style={[styles.btnSecondaryText, { color: '#059669', fontWeight: '800' }]}>Mark Complete</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
                 </TouchableOpacity>
-              </TouchableOpacity>
-            ))}
+              ))
+            )}
           </View>
         )}
       </ScrollView>
 
-      {/* BOTTOM NAVIGATION BAR */}
+      {/* MULTI-STEP ASSIGNMENT FLOW WIZARD MODAL */}
+      {assignmentModalOrder && (
+        <Modal visible={true} transparent animationType="slide">
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContentCard}>
+              <View style={styles.modalHeaderRow}>
+                <Text style={styles.modalTitle}>
+                  {assignmentStep === 1 && 'Step 1: Select Driver'}
+                  {assignmentStep === 2 && 'Step 2: Select Vehicle'}
+                  {assignmentStep === 3 && 'Step 3: Review Assignment'}
+                  {assignmentStep === 4 && 'Assignment Success! 🎉'}
+                </Text>
+                <TouchableOpacity onPress={() => setAssignmentModalOrder(null)}>
+                  <Ionicons name="close" size={24} color="#64748B" />
+                </TouchableOpacity>
+              </View>
+
+              <Text style={styles.modalSubhead}>
+                Request: #{String(assignmentModalOrder.id).slice(-6).toUpperCase()} • {assignmentModalOrder.produceName} ({assignmentModalOrder.qty || 1000} kg)
+              </Text>
+
+              {assignmentStep === 1 && (
+                <View style={{ marginTop: 12 }}>
+                  <Text style={styles.dropdownTitle}>Choose Available Fleet Driver:</Text>
+                  <DriverAssignmentDropdown
+                    drivers={driversList}
+                    ordersList={ordersList}
+                    selectedDriver={selectedDriverForAssign}
+                    onSelectDriver={(driver) => setSelectedDriverForAssign(driver)}
+                    placeholder="Select driver..."
+                    lang={lang}
+                  />
+
+                  <TouchableOpacity
+                    style={[styles.assignPrimaryBtn, { marginTop: 20 }, !selectedDriverForAssign && styles.assignBtnDisabled]}
+                    disabled={!selectedDriverForAssign}
+                    onPress={() => setAssignmentStep(2)}
+                  >
+                    <Text style={styles.assignPrimaryBtnText}>Next: Select Vehicle ➔</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {assignmentStep === 2 && (
+                <View style={{ marginTop: 12 }}>
+                  <Text style={styles.dropdownTitle}>Choose Available Vehicle (Min Capacity: {assignmentModalOrder.qty || 1000} kg):</Text>
+                  <ScrollView style={{ maxHeight: 220, marginTop: 8 }}>
+                    {VEHICLE_FLEET.map((veh) => {
+                      const isCapacityOk = (veh.capacity || 5000) >= (Number(assignmentModalOrder.qty) || 1000);
+                      const isSelected = selectedVehicleForAssign?.id === veh.id;
+                      return (
+                        <TouchableOpacity
+                          key={veh.id}
+                          style={[
+                            styles.vehicleOptionItem,
+                            isSelected && styles.vehicleOptionSelected,
+                            !isCapacityOk && { opacity: 0.5 }
+                          ]}
+                          onPress={() => setSelectedVehicleForAssign(veh)}
+                        >
+                          <MaterialCommunityIcons name="truck" size={22} color={isSelected ? '#006837' : '#64748B'} />
+                          <View style={{ flex: 1, marginLeft: 10 }}>
+                            <Text style={styles.driverNameText}>{veh.title} ({veh.plateNumber})</Text>
+                            <Text style={styles.driverMetaSub}>Capacity: {veh.capacityText || `${veh.capacity} kg`}</Text>
+                          </View>
+                          {isSelected && <Ionicons name="checkmark-circle" size={20} color="#006837" />}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+
+                  <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
+                    <TouchableOpacity style={styles.btnSecondary} onPress={() => setAssignmentStep(1)}>
+                      <Text style={styles.btnSecondaryText}>Back</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.assignPrimaryBtn, { flex: 1 }]} onPress={() => setAssignmentStep(3)}>
+                      <Text style={styles.assignPrimaryBtnText}>Next: Review ➔</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+
+              {assignmentStep === 3 && (
+                <View style={{ marginTop: 12 }}>
+                  <View style={styles.reviewSummaryBox}>
+                    <Text style={styles.reviewRowText}>🌾 Farmer: <Text style={{ fontWeight: 'bold' }}>{assignmentModalOrder.farmerName || 'Farmer'}</Text></Text>
+                    <Text style={styles.reviewRowText}>🏢 Buyer: <Text style={{ fontWeight: 'bold' }}>{assignmentModalOrder.buyerName || 'Buyer'}</Text></Text>
+                    <Text style={styles.reviewRowText}>📍 Route: <Text style={{ fontWeight: 'bold' }}>{assignmentModalOrder.pickupLocation} ➔ {assignmentModalOrder.deliveryAddress}</Text></Text>
+                    <Text style={styles.reviewRowText}>🚚 Driver: <Text style={{ fontWeight: 'bold', color: '#006837' }}>{selectedDriverForAssign?.fullName}</Text></Text>
+                    <Text style={styles.reviewRowText}>🚛 Vehicle: <Text style={{ fontWeight: 'bold', color: '#006837' }}>{selectedVehicleForAssign?.title} ({selectedVehicleForAssign?.plateNumber})</Text></Text>
+                  </View>
+
+                  <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
+                    <TouchableOpacity style={styles.btnSecondary} onPress={() => setAssignmentStep(1)}>
+                      <Text style={styles.btnSecondaryText}>Change Driver</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.btnSecondary} onPress={() => setAssignmentStep(2)}>
+                      <Text style={styles.btnSecondaryText}>Change Vehicle</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <TouchableOpacity
+                    style={[styles.assignPrimaryBtn, { marginTop: 12 }]}
+                    disabled={isSubmittingAssignment}
+                    onPress={handleConfirmAssignmentFlow}
+                  >
+                    {isSubmittingAssignment ? (
+                      <ActivityIndicator color="#FFFFFF" size="small" />
+                    ) : (
+                      <Text style={styles.assignPrimaryBtnText}>{t('admin.confirmAssignment')}</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {assignmentStep === 4 && (
+                <View style={{ marginTop: 16, alignItems: 'center' }}>
+                  <Ionicons name="checkmark-circle" size={56} color="#10B981" />
+                  <Text style={{ fontSize: 18, fontWeight: '800', color: '#0F172A', marginTop: 10, textAlign: 'center' }}>
+                    {t('admin.assignmentSuccess')}
+                  </Text>
+                  <Text style={{ fontSize: 13, color: '#64748B', textAlign: 'center', marginTop: 6, lineHeight: 18 }}>
+                    Driver "{selectedDriverForAssign?.fullName}" and Vehicle "{selectedVehicleForAssign?.plateNumber}" have been assigned.
+                  </Text>
+
+                  <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
+                    <TouchableOpacity
+                      style={styles.btnSecondary}
+                      onPress={() => setAssignmentModalOrder(null)}
+                    >
+                      <Text style={styles.btnSecondaryText}>Close</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.assignPrimaryBtn}
+                      onPress={() => {
+                        const target = assignmentModalOrder;
+                        setAssignmentModalOrder(null);
+                        setSelectedDeliveryForTracking(target);
+                      }}
+                    >
+                      <Text style={styles.assignPrimaryBtnText}>{t('admin.viewDelivery')}</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+            </View>
+          </View>
+        </Modal>
+      )}
+
+      {/* DRIVER DETAILS MODAL */}
+      {selectedDriverForDetails && (
+        <Modal visible={true} transparent animationType="fade">
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContentCard}>
+              <View style={styles.modalHeaderRow}>
+                <Text style={styles.modalTitle}>Driver Profile Details</Text>
+                <TouchableOpacity onPress={() => setSelectedDriverForDetails(null)}>
+                  <Ionicons name="close" size={24} color="#64748B" />
+                </TouchableOpacity>
+              </View>
+
+              <View style={{ alignItems: 'center', marginVertical: 14 }}>
+                <View style={styles.driverAvatarCircleLarge}>
+                  <Ionicons name="person" size={32} color="#006837" />
+                </View>
+                <Text style={{ fontSize: 18, fontWeight: '800', color: '#0F172A', marginTop: 8 }}>
+                  {selectedDriverForDetails.fullName}
+                </Text>
+                <Text style={{ fontSize: 13, color: '#64748B', marginTop: 2 }}>
+                  📞 {selectedDriverForDetails.phoneNumber || 'N/A'} • {selectedDriverForDetails.district?.nameEn || 'Western Hub'}
+                </Text>
+              </View>
+
+              <View style={styles.reviewSummaryBox}>
+                <Text style={styles.reviewRowText}>Status: <Text style={{ fontWeight: 'bold' }}>{selectedDriverForDetails.isAvailable ? 'AVAILABLE FOR DISPATCH' : 'ON ACTIVE ROUTE'}</Text></Text>
+                <Text style={styles.reviewRowText}>Assigned Vehicle: <Text style={{ fontWeight: 'bold' }}>{selectedDriverForDetails.vehicleNumber || 'Standard Fleet Truck'}</Text></Text>
+                <Text style={styles.reviewRowText}>Active Trip: <Text style={{ fontWeight: 'bold' }}>{selectedDriverForDetails.busyReason || 'None (Ready)'}</Text></Text>
+              </View>
+
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
+                <TouchableOpacity
+                  style={[styles.btnSecondary, { flex: 1 }]}
+                  onPress={() => handleToggleDriverStatus(selectedDriverForDetails)}
+                >
+                  <Text style={styles.btnSecondaryText}>
+                    {selectedDriverForDetails.isAvailable ? 'Set as BUSY' : 'Set as AVAILABLE'}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.assignPrimaryBtn, { flex: 1 }]}
+                  onPress={() => setSelectedDriverForDetails(null)}
+                >
+                  <Text style={styles.assignPrimaryBtnText}>Close</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
+
+      {/* VEHICLE DETAILS MODAL */}
+      {selectedVehicleForDetails && (
+        <Modal visible={true} transparent animationType="fade">
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContentCard}>
+              <View style={styles.modalHeaderRow}>
+                <Text style={styles.modalTitle}>Vehicle Fleet Details</Text>
+                <TouchableOpacity onPress={() => setSelectedVehicleForDetails(null)}>
+                  <Ionicons name="close" size={24} color="#64748B" />
+                </TouchableOpacity>
+              </View>
+
+              <View style={{ alignItems: 'center', marginVertical: 14 }}>
+                <Image
+                  source={{ uri: selectedVehicleForDetails.image || 'https://images.unsplash.com/photo-1601584115197-04ecc0da31d7?auto=format&fit=crop&w=400&q=80' }}
+                  style={{ width: '100%', height: 120, borderRadius: 12 }}
+                  resizeMode="cover"
+                />
+                <Text style={{ fontSize: 18, fontWeight: '800', color: '#0F172A', marginTop: 10 }}>
+                  {selectedVehicleForDetails.title}
+                </Text>
+                <Text style={{ fontSize: 14, fontWeight: '600', color: '#006837', marginTop: 2 }}>
+                  {selectedVehicleForDetails.plateNumber}
+                </Text>
+              </View>
+
+              <View style={styles.reviewSummaryBox}>
+                <Text style={styles.reviewRowText}>Capacity: <Text style={{ fontWeight: 'bold' }}>{selectedVehicleForDetails.capacityText || `${selectedVehicleForDetails.capacity} kg`}</Text></Text>
+                <Text style={styles.reviewRowText}>Operational Status: <Text style={{ fontWeight: 'bold' }}>{selectedVehicleForDetails.status || 'AVAILABLE'}</Text></Text>
+                <Text style={styles.reviewRowText}>Driver Assigned: <Text style={{ fontWeight: 'bold' }}>{selectedVehicleForDetails.driverName || 'Coop Driver Pool'}</Text></Text>
+                {selectedVehicleForDetails.maintenanceNote && (
+                  <Text style={styles.reviewRowText}>Maintenance Note: <Text style={{ fontWeight: 'bold', color: '#DC2626' }}>{selectedVehicleForDetails.maintenanceNote}</Text></Text>
+                )}
+              </View>
+
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
+                <TouchableOpacity
+                  style={[styles.btnSecondary, { flex: 1, backgroundColor: '#FEF2F2', borderColor: '#FCA5A5' }]}
+                  onPress={() => handleDeleteVehicle(selectedVehicleForDetails)}
+                >
+                  <Text style={[styles.btnSecondaryText, { color: '#DC2626' }]}>🗑️ Delete</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.btnSecondary, { flex: 1 }]}
+                  onPress={() => {
+                    const target = selectedVehicleForDetails;
+                    setSelectedVehicleForDetails(null);
+                    setEditingVehicle(target);
+                    setShowAddVehicleScreen(true);
+                  }}
+                >
+                  <Text style={styles.btnSecondaryText}>✏️ Edit</Text>
+                </TouchableOpacity>
+              </View>
+
+              <TouchableOpacity
+                style={[styles.assignPrimaryBtn, { marginTop: 10 }]}
+                onPress={() => setSelectedVehicleForDetails(null)}
+              >
+                <Text style={styles.assignPrimaryBtnText}>Close Details</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      )}
+
+      {/* 9. BOTTOM NAVIGATION BAR */}
       <View style={styles.bottomTabBar}>
         <TouchableOpacity
           style={styles.navTabItem}
@@ -1217,7 +1637,7 @@ export default function AdminHomeScreen({
         >
           <View style={activeTab === 'drivers' ? styles.activeTabPillIcon : styles.inactiveTabIconBox}>
             <Ionicons
-              name={activeTab === 'drivers' ? 'person' : 'person-outline'}
+              name={activeTab === 'drivers' ? 'people' : 'people-outline'}
               size={18}
               color={activeTab === 'drivers' ? '#FFFFFF' : '#64748B'}
             />
@@ -1276,42 +1696,67 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingVertical: 12,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderBottomColor: '#E2E8F0',
   },
+  brandTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#006837',
+    letterSpacing: -0.3,
+  },
+  adminRoleBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#DBEAFE',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 14,
+  },
+  adminRoleBadgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#1E40AF',
+    letterSpacing: 0.5,
+  },
+  langBadgeBtn: {
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+  },
+  langBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#334155',
+  },
   profileAvatarWrapper: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     overflow: 'hidden',
     borderWidth: 1.5,
-    borderColor: '#E2E8F0',
+    borderColor: '#006837',
   },
   profileAvatar: {
     width: '100%',
     height: '100%',
   },
-  brandTitle: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: '#006837',
-    letterSpacing: -0.3,
-  },
   notifBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
   },
   notifBadgeDot: {
     position: 'absolute',
-    top: 6,
-    right: 6,
+    top: 4,
+    right: 4,
     width: 7,
     height: 7,
     borderRadius: 3.5,
@@ -1319,71 +1764,108 @@ const styles = StyleSheet.create({
   },
 
   scrollContainer: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingBottom: 90,
   },
 
-  /* WELCOME BANNER */
-  welcomeSection: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  /* 2. ADMIN WELCOME / HUB CARD */
+  welcomeHubCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
     marginTop: 14,
-    marginBottom: 18,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderLeftWidth: 4,
+    borderLeftColor: '#006837',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 5,
+    elevation: 2,
   },
-  welcomeSubhead: {
-    fontSize: 13,
+  welcomeHubTopRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+  },
+  welcomeHubSubhead: {
+    fontSize: 12,
     color: '#64748B',
     fontWeight: '500',
   },
-  adminTitle: {
-    fontSize: 24,
+  welcomeHubAdminName: {
+    fontSize: 18,
     fontWeight: '800',
     color: '#0F172A',
-    marginTop: 1,
+    marginTop: 2,
   },
-  adminRoleBadge: {
+  welcomeHubLocation: {
+    fontSize: 12,
+    color: '#334155',
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  opsStatusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#DBEAFE',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
   },
-  adminRoleBadgeText: {
-    fontSize: 10,
+  opsDotGreen: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#10B981',
+    marginRight: 4,
+  },
+  opsStatusText: {
+    fontSize: 9,
     fontWeight: '800',
-    color: '#1E40AF',
-    letterSpacing: 0.5,
+    color: '#059669',
   },
 
-  /* METRICS GRID */
-  metricsGrid: {
+  /* METRICS GRID (2x2) */
+  sectionContainer: {
     marginBottom: 20,
+  },
+  sectionHeaderTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginBottom: 12,
+  },
+  metricsGrid: {
+    gap: 10,
   },
   cardRow: {
     flexDirection: 'row',
-    gap: 12,
-    marginBottom: 12,
+    gap: 10,
   },
   statCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 14,
+    borderRadius: 14,
+    padding: 12,
     borderLeftWidth: 3.5,
     borderTopWidth: 1,
     borderColor: '#E2E8F0',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
+    shadowOpacity: 0.03,
+    shadowRadius: 4,
     elevation: 2,
   },
   statCardHalf: {
     flex: 1,
   },
   statCardHeader: {
-    marginBottom: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
   },
   statIconBox: {
     width: 32,
@@ -1393,128 +1875,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   statLabel: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
     color: '#64748B',
     marginBottom: 2,
   },
   statValue: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '800',
     color: '#0F172A',
   },
 
-  /* ATTENTION REQUIRED */
-  attentionHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  attentionHeaderTitle: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: '#DC2626',
-  },
-  attentionCardAlert: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FEF3C7',
-    borderWidth: 1,
-    borderColor: '#FCD34D',
-    borderRadius: 14,
-    padding: 12,
-    marginBottom: 10,
-    gap: 10,
-  },
-  attentionIconCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#FDE68A',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  attentionAlertTitle: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: '#78350F',
-  },
-  attentionAlertSub: {
-    fontSize: 11,
-    color: '#92400E',
-    marginTop: 2,
-  },
-  attentionActionBtn: {
-    backgroundColor: '#B45309',
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 8,
-  },
-  attentionActionBtnText: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: '800',
-  },
-
-  /* QUICK ACTIONS */
-  sectionContainer: {
-    marginBottom: 22,
-  },
-  sectionHeaderTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#0F172A',
-    marginBottom: 12,
-  },
-  quickActionsScroll: {
-    gap: 10,
-  },
-  quickActionCard: {
-    width: 125,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    justifyContent: 'space-between',
-    minHeight: 110,
-  },
-  quickActionPrimary: {
-    backgroundColor: '#006837',
-    borderColor: '#006837',
-  },
-  quickActionIconBoxWhite: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    backgroundColor: '#FFFFFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  quickActionIconBoxSecondary: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    backgroundColor: '#F8FAFC',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  quickActionTextPrimary: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '700',
-    lineHeight: 16,
-  },
-  quickActionTextSecondary: {
-    color: '#0F172A',
-    fontSize: 12,
-    fontWeight: '700',
-    lineHeight: 16,
-  },
-
-  /* RECENT ACTIVITY & CARDS */
+  /* RECENT ACTIVITY & LIST CARDS */
   recentActivityHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1567,17 +1939,17 @@ const styles = StyleSheet.create({
     color: '#64748B',
     fontWeight: '500',
   },
-  detailsBtnSmall: {
-    backgroundColor: '#F1F5F9',
+  actionBtnSmallGreen: {
+    backgroundColor: '#006837',
     paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingVertical: 6,
     borderRadius: 8,
     marginTop: 6,
   },
-  detailsBtnSmallText: {
+  actionBtnSmallGreenText: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#006837',
+    color: '#FFFFFF',
   },
   statusBadge: {
     flexDirection: 'row',
@@ -1623,6 +1995,110 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
+  /* DRIVERS & VEHICLES COMPACT CARDS */
+  miniPillGreen: {
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  miniPillGreenText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#059669',
+  },
+  miniPillBlue: {
+    backgroundColor: '#DBEAFE',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  miniPillBlueText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#1D4ED8',
+  },
+  driverCardCompact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  driverAvatarCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#E6F4EA',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  driverAvatarCircleLarge: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#E6F4EA',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  driverNameText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  driverMetaSub: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 1,
+  },
+  vehicleCardCompact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+
+  /* RECENT ACTIVITY TIMELINE */
+  activityBoxContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  activityRowItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  activityIconCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+    marginTop: 1,
+  },
+  activityText: {
+    fontSize: 12,
+    color: '#0F172A',
+    fontWeight: '600',
+  },
+  activityTime: {
+    fontSize: 11,
+    color: '#94A3B8',
+    marginTop: 2,
+  },
+
   /* TAB CONTENT VIEWS */
   tabContentContainer: {
     marginTop: 10,
@@ -1639,13 +2115,13 @@ const styles = StyleSheet.create({
     color: '#64748B',
     fontWeight: '400',
     marginTop: 2,
-    marginBottom: 16,
+    marginBottom: 14,
   },
   searchFilterRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    marginBottom: 16,
+    marginBottom: 14,
   },
   searchInputContainer: {
     flex: 1,
@@ -1656,7 +2132,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E2E8F0',
     paddingHorizontal: 14,
-    height: 48,
+    height: 46,
   },
   searchInputField: {
     flex: 1,
@@ -1668,7 +2144,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 16,
-    marginBottom: 16,
+    marginBottom: 14,
     borderWidth: 1,
     borderColor: '#E2E8F0',
     borderLeftWidth: 4,
@@ -1702,7 +2178,7 @@ const styles = StyleSheet.create({
   cardDivider: {
     height: 1,
     backgroundColor: '#F1F5F9',
-    marginVertical: 14,
+    marginVertical: 12,
   },
   routeContainer: {
     paddingLeft: 2,
@@ -1770,8 +2246,8 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    marginTop: 14,
-    marginBottom: 14,
+    marginTop: 12,
+    marginBottom: 12,
   },
   dateBannerText: {
     fontSize: 12,
@@ -1781,7 +2257,7 @@ const styles = StyleSheet.create({
   assignPrimaryBtn: {
     backgroundColor: '#006837',
     borderRadius: 12,
-    paddingVertical: 13,
+    paddingVertical: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1790,38 +2266,6 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '700',
-  },
-  selectedDriverBox: {
-    marginTop: 4,
-  },
-  selectedDriverInfo: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#F0FDF4',
-    borderWidth: 1,
-    borderColor: '#BBF7D0',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginBottom: 8,
-  },
-  selectedDriverText: {
-    fontSize: 12,
-    color: '#0F172A',
-    flex: 1,
-  },
-  changeDriverText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#0284C7',
-    marginLeft: 8,
-  },
-  dropdownTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#0F172A',
-    marginBottom: 4,
   },
   assignBtnDisabled: {
     backgroundColor: '#94A3B8',
@@ -1851,15 +2295,15 @@ const styles = StyleSheet.create({
   },
   categoryChipsScroll: {
     paddingVertical: 4,
-    marginBottom: 14,
+    marginBottom: 12,
   },
   categoryChip: {
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#CBD5E1',
     borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
     marginRight: 8,
   },
   categoryChipActive: {
@@ -1867,7 +2311,7 @@ const styles = StyleSheet.create({
     borderColor: '#0F172A',
   },
   categoryChipText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
     color: '#334155',
   },
@@ -1894,57 +2338,27 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  badgeAvailable: {
-    backgroundColor: '#DCFCE7',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  badgeAvailableText: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: '#059669',
-    letterSpacing: 0.5,
-  },
-  badgeAssigned: {
-    backgroundColor: '#E2E8F0',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  badgeAssignedText: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: '#475569',
-    letterSpacing: 0.5,
-  },
-  badgeMaintenance: {
-    backgroundColor: '#FEE2E2',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  badgeMaintenanceText: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: '#DC2626',
-    letterSpacing: 0.5,
-  },
   vehiclePlateText: {
     fontSize: 12,
     color: '#475569',
     fontWeight: '600',
-    marginTop: 1,
-  },
-  vehicleCapacityRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 4,
+    marginTop: 2,
   },
   vehicleCapacityText: {
     fontSize: 12,
     fontWeight: '700',
     color: '#0F172A',
+    marginTop: 2,
+  },
+  pendingBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  pendingBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.4,
   },
   deliveryRouteBox: {
     backgroundColor: '#F8FAFC',
@@ -1971,6 +2385,88 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
+  },
+
+  /* MODAL STYLES */
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContentCard: {
+    width: '100%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.15,
+    shadowRadius: 15,
+    elevation: 10,
+  },
+  modalHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  modalSubhead: {
+    fontSize: 12,
+    color: '#64748B',
+    fontWeight: '500',
+    marginBottom: 10,
+  },
+  dropdownTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0F172A',
+    marginBottom: 8,
+  },
+  vehicleOptionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  vehicleOptionSelected: {
+    borderColor: '#006837',
+    backgroundColor: '#F0FDF4',
+  },
+  reviewSummaryBox: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    gap: 6,
+  },
+  reviewRowText: {
+    fontSize: 13,
+    color: '#334155',
+  },
+  btnSecondary: {
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  btnSecondaryText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#334155',
   },
 
   /* BOTTOM TAB BAR */

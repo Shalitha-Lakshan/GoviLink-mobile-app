@@ -457,7 +457,7 @@ export default function AddVehicleScreen({
                     onPress={() => setCapacity(preset)}
                   >
                     <Text style={[styles.presetChipText, capacity === preset && styles.presetChipTextActive]}>
-                      {Number(preset) >= 1000 ? `${(Number(preset)/1000).toFixed(1)}T (${preset}kg)` : `${preset}kg`}
+                      {Number(preset) >= 1000 ? `${(Number(preset) / 1000).toFixed(1)}T (${preset}kg)` : `${preset}kg`}
                     </Text>
                   </TouchableOpacity>
                 ))}

@@ -13,7 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import DriverAssignmentDropdown from './DriverAssignmentDropdown';
-import { checkDriverAvailability, assignDriverToOrder } from '../services/firebaseDatabase';
+import { checkDriverAvailability, assignDriverAndVehicleTransaction } from '../services/firebaseDatabase';
 
 // Map preview placeholder image URL
 const MAP_PREVIEW_URI = 'https://maps.googleapis.com/maps/api/staticmap?center=7.8731,80.7718&zoom=10&size=600x200&sensor=false';
@@ -111,19 +111,28 @@ export default function RequestDetailsScreen({
     }
 
     setIsAssigning(true);
-    const res = await assignDriverToOrder(order.id || 'order_demo', driver);
+    const res = await assignDriverAndVehicleTransaction({
+      transportRequestId: order.requestId || order.id,
+      orderId: order.id || order.orderId,
+      driver,
+      vehicle: { plateNumber: driver.vehicleNumber || 'Coop Truck', title: 'Lorry' },
+    });
     setIsAssigning(false);
 
-    Alert.alert(
-      'Driver Assigned Successfully! 🚛',
-      `"${driver.fullName}" has been assigned to transport ${produceName} from ${pickupLocation} to ${deliveryAddress}.`
-    );
+    if (res.success) {
+      Alert.alert(
+        'Driver Assigned Successfully! 🚛',
+        `"${driver.fullName}" has been assigned to transport ${produceName} from ${pickupLocation} to ${deliveryAddress}.`
+      );
 
-    if (onDriverAssignedSuccess) {
-      onDriverAssignedSuccess(order.id, driver);
-    }
-    if (onBack) {
-      onBack();
+      if (onDriverAssignedSuccess) {
+        onDriverAssignedSuccess(order.id, driver);
+      }
+      if (onBack) {
+        onBack();
+      }
+    } else {
+      Alert.alert('Assignment Error', res.error || 'Could not complete assignment.');
     }
   };
 
