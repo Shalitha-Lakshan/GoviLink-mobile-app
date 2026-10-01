@@ -25,6 +25,8 @@ import {
   uploadString,
   getDownloadURL,
 } from 'firebase/storage';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as FileSystem from 'expo-file-system';
 import { db, auth, storage } from '../firebaseConfig';
 
 // -------------------------------------------------------
@@ -53,9 +55,11 @@ export const uploadProduceImage = async (imageUri, produceId) => {
     if (imageUri.startsWith('data:')) {
       await uploadString(storageRef, imageUri, 'data_url');
     } else {
-      const response = await fetch(imageUri);
-      const blob = await response.blob();
-      await uploadBytes(storageRef, blob, { contentType: 'image/jpeg' });
+      const base64 = await FileSystem.readAsStringAsync(imageUri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      const dataUrl = `data:image/jpeg;base64,${base64}`;
+      await uploadString(storageRef, dataUrl, 'data_url');
     }
     const downloadURL = await getDownloadURL(storageRef);
     console.log('Storage upload successful URL:', downloadURL);
@@ -69,15 +73,103 @@ export const uploadProduceImage = async (imageUri, produceId) => {
 
     // 4. Convert local file:// URI to base64 data URL fallback so remote devices can render it
     try {
-      const response = await fetch(imageUri);
-      const blob = await response.blob();
+      const base64 = await FileSystem.readAsStringAsync(imageUri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
       const base64Data = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
+        resolve(`data:image/jpeg;base64,${base64}`);
       });
       return base64Data;
+    } catch (_fallbackError) {
+      return imageUri;
+    }
+  }
+};
+
+/**
+ * Upload user profile image to Firebase Storage
+ */
+export const uploadProfileImage = async (imageUri, userId) => {
+  if (!imageUri) return null;
+
+  // If already a remote web URL, keep as is
+  if (imageUri.startsWith('http://') || imageUri.startsWith('https://')) {
+    return imageUri;
+  }
+
+  const storagePath = `profile_images/${userId}_${Date.now()}.jpg`;
+  const storageRef = ref(storage, storagePath);
+
+  try {
+    console.log('Uploading profile image to Storage path:', storagePath);
+    if (imageUri.startsWith('data:')) {
+      await uploadString(storageRef, imageUri, 'data_url');
+    } else {
+      const base64 = await FileSystem.readAsStringAsync(imageUri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      const dataUrl = `data:image/jpeg;base64,${base64}`;
+      await uploadString(storageRef, dataUrl, 'data_url');
+    }
+    const downloadURL = await getDownloadURL(storageRef);
+    console.log('Profile image upload successful:', downloadURL);
+    return downloadURL;
+  } catch (storageError) {
+    console.warn('Profile image upload error, using fallback:', storageError);
+    if (imageUri.startsWith('data:')) {
+      return imageUri;
+    }
+    // Fallback to base64
+    try {
+      const base64 = await FileSystem.readAsStringAsync(imageUri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      return `data:image/jpeg;base64,${base64}`;
+    } catch (_fallbackError) {
+      return imageUri;
+    }
+  }
+};
+
+/**
+ * Upload vehicle image to Firebase Storage
+ */
+export const uploadVehicleImage = async (imageUri, vehicleId) => {
+  if (!imageUri) return null;
+
+  // If already a remote web URL, keep as is
+  if (imageUri.startsWith('http://') || imageUri.startsWith('https://')) {
+    return imageUri;
+  }
+
+  const storagePath = `vehicle_images/${vehicleId}_${Date.now()}.jpg`;
+  const storageRef = ref(storage, storagePath);
+
+  try {
+    console.log('Uploading vehicle image to Storage path:', storagePath);
+    if (imageUri.startsWith('data:')) {
+      await uploadString(storageRef, imageUri, 'data_url');
+    } else {
+      const base64 = await FileSystem.readAsStringAsync(imageUri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      const dataUrl = `data:image/jpeg;base64,${base64}`;
+      await uploadString(storageRef, dataUrl, 'data_url');
+    }
+    const downloadURL = await getDownloadURL(storageRef);
+    console.log('Vehicle image upload successful:', downloadURL);
+    return downloadURL;
+  } catch (storageError) {
+    console.warn('Vehicle image upload error, using fallback:', storageError);
+    if (imageUri.startsWith('data:')) {
+      return imageUri;
+    }
+    // Fallback to base64
+    try {
+      const base64 = await FileSystem.readAsStringAsync(imageUri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      return `data:image/jpeg;base64,${base64}`;
     } catch (_fallbackError) {
       return imageUri;
     }
@@ -212,6 +304,36 @@ export const subscribeToOrders = (onUpdate) => {
 // USER PROFILE
 // -------------------------------------------------------
 
+const USER_PROFILE_CACHE_PREFIX = 'govilink_profile_';
+
+const readCachedProfile = async (uid) => {
+  if (!uid) return null;
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const raw = window.localStorage.getItem(`${USER_PROFILE_CACHE_PREFIX}${uid}`);
+      return raw ? JSON.parse(raw) : null;
+    }
+    const raw = await AsyncStorage.getItem(`${USER_PROFILE_CACHE_PREFIX}${uid}`);
+    return raw ? JSON.parse(raw) : null;
+  } catch (_error) {
+    return null;
+  }
+};
+
+const writeCachedProfile = async (uid, profile) => {
+  if (!uid || !profile) return;
+  try {
+    const raw = JSON.stringify(profile);
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.setItem(`${USER_PROFILE_CACHE_PREFIX}${uid}`, raw);
+      return;
+    }
+    await AsyncStorage.setItem(`${USER_PROFILE_CACHE_PREFIX}${uid}`, raw);
+  } catch (_error) {
+    // Ignore cache write failures
+  }
+};
+
 /**
  * Get user profile from Firestore users/{uid}
  */
@@ -220,11 +342,22 @@ export const getUserProfile = async (uid) => {
     const userDocRef = doc(db, 'users', uid);
     const userDocSnap = await getDoc(userDocRef);
     if (userDocSnap.exists()) {
-      return { success: true, profile: userDocSnap.data() };
+      const profile = userDocSnap.data();
+      await writeCachedProfile(uid, profile);
+      return { success: true, profile };
+    }
+    const cachedProfile = await readCachedProfile(uid);
+    if (cachedProfile) {
+      return { success: true, profile: cachedProfile, cached: true };
     }
     return { success: false, error: 'User profile not found in Firestore.' };
   } catch (error) {
-    console.error('Error fetching user profile:', error);
+    const cachedProfile = await readCachedProfile(uid);
+    if (cachedProfile) {
+      console.warn('Using cached user profile because Firestore is unavailable.');
+      return { success: true, profile: cachedProfile, cached: true };
+    }
+    console.warn('Error fetching user profile:', error?.message || error);
     return { success: false, error: error.message };
   }
 };
@@ -255,6 +388,7 @@ export const updateUserProfileInFirestore = async (uid, profileData) => {
       },
       { merge: true }
     );
+    await writeCachedProfile(uid, cleanProfileData);
     return { success: true };
   } catch (error) {
     console.error('Error updating user profile in Firestore:', error);
@@ -300,6 +434,7 @@ export const registerWithFirebase = async (userData) => {
 
     // 3. Write to users/{uid}
     await setDoc(doc(db, 'users', user.uid), profile);
+    await writeCachedProfile(user.uid, profile);
 
     // 4. Sign out so user must explicitly log in after registering
     await firebaseSignOut(auth);
@@ -840,38 +975,18 @@ export const subscribeToFarmerNotifications = (farmerUid, onUpdate) => {
     return () => { };
   }
   const notifsRef = collection(db, 'notifications');
-  const q = query(
-    notifsRef,
-    where('targetUid', '==', farmerUid),
-    orderBy('createdAt', 'desc')
-  );
+  const q = query(notifsRef, where('targetUid', '==', farmerUid));
   return onSnapshot(
     q,
     (snapshot) => {
-      const items = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const items = snapshot.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
       onUpdate(items);
     },
     (error) => {
-      // orderBy requires an index; fallback without ordering on error
-      console.warn('Notifications subscription error (may need Firestore index):', error);
-      const q2 = query(notifsRef, where('targetUid', '==', farmerUid));
-      onSnapshot(
-        q2,
-        (snap) => {
-          const items = snap.docs
-            .map((d) => ({ id: d.id, ...d.data() }))
-            .sort((a, b) => {
-              const ta = a.createdAt?.seconds || 0;
-              const tb = b.createdAt?.seconds || 0;
-              return tb - ta;
-            });
-          onUpdate(items);
-        },
-        (err2) => {
-          console.warn('Notifications fallback subscription error:', err2);
-          onUpdate([]);
-        }
-      );
+      console.warn('Notifications subscription error:', error?.message || error);
+      onUpdate([]);
     }
   );
 };
@@ -1188,29 +1303,18 @@ export const subscribeToBuyerNotifications = (buyerUid, onUpdate) => {
     return () => { };
   }
   const notifsRef = collection(db, 'notifications');
-  const q = query(notifsRef, where('targetUid', '==', buyerUid), orderBy('createdAt', 'desc'));
+  const q = query(notifsRef, where('targetUid', '==', buyerUid));
   return onSnapshot(
     q,
     (snapshot) => {
-      const items = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const items = snapshot.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
       onUpdate(items);
     },
     (error) => {
-      console.warn('Buyer notifications subscription error (may need index):', error);
-      const q2 = query(notifsRef, where('targetUid', '==', buyerUid));
-      onSnapshot(
-        q2,
-        (snap) => {
-          const items = snap.docs
-            .map((d) => ({ id: d.id, ...d.data() }))
-            .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-          onUpdate(items);
-        },
-        (err2) => {
-          console.warn('Buyer notifications fallback error:', err2);
-          onUpdate([]);
-        }
-      );
+      console.warn('Buyer notifications subscription error:', error?.message || error);
+      onUpdate([]);
     }
   );
 };

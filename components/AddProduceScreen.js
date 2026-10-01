@@ -17,7 +17,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
-import { addProduceListing, updateProduceListing } from '../services/firebaseDatabase';
+import { addProduceListing, updateProduceListing, uploadProduceImage } from '../services/firebaseDatabase';
 
 // ----------------------------------------------------
 // THEME & COLOR PALETTE (MATCHING THE DESIGN SPEC)
@@ -276,56 +276,71 @@ export default function AddProduceScreen({
 
     setIsSubmitting(true);
 
-    const produceImageUrl =
-      selectedImage ||
-      initialProduce?.image ||
-      DEFAULT_IMAGES[category] ||
-      DEFAULT_IMAGES.Vegetables;
+    try {
+      // Upload image if a new one was selected
+      let produceImageUrl = initialProduce?.image ||
+        DEFAULT_IMAGES[category] ||
+        DEFAULT_IMAGES.Vegetables;
 
-    const produceData = {
-      nameEn: productName.trim(),
-      nameSi: productName.trim(),
-      nameTa: productName.trim(),
-      category: category,
-      price: parseFloat(price),
-      stockQty: parseFloat(quantity),
-      unitEn: unit,
-      unitSi: unit === 'Kg' ? 'කි.ග්‍රෑ.' : unit,
-      unitTa: unit === 'Kg' ? 'கிலோ' : unit,
-      harvestDate: harvestDate || '',
-      description: description.trim(),
-      location: initialProduce?.location || userProfile?.district?.nameEn || 'Nuwara Eliya',
-      grade: initialProduce?.grade || 'Fresh Harvest',
-      farmerName: userProfile?.fullName || initialProduce?.farmerName || 'Verified Farmer',
-      farmerId: userProfile?.uid || initialProduce?.farmerId || 'farmer_uid',
-      farmerPhone: userProfile?.phoneNumber || initialProduce?.farmerPhone || '',
-      image: produceImageUrl,
-    };
+      if (selectedImage && !selectedImage.startsWith('http')) {
+        // New image selected - upload it
+        console.log('Uploading new produce image...');
+        produceImageUrl = await uploadProduceImage(selectedImage, `produce_${Date.now()}`);
+        console.log('Uploaded image URL:', produceImageUrl);
+      } else if (selectedImage) {
+        // Already a URL (from existing produce)
+        produceImageUrl = selectedImage;
+      }
 
-    let res;
-    if (isEditing) {
-      res = await updateProduceListing(initialProduce.id, produceData);
-    } else {
-      res = await addProduceListing(produceData);
-    }
-    setIsSubmitting(false);
+      const produceData = {
+        nameEn: productName.trim(),
+        nameSi: productName.trim(),
+        nameTa: productName.trim(),
+        category: category,
+        price: parseFloat(price),
+        stockQty: parseFloat(quantity),
+        unitEn: unit,
+        unitSi: unit === 'Kg' ? 'කි.ග්‍රෑ.' : unit,
+        unitTa: unit === 'Kg' ? 'கிலோ' : unit,
+        harvestDate: harvestDate || '',
+        description: description.trim(),
+        location: initialProduce?.location || userProfile?.district?.nameEn || 'Nuwara Eliya',
+        grade: initialProduce?.grade || 'Fresh Harvest',
+        farmerName: userProfile?.fullName || initialProduce?.farmerName || 'Verified Farmer',
+        farmerId: userProfile?.uid || initialProduce?.farmerId || 'farmer_uid',
+        farmerPhone: userProfile?.phoneNumber || initialProduce?.farmerPhone || '',
+        image: produceImageUrl,
+      };
 
-    if (res.success) {
-      Alert.alert(
-        'Success 🌱',
-        isEditing ? 'Produce listing updated successfully!' : 'Produce listing published successfully!',
-        [
-          {
-            text: 'OK',
-            onPress: () => {
-              if (onProduceAdded) onProduceAdded();
-              else if (onBack) onBack();
+      let res;
+      if (isEditing) {
+        res = await updateProduceListing(initialProduce.id, produceData);
+      } else {
+        res = await addProduceListing(produceData);
+      }
+      setIsSubmitting(false);
+
+      if (res.success) {
+        Alert.alert(
+          'Success 🌱',
+          isEditing ? 'Produce listing updated successfully!' : 'Produce listing published successfully!',
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                if (onProduceAdded) onProduceAdded();
+                else if (onBack) onBack();
+              },
             },
-          },
-        ]
-      );
-    } else {
-      Alert.alert('Error', res.error || `Failed to ${isEditing ? 'update' : 'publish'} produce listing.`);
+          ]
+        );
+      } else {
+        Alert.alert('Error', res.error || `Failed to ${isEditing ? 'update' : 'publish'} produce listing.`);
+      }
+    } catch (error) {
+      console.error('Error publishing produce:', error);
+      setIsSubmitting(false);
+      Alert.alert('Error', error.message || 'Failed to publish produce listing.');
     }
   };
 

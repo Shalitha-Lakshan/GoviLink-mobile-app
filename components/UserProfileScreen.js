@@ -17,7 +17,7 @@ import { useTranslation } from 'react-i18next';
 import { changeAppLanguage } from '../services/i18n';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { updateUserProfileInFirestore, uploadProduceImage } from '../services/firebaseDatabase';
+import { updateUserProfileInFirestore, uploadProfileImage } from '../services/firebaseDatabase';
 
 // Standard Sri Lankan Districts for Selection
 const DISTRICTS_LIST = [
@@ -117,7 +117,7 @@ export default function UserProfileScreen({
     // Upload local file:// or data: image to Firebase Storage / base64 fallback
     if (photoURL && (photoURL.startsWith('file://') || photoURL.startsWith('data:'))) {
       try {
-        const uploadedUrl = await uploadProduceImage(photoURL, `avatar_${targetUid}`);
+        const uploadedUrl = await uploadProfileImage(photoURL, targetUid);
         if (uploadedUrl) {
           finalPhotoUrl = uploadedUrl;
           setPhotoURL(uploadedUrl);

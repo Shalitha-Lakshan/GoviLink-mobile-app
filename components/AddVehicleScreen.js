@@ -21,6 +21,7 @@ import {
   addDriverVehicle,
   updateDriverVehicle,
   saveDriverVehicle,
+  uploadVehicleImage,
 } from '../services/firebaseDatabase';
 
 // ----------------------------------------------------
@@ -50,12 +51,12 @@ const THEME = {
 };
 
 const VEHICLE_TYPES = [
-  { id: 'lorry_heavy', labelEn: 'Standard Lorry (3.5T - 10T)', labelSi: 'ලොරි රථය (3.5T - 10T)', labelTa: 'லாரி (3.5T - 10T)', icon: '🚚', defaultCap: '3500' },
-  { id: 'mini_lorry', labelEn: 'Mini Lorry / Dimo Batta (1T - 2.5T)', labelSi: 'කුඩා ලොරි / ඩිමෝ බට්ටා (1T - 2.5T)', labelTa: 'மினி லாரி (1T - 2.5T)', icon: '🛻', defaultCap: '1500' },
-  { id: 'cold_chain', labelEn: 'Refrigerated / Insulated Truck', labelSi: 'ශීතකරණ / පරිවරණය කළ රථය', labelTa: 'குளிரூட்டப்பட்ட வாகனம்', icon: '❄️', defaultCap: '3000' },
-  { id: 'pickup', labelEn: 'Pickup / Crew Cab', labelSi: 'පිකප් රථය', labelTa: 'பிக்கப் வாகனம்', icon: '🚙', defaultCap: '1000' },
-  { id: 'three_wheeler', labelEn: '3-Wheeler Cargo Carrier', labelSi: 'ත්‍රිවිල් භාණ්ඩ ප්‍රවාහන රථය', labelTa: '3-சக்கர சரக்கு வாகனம்', icon: '🛺', defaultCap: '500' },
-  { id: 'tractor', labelEn: 'Farm Tractor & Trailer', labelSi: 'ට්‍රැක්ටර් සහ ට්‍රේලර්', labelTa: 'டிராக்டர் & டிரெய்லர்', icon: '🚜', defaultCap: '4000' },
+  { id: 'lorry_heavy', labelEn: 'Standard Lorry (3.5T - 10T)', labelSi: 'Standard Lorry', labelTa: 'Standard Lorry', icon: 'truck', defaultCap: '3500' },
+  { id: 'mini_lorry', labelEn: 'Mini Lorry / Dimo Batta (1T - 2.5T)', labelSi: 'Mini Lorry', labelTa: 'Mini Lorry', icon: 'truck-outline', defaultCap: '1500' },
+  { id: 'cold_chain', labelEn: 'Refrigerated / Insulated Truck', labelSi: 'Refrigerated Truck', labelTa: 'Refrigerated Truck', icon: 'snow', defaultCap: '3000' },
+  { id: 'pickup', labelEn: 'Pickup / Crew Cab', labelSi: 'Pickup', labelTa: 'Pickup', icon: 'car-sport', defaultCap: '1000' },
+  { id: 'three_wheeler', labelEn: '3-Wheeler Cargo Carrier', labelSi: '3-Wheeler', labelTa: '3-Wheeler', icon: 'triangle', defaultCap: '500' },
+  { id: 'tractor', labelEn: 'Farm Tractor & Trailer', labelSi: 'Tractor', labelTa: 'Tractor', icon: 'tractor', defaultCap: '4000' },
 ];
 
 const CAPACITY_PRESETS = ['500', '1000', '1500', '2500', '3500', '5000', '8000'];
@@ -65,7 +66,7 @@ const DISTRICTS = [
   'Galle', 'Matara', 'Hambantota', 'Jaffna', 'Kilinochchi', 'Mannar',
   'Vavuniya', 'Mullaitivu', 'Batticaloa', 'Ampara', 'Trincomalee',
   'Kurunegala', 'Puttalam', 'Anuradhapura', 'Polonnaruwa', 'Badulla',
-  'Monaragala', 'Ratnapura', 'Kegalle'
+  'Monaragala', 'Ratnapura', 'Kegalle',
 ];
 
 const DEFAULT_VEHICLE_IMAGES = {
@@ -301,46 +302,69 @@ export default function AddVehicleScreen({
     const currentTypeObj = VEHICLE_TYPES.find((v) => v.id === vehicleType) || VEHICLE_TYPES[0];
     const typeLabel = lang === 'si' ? currentTypeObj.labelSi : lang === 'ta' ? currentTypeObj.labelTa : currentTypeObj.labelEn;
 
-    const vehiclePayload = {
-      vehicleType,
-      vehicleTypeLabel: typeLabel,
-      vehicleIcon: currentTypeObj.icon,
-      plateNumber: plateNumber.trim().toUpperCase(),
-      makeModel: makeModel.trim(),
-      capacity: Number(capacity) || 1000,
-      hasColdChain,
-      district,
-      image: selectedImage || DEFAULT_VEHICLE_IMAGES[vehicleType] || DEFAULT_VEHICLE_IMAGES.lorry_heavy,
-      isVerified: true,
-      driverName: userProfile?.fullName || 'GoviLink Driver',
-      driverPhone: userProfile?.phoneNumber || '',
-    };
-
     setIsSubmitting(true);
-    let result;
-    if (initialVehicle?.id) {
-      result = await updateDriverVehicle(initialVehicle.id, vehiclePayload, userProfile?.uid);
-    } else {
-      result = await addDriverVehicle(userProfile?.uid, vehiclePayload);
-    }
-    setIsSubmitting(false);
 
-    if (result.success) {
-      Alert.alert(
-        t.successTitle,
-        isEditing ? t.successMsgEdit : t.successMsgAdd,
-        [
-          {
-            text: 'OK',
-            onPress: () => {
-              if (onVehicleSaved) onVehicleSaved(result.vehicle);
-              if (onBack) onBack();
+    try {
+      // Upload vehicle image if a new one was selected
+      let vehicleImageUrl = initialVehicle?.image ||
+        DEFAULT_VEHICLE_IMAGES[vehicleType] ||
+        DEFAULT_VEHICLE_IMAGES.lorry_heavy;
+
+      if (selectedImage && !selectedImage.startsWith('http')) {
+        // New image selected - upload it
+        console.log('Uploading new vehicle image...');
+        const vehicleId = initialVehicle?.id || `vehicle_${Date.now()}`;
+        vehicleImageUrl = await uploadVehicleImage(selectedImage, vehicleId);
+        console.log('Uploaded vehicle image URL:', vehicleImageUrl);
+      } else if (selectedImage) {
+        // Already a URL (from existing vehicle)
+        vehicleImageUrl = selectedImage;
+      }
+
+      const vehiclePayload = {
+        vehicleType,
+        vehicleTypeLabel: typeLabel,
+        vehicleIcon: currentTypeObj.icon,
+        plateNumber: plateNumber.trim().toUpperCase(),
+        makeModel: makeModel.trim(),
+        capacity: Number(capacity) || 1000,
+        hasColdChain,
+        district,
+        image: vehicleImageUrl,
+        isVerified: true,
+        driverName: userProfile?.fullName || 'GoviLink Driver',
+        driverPhone: userProfile?.phoneNumber || '',
+      };
+
+      let result;
+      if (initialVehicle?.id) {
+        result = await updateDriverVehicle(initialVehicle.id, vehiclePayload, userProfile?.uid);
+      } else {
+        result = await addDriverVehicle(userProfile?.uid, vehiclePayload);
+      }
+      setIsSubmitting(false);
+
+      if (result.success) {
+        Alert.alert(
+          t.successTitle,
+          isEditing ? t.successMsgEdit : t.successMsgAdd,
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                if (onVehicleSaved) onVehicleSaved(result.vehicle);
+                if (onBack) onBack();
+              },
             },
-          },
-        ]
-      );
-    } else {
-      Alert.alert('Error Saving Vehicle', result.error || 'Failed to save vehicle details to database.');
+          ]
+        );
+      } else {
+        Alert.alert('Error Saving Vehicle', result.error || 'Failed to save vehicle details to database.');
+      }
+    } catch (error) {
+      console.error('Error submitting vehicle:', error);
+      setIsSubmitting(false);
+      Alert.alert('Error', error.message || 'Failed to save vehicle details.');
     }
   };
 

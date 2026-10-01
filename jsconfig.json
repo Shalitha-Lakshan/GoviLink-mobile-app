@@ -1,0 +1,28 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": false,
+    "jsx": "react-native",
+    "target": "es2020",
+    "module": "esnext",
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "baseUrl": "."
+  },
+  "include": [
+    "App.js",
+    "index.js",
+    "login.js",
+    "components/**/*.js",
+    "config/**/*.js",
+    "context/**/*.js",
+    "services/**/*.js"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    ".expo",
+    ".git"
+  ]
+}
