@@ -26,6 +26,10 @@ import {
 import { AuthProvider } from './context/AuthContext';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from './firebaseConfig';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const STORAGE_KEY_FIRST_INSTALL_DONE = '@govilink_first_install_done';
+const STORAGE_KEY_LANG = '@govilink_app_lang';
 
 // Keep the native splash screen visible while JS resources are initializing
 SplashScreen.preventAutoHideAsync().catch(() => {
@@ -51,8 +55,8 @@ const mapRoleToDashboard = (role, email) => {
 };
 
 function AppInner() {
-  const [isSplashVisible, setIsSplashVisible] = useState(true);
-  // 'checking' while onAuthStateChanged runs, then 'language'|'login'|'register'|'authenticated'
+  const [isSplashVisible, setIsSplashVisible] = useState(false);
+  // 'checking' while onAuthStateChanged & install check run, then 'language'|'login'|'register'|'authenticated'
   const [authScreen, setAuthScreen] = useState('checking');
   const [userProfile, setUserProfile] = useState(null);
   const [lang, setLang] = useState('en'); // 'en' | 'si' | 'ta'
@@ -70,6 +74,26 @@ function AppInner() {
       }
     }
     hideNativeSplash();
+
+    // Check first-time install status and saved language
+    const checkInstallStatus = async () => {
+      try {
+        const [installed, savedLang] = await Promise.all([
+          AsyncStorage.getItem(STORAGE_KEY_FIRST_INSTALL_DONE),
+          AsyncStorage.getItem(STORAGE_KEY_LANG),
+        ]);
+        if (savedLang) {
+          setLang(savedLang);
+        }
+        if (installed !== 'true') {
+          // Only show initial animated splash and start page on first install
+          setIsSplashVisible(true);
+        }
+      } catch (_e) {
+        // Fallback default behavior
+      }
+    };
+    checkInstallStatus();
 
     // Track Firestore subscriptions — all require authentication.
     // They are started only after onAuthStateChanged confirms a signed-in user
@@ -127,6 +151,11 @@ function AppInner() {
         // User is signed in — start all Firestore subscriptions now
         startFirestoreSubscriptions();
 
+        // Mark install as completed if user is already logged in
+        try {
+          await AsyncStorage.setItem(STORAGE_KEY_FIRST_INSTALL_DONE, 'true');
+        } catch (_e) {}
+
         // Fetch their Firestore profile
         const result = await getUserProfile(firebaseUser.uid);
         if (result.success) {
@@ -153,7 +182,18 @@ function AppInner() {
         setOrdersList([]);
         setVehiclesList([]);
         setUserProfile(null);
-        setAuthScreen('language');
+
+        // Check if install time has already passed
+        try {
+          const installed = await AsyncStorage.getItem(STORAGE_KEY_FIRST_INSTALL_DONE);
+          if (installed === 'true') {
+            setAuthScreen('login');
+          } else {
+            setAuthScreen('language');
+          }
+        } catch (_e) {
+          setAuthScreen('login');
+        }
       }
     });
 
@@ -164,10 +204,15 @@ function AppInner() {
   }, []);
 
   const handleLogout = async () => {
-    await logoutUser();
+    try {
+      await logoutUser();
+    } catch (e) {
+      console.error('Logout error:', e);
+    }
     setUserProfile(null);
     setCurrentRole('buyer');
-    setAuthScreen('language');
+    // On logout, navigate directly to the Login page
+    setAuthScreen('login');
   };
 
   if (isSplashVisible) {
@@ -187,8 +232,12 @@ function AppInner() {
   if (authScreen === 'language') {
     return (
       <LanguageSelectionScreen
-        onSelectLanguage={(selectedLang) => {
+        onSelectLanguage={async (selectedLang) => {
           setLang(selectedLang);
+          try {
+            await AsyncStorage.setItem(STORAGE_KEY_FIRST_INSTALL_DONE, 'true');
+            await AsyncStorage.setItem(STORAGE_KEY_LANG, selectedLang);
+          } catch (_e) {}
           setAuthScreen('login');
         }}
       />
@@ -201,7 +250,10 @@ function AppInner() {
         lang={lang}
         onBackToLang={() => setAuthScreen('language')}
         onNavigateToRegister={() => setAuthScreen('register')}
-        onLoginSuccess={(profile) => {
+        onLoginSuccess={async (profile) => {
+          try {
+            await AsyncStorage.setItem(STORAGE_KEY_FIRST_INSTALL_DONE, 'true');
+          } catch (_e) {}
           setUserProfile(profile);
           setCurrentRole(mapRoleToDashboard(profile?.role, profile?.email));
           setAuthScreen('authenticated');
@@ -216,7 +268,10 @@ function AppInner() {
         lang={lang}
         onBack={() => setAuthScreen('login')}
         onNavigateToLogin={() => setAuthScreen('login')}
-        onRegisterComplete={() => {
+        onRegisterComplete={async () => {
+          try {
+            await AsyncStorage.setItem(STORAGE_KEY_FIRST_INSTALL_DONE, 'true');
+          } catch (_e) {}
           setAuthScreen('login');
         }}
       />

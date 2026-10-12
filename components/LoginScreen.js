@@ -239,11 +239,7 @@ export default function LoginScreen({ lang = 'en', onBackToLang, onNavigateToReg
               <TouchableOpacity onPress={onBackToLang} activeOpacity={0.7} style={styles.backBtn}>
                 <BackArrowIcon color={THEME.textDark} />
               </TouchableOpacity>
-            ) : (
-              <View style={{ width: 40 }} />
-            )}
-            <AppLogo width={68} />
-            <View style={{ width: 40 }} />
+            ) : null}
           </View>
 
           {/* BRAND EMBLEM & HEADER */}
