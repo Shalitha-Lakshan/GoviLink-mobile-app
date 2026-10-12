@@ -458,7 +458,7 @@ export const subscribeToOrders = (onUpdate) => {
  * Real-time listener for a single Order by ID (GOVI-112)
  */
 export const subscribeToOrderById = (orderId, onUpdate) => {
-  if (!orderId) return () => {};
+  if (!orderId) return () => { };
   const orderDocRef = doc(db, 'orders', orderId);
 
   return onSnapshot(orderDocRef, (docSnap) => {
@@ -474,7 +474,7 @@ export const subscribeToOrderById = (orderId, onUpdate) => {
  * Real-time listener for User Notifications (GOVI-114)
  */
 export const subscribeToUserNotifications = (uid, onUpdate) => {
-  if (!uid) return () => {};
+  if (!uid) return () => { };
   const notificationsRef = collection(db, 'notifications');
   const q = query(notificationsRef, where('recipientUid', '==', uid));
 
@@ -1307,7 +1307,7 @@ export const acceptBuyerCustomRequest = async (request, farmerProfile) => {
 export const subscribeToDriverVehicles = (driverUid, onUpdate) => {
   if (!driverUid) {
     onUpdate([]);
-    return () => {};
+    return () => { };
   }
   const vehiclesRef = collection(db, 'vehicles');
   const q = query(vehiclesRef, where('driverUid', '==', driverUid));
