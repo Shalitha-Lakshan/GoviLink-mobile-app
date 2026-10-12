@@ -1,4 +1,3 @@
-import AppLogo from './AppLogo';
 import React, { useState } from 'react';
 import {
   StyleSheet,
@@ -150,7 +149,7 @@ export default function RequestDetailsScreen({
       <View style={styles.topHeader}>
         <View style={styles.brand}>
           <Image
-            source={require('../assets/logo.png')}
+            source={require('../assets/splash-icon.png')}
             style={styles.brandLogo}
             resizeMode="contain"
           />
@@ -220,8 +219,7 @@ export default function RequestDetailsScreen({
           <View style={styles.consignorLeftRow}>
             <View style={styles.farmerAvatarWrapper}>
               <Image
-                source={require('../assets/logo.png')}
-                resizeMode="contain"
+                source={require('../assets/splash-icon.png')}
                 style={styles.farmerAvatar}
               />
               <View style={styles.verifiedCheckBadge}>
