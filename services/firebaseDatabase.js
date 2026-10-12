@@ -8,6 +8,8 @@ import {
   getDoc,
   updateDoc,
   deleteDoc,
+  query,
+  where,
 } from 'firebase/firestore';
 import {
   signInWithEmailAndPassword,
@@ -398,16 +400,15 @@ export const createBuyerCustomRequest = async (requestData) => {
  */
 export const subscribeToBuyerRequests = (onUpdate, buyerUid = null) => {
   const requestsRef = collection(db, 'buyer_requests');
+  const targetQuery = buyerUid
+    ? query(requestsRef, where('buyerUid', '==', buyerUid))
+    : requestsRef;
 
-  return onSnapshot(requestsRef, (snapshot) => {
+  return onSnapshot(targetQuery, (snapshot) => {
     let requests = snapshot.docs.map((docSnap) => ({
       id: docSnap.id,
       ...docSnap.data(),
     }));
-
-    if (buyerUid) {
-      requests = requests.filter((r) => r.buyerUid === buyerUid);
-    }
 
     // Sort newest first
     requests.sort((a, b) => {
@@ -419,6 +420,7 @@ export const subscribeToBuyerRequests = (onUpdate, buyerUid = null) => {
     onUpdate(requests);
   }, (error) => {
     console.error('Firestore buyer requests subscription error:', error);
+    onUpdate([]);
   });
 };
 
