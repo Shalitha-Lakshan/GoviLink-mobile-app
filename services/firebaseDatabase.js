@@ -10,6 +10,7 @@ import {
   deleteDoc,
   query,
   where,
+  getDocs,
 } from 'firebase/firestore';
 import {
   signInWithEmailAndPassword,
@@ -22,11 +23,48 @@ import {
   uploadString,
   getDownloadURL,
 } from 'firebase/storage';
+import { Platform } from 'react-native';
 import { db, auth, storage } from '../firebaseConfig';
 
 // -------------------------------------------------------
 // PRODUCE LISTINGS & IMAGE UPLOADS
 // -------------------------------------------------------
+
+/**
+ * Helper to compress base64 images on web so they stay well below Firestore's 1MB document limit.
+ */
+const compressWebDataUrl = async (dataUrl, maxDim = 800, quality = 0.65) => {
+  if (Platform.OS === 'web' && typeof Image !== 'undefined' && dataUrl && dataUrl.startsWith('data:image')) {
+    return new Promise((resolve) => {
+      try {
+        const img = new Image();
+        img.onload = () => {
+          let { width, height } = img;
+          if (width > maxDim || height > maxDim) {
+            if (width > height) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', quality));
+        };
+        img.onerror = () => resolve(dataUrl);
+        img.src = dataUrl;
+      } catch (_e) {
+        resolve(dataUrl);
+      }
+    });
+  }
+  return dataUrl;
+};
 
 /**
  * Upload produce image to Firebase Storage (with base64 fallback)
@@ -40,32 +78,37 @@ export const uploadProduceImage = async (imageUri, produceId) => {
     return imageUri;
   }
 
+  // 2. On Web: Browser CORS policy blocks XMLHttpRequests to Firebase Storage bucket
+  // unless CORS headers are deployed to Google Cloud Storage.
+  // Instead of triggering browser CORS preflight failures, compress to a lightweight
+  // ~35KB JPEG data URL and store directly. This works instantly on Web and Native
+  // while staying well under Firestore's 1MB limit.
+  if (Platform.OS === 'web') {
+    return await compressWebDataUrl(imageUri);
+  }
+
+  // 3. On Native (Android / iOS): Upload to Firebase Storage
+  // Native mobile platforms use native sockets/HTTP and do NOT have browser CORS restrictions.
   const uniqueId = produceId || `produce_${Date.now()}_${Math.random().toString(36).substring(7)}`;
   const storagePath = `produce_images/${uniqueId}.jpg`;
   const storageRef = ref(storage, storagePath);
 
-  // 2. Try uploading to Firebase Storage
   try {
     if (imageUri.startsWith('data:')) {
       await uploadString(storageRef, imageUri, 'data_url');
-      const downloadURL = await getDownloadURL(storageRef);
-      return downloadURL;
+      return await getDownloadURL(storageRef);
     } else {
       const response = await fetch(imageUri);
       const blob = await response.blob();
       await uploadBytes(storageRef, blob, { contentType: 'image/jpeg' });
-      const downloadURL = await getDownloadURL(storageRef);
-      return downloadURL;
+      return await getDownloadURL(storageRef);
     }
   } catch (storageError) {
-    console.warn('Firebase Storage upload warning, using data URL fallback:', storageError);
-
-    // 3. Fallback: If it is already a base64 data URL, return it
+    console.warn('Native Firebase Storage upload error, falling back:', storageError);
     if (imageUri.startsWith('data:')) {
       return imageUri;
     }
 
-    // 4. Convert local file:// URI to base64 data URL
     try {
       const response = await fetch(imageUri);
       const blob = await response.blob();
@@ -76,8 +119,7 @@ export const uploadProduceImage = async (imageUri, produceId) => {
         reader.readAsDataURL(blob);
       });
       return base64Data;
-    } catch (fallbackError) {
-      console.error('Failed to convert image to fallback data URL:', fallbackError);
+    } catch (_fallbackError) {
       return imageUri;
     }
   }
@@ -162,20 +204,125 @@ export const deleteProduceListing = async (produceId) => {
 };
 
 // -------------------------------------------------------
-// ORDERS
+// ORDERS & DELIVERY STATUS WORKFLOW (GOVI-108 -> GOVI-116)
 // -------------------------------------------------------
+
+export const DELIVERY_STATUSES = {
+  PENDING: 'PENDING',
+  ASSIGNED: 'ASSIGNED',
+  ACCEPTED: 'ACCEPTED',
+  PREPARING: 'PREPARING',
+  READY_FOR_PICKUP: 'READY_FOR_PICKUP',
+  IN_TRANSIT: 'IN_TRANSIT',
+  DELIVERED: 'DELIVERED',
+  CANCELLED: 'CANCELLED',
+};
+
+/**
+ * Valid delivery status transitions matrix (GOVI-115, GOVI-146, GOVI-150)
+ * PENDING -> ASSIGNED / ACCEPTED / PREPARING / READY_FOR_PICKUP -> IN_TRANSIT -> DELIVERED
+ * DELIVERED and CANCELLED are terminal states (no further transitions allowed).
+ */
+export const VALID_DELIVERY_TRANSITIONS = {
+  PENDING: ['ASSIGNED', 'ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP', 'IN_TRANSIT', 'CANCELLED'],
+  ASSIGNED: ['ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP', 'IN_TRANSIT', 'CANCELLED'],
+  ACCEPTED: ['PREPARING', 'READY_FOR_PICKUP', 'IN_TRANSIT', 'CANCELLED'],
+  PREPARING: ['READY_FOR_PICKUP', 'IN_TRANSIT', 'CANCELLED'],
+  READY_FOR_PICKUP: ['IN_TRANSIT', 'CANCELLED'],
+  IN_TRANSIT: ['DELIVERED', 'CANCELLED'],
+  DELIVERED: [], // Terminal: once delivered, cannot transition backwards!
+  CANCELLED: [], // Terminal: once cancelled, cannot transition!
+};
+
+/**
+ * Validates delivery status transition server-side (GOVI-115)
+ */
+export const isValidStatusTransition = (currentStatus, nextStatus) => {
+  if (!nextStatus) return false;
+  const current = (currentStatus || 'PENDING').toUpperCase();
+  const next = nextStatus.toUpperCase();
+
+  // Idempotent (same status)
+  if (current === next) return true;
+
+  const allowed = VALID_DELIVERY_TRANSITIONS[current];
+  if (!allowed) {
+    return ['PENDING', 'ASSIGNED', 'ACCEPTED', 'READY_FOR_PICKUP', 'IN_TRANSIT', 'DELIVERED'].includes(next);
+  }
+
+  return allowed.includes(next);
+};
+
+/**
+ * Trigger Delivery Notifications in Firestore (GOVI-114)
+ */
+export const triggerDeliveryNotification = async (orderId, order, newStatus, extraData = {}) => {
+  try {
+    const notificationsRef = collection(db, 'notifications');
+    const nowIso = new Date().toISOString();
+    const produceTitle = order.produceName || 'Produce Batch';
+    const driverName = extraData.driverName || order.driverName || 'Kamal Perera';
+
+    // 1. Notify Buyer
+    const buyerNotification = {
+      orderId,
+      recipientUid: order.buyerUid || '',
+      recipientRole: 'buyer',
+      title: newStatus === 'IN_TRANSIT' ? 'Order In Transit 🚛' : 'Order Delivered! 🎉',
+      message: newStatus === 'IN_TRANSIT'
+        ? `Your order for ${produceTitle} is now on the way with driver ${driverName}.`
+        : `Your order for ${produceTitle} has been delivered successfully to ${order.deliveryAddress || 'your address'}.`,
+      status: newStatus,
+      createdAt: serverTimestamp(),
+      createdIso: nowIso,
+      read: false,
+    };
+    await addDoc(notificationsRef, buyerNotification);
+
+    // 2. Notify Farmer
+    if (order.farmerId || order.farmerUid) {
+      const farmerNotification = {
+        orderId,
+        recipientUid: order.farmerId || order.farmerUid,
+        recipientRole: 'farmer',
+        title: newStatus === 'IN_TRANSIT' ? 'Cargo Dispatched 🚛' : 'Order Delivered ✅',
+        message: newStatus === 'IN_TRANSIT'
+          ? `Cargo for ${produceTitle} was picked up by driver ${driverName} and is in transit.`
+          : `Order for ${produceTitle} was delivered to buyer ${order.buyerName || 'Buyer'}.`,
+        status: newStatus,
+        createdAt: serverTimestamp(),
+        createdIso: nowIso,
+        read: false,
+      };
+      await addDoc(notificationsRef, farmerNotification);
+    }
+  } catch (notifyErr) {
+    console.warn('Delivery notification trigger warning (non-fatal):', notifyErr);
+  }
+};
 
 /**
  * Place a new Order in Firestore
+ * Initializes status to PENDING and seeds initial statusHistory entry.
  */
 export const placeOrderInFirestore = async (orderData) => {
   try {
     const ordersRef = collection(db, 'orders');
+    const nowIso = new Date().toISOString();
     const docRef = await addDoc(ordersRef, {
       ...orderData,
       status: 'PENDING',
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
+      statusHistory: [
+        {
+          status: 'PENDING',
+          timestamp: nowIso,
+          changedBy: orderData.buyerName || 'Buyer',
+          actorRole: 'buyer',
+          notes: 'Order placed by buyer',
+        },
+      ],
     });
     return { success: true, id: docRef.id };
   } catch (error) {
@@ -185,17 +332,105 @@ export const placeOrderInFirestore = async (orderData) => {
 };
 
 /**
- * Update order status (e.g. PENDING -> ACCEPTED -> IN_TRANSIT -> DELIVERED)
+ * Update order status with server-side transition validation (GOVI-109, GOVI-110, GOVI-111, GOVI-114, GOVI-115)
+ *
+ * @param {string} orderId
+ * @param {string} newStatus ('ACCEPTED' | 'READY_FOR_PICKUP' | 'IN_TRANSIT' | 'DELIVERED' | 'CANCELLED')
+ * @param {object} extraData
  */
 export const updateOrderStatus = async (orderId, newStatus, extraData = {}) => {
+  if (!orderId) {
+    return { success: false, error: 'Order ID is required' };
+  }
+  if (!newStatus) {
+    return { success: false, error: 'Target status is required' };
+  }
+
   try {
     const orderDocRef = doc(db, 'orders', orderId);
-    await updateDoc(orderDocRef, {
-      status: newStatus,
-      ...extraData,
+    const orderDocSnap = await getDoc(orderDocRef);
+
+    if (!orderDocSnap.exists()) {
+      return { success: false, error: 'Order not found in database' };
+    }
+
+    const currentOrder = orderDocSnap.data();
+    const currentStatus = (currentOrder.status || 'PENDING').toUpperCase();
+    const normalizedNewStatus = newStatus.toUpperCase();
+
+    // 1. Terminal state checks (GOVI-110 & GOVI-115)
+    if (currentStatus === 'DELIVERED') {
+      return {
+        success: false,
+        error: 'Order has already been Delivered. Status cannot be modified backwards.',
+      };
+    }
+
+    if (currentStatus === 'CANCELLED') {
+      return {
+        success: false,
+        error: 'Cannot update status of a cancelled order.',
+      };
+    }
+
+    // 2. Validate transition (GOVI-115)
+    if (!isValidStatusTransition(currentStatus, normalizedNewStatus)) {
+      return {
+        success: false,
+        error: `Invalid delivery status transition from ${currentStatus} to ${normalizedNewStatus}`,
+      };
+    }
+
+    // 3. Prepare status timestamps & history (GOVI-111)
+    const nowIso = new Date().toISOString();
+    const updatePayload = {
+      status: normalizedNewStatus,
       updatedAt: serverTimestamp(),
-    });
-    return { success: true };
+      ...extraData,
+    };
+
+    if (normalizedNewStatus === 'IN_TRANSIT') {
+      updatePayload.inTransitAt = serverTimestamp();
+      updatePayload.inTransitIso = nowIso;
+    } else if (normalizedNewStatus === 'DELIVERED') {
+      updatePayload.deliveredAt = serverTimestamp();
+      updatePayload.deliveredIso = nowIso;
+    } else if (normalizedNewStatus === 'READY_FOR_PICKUP' || normalizedNewStatus === 'PREPARING') {
+      updatePayload.readyAt = serverTimestamp();
+      updatePayload.readyIso = nowIso;
+    } else if (normalizedNewStatus === 'ACCEPTED') {
+      updatePayload.acceptedAt = serverTimestamp();
+      updatePayload.acceptedIso = nowIso;
+    }
+
+    // Append to statusHistory cleanly (GOVI-111)
+    const existingHistory = Array.isArray(currentOrder.statusHistory) ? currentOrder.statusHistory : [];
+    const lastEntry = existingHistory[existingHistory.length - 1];
+    if (!lastEntry || lastEntry.status !== normalizedNewStatus) {
+      const historyEntry = {
+        status: normalizedNewStatus,
+        timestamp: nowIso,
+        changedBy: extraData.changedBy || extraData.driverName || extraData.farmerName || 'Authorized User',
+        actorRole: extraData.actorRole || (extraData.driverName ? 'driver' : (extraData.farmerName ? 'farmer' : 'admin')),
+        notes: extraData.notes || extraData.specialNotes || '',
+      };
+      updatePayload.statusHistory = [...existingHistory, historyEntry];
+    }
+
+    await updateDoc(orderDocRef, updatePayload);
+
+    // 4. Trigger Notifications (GOVI-114)
+    if (normalizedNewStatus === 'IN_TRANSIT' || normalizedNewStatus === 'DELIVERED') {
+      await triggerDeliveryNotification(orderId, currentOrder, normalizedNewStatus, extraData);
+    }
+
+    return {
+      success: true,
+      orderId,
+      status: normalizedNewStatus,
+      inTransitAt: updatePayload.inTransitIso,
+      deliveredAt: updatePayload.deliveredIso,
+    };
   } catch (error) {
     console.error('Error updating order status in Firestore:', error);
     return { success: false, error: error.message };
@@ -203,7 +438,7 @@ export const updateOrderStatus = async (orderId, newStatus, extraData = {}) => {
 };
 
 /**
- * Real-time listener for Orders in Firestore
+ * Real-time listener for all Orders in Firestore
  */
 export const subscribeToOrders = (onUpdate) => {
   const ordersRef = collection(db, 'orders');
@@ -216,6 +451,41 @@ export const subscribeToOrders = (onUpdate) => {
     onUpdate(orders);
   }, (error) => {
     console.error('Firestore orders subscription error:', error);
+  });
+};
+
+/**
+ * Real-time listener for a single Order by ID (GOVI-112)
+ */
+export const subscribeToOrderById = (orderId, onUpdate) => {
+  if (!orderId) return () => {};
+  const orderDocRef = doc(db, 'orders', orderId);
+
+  return onSnapshot(orderDocRef, (docSnap) => {
+    if (docSnap.exists()) {
+      onUpdate({ id: docSnap.id, ...docSnap.data() });
+    }
+  }, (error) => {
+    console.error('Error subscribing to order by ID:', error);
+  });
+};
+
+/**
+ * Real-time listener for User Notifications (GOVI-114)
+ */
+export const subscribeToUserNotifications = (uid, onUpdate) => {
+  if (!uid) return () => {};
+  const notificationsRef = collection(db, 'notifications');
+  const q = query(notificationsRef, where('recipientUid', '==', uid));
+
+  return onSnapshot(q, (snapshot) => {
+    const notifs = snapshot.docs.map((docSnap) => ({
+      id: docSnap.id,
+      ...docSnap.data(),
+    }));
+    onUpdate(notifs);
+  }, (error) => {
+    console.error('Error subscribing to notifications:', error);
   });
 };
 
@@ -236,6 +506,39 @@ export const getUserProfile = async (uid) => {
     return { success: false, error: 'User profile not found in Firestore.' };
   } catch (error) {
     console.error('Error fetching user profile:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Update user profile in Firestore users/{uid}
+ */
+export const updateUserProfileInFirestore = async (uid, profileData) => {
+  if (!uid) {
+    console.warn('updateUserProfileInFirestore: No uid provided');
+    return { success: false, error: 'No user ID provided' };
+  }
+
+  try {
+    // Safety check: if photoURL base64 is larger than 800KB, omit photoURL from Firestore doc
+    // to prevent exceeding Firestore's 1MB single-document limit.
+    const cleanProfileData = { ...profileData };
+    if (cleanProfileData.photoURL && cleanProfileData.photoURL.length > 800000) {
+      delete cleanProfileData.photoURL;
+    }
+
+    const userDocRef = doc(db, 'users', uid);
+    await setDoc(
+      userDocRef,
+      {
+        ...cleanProfileData,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+    return { success: true };
+  } catch (error) {
+    console.error('Error updating user profile in Firestore:', error);
     return { success: false, error: error.message };
   }
 };
@@ -304,7 +607,7 @@ export const loginWithFirebase = async (email, password) => {
     try {
       userCredential = await signInWithEmailAndPassword(auth, cleanEmail, password);
     } catch (authErr) {
-      // If admin account doesn't exist in Firebase Auth yet, auto-create it
+      // If default admin account doesn't exist in Firebase Auth yet, auto-create it
       if (isAdminEmail && (authErr.code === 'auth/user-not-found' || authErr.code === 'auth/invalid-credential')) {
         try {
           userCredential = await createUserWithEmailAndPassword(auth, cleanEmail, password);
@@ -318,25 +621,32 @@ export const loginWithFirebase = async (email, password) => {
 
     const user = userCredential.user;
 
-    // Fetch Firestore profile
+    // Fetch Firestore profile from users/{uid}
     const profileResult = await getUserProfile(user.uid);
 
-    // If profile doc missing or email is admin, ensure profile doc with cooperative_admin role exists
-    if (!profileResult.success || isAdminEmail) {
-      const adminProfile = {
-        uid: user.uid,
-        email: cleanEmail,
-        fullName: profileResult?.profile?.fullName || 'GoviLink Cooperative Admin',
-        phoneNumber: profileResult?.profile?.phoneNumber || '0770000000',
-        role: 'cooperative_admin',
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      };
-      await setDoc(doc(db, 'users', user.uid), adminProfile);
-      return { success: true, user, profile: adminProfile };
+    if (profileResult.success) {
+      const existingProfile = profileResult.profile;
+      // If admin email login, ensure role is set to cooperative_admin if missing
+      if (isAdminEmail && existingProfile.role !== 'cooperative_admin') {
+        const updatedProfile = { ...existingProfile, role: 'cooperative_admin' };
+        await setDoc(doc(db, 'users', user.uid), updatedProfile, { merge: true });
+        return { success: true, user, profile: updatedProfile };
+      }
+      return { success: true, user, profile: existingProfile };
     }
 
-    return { success: true, user, profile: profileResult.profile };
+    // Profile document missing in Firestore — initialize user profile document
+    const newProfile = {
+      uid: user.uid,
+      email: cleanEmail,
+      fullName: isAdminEmail ? 'GoviLink Cooperative Admin' : (user.displayName || 'GoviLink User'),
+      phoneNumber: '0770000000',
+      role: isAdminEmail ? 'cooperative_admin' : 'buyer',
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
+    await setDoc(doc(db, 'users', user.uid), newProfile);
+    return { success: true, user, profile: newProfile };
   } catch (error) {
     console.error('Login error:', error);
     return { success: false, error: error.code || error.message };
@@ -373,64 +683,571 @@ export const saveUserToFirestore = async (userData) => {
 };
 
 // -------------------------------------------------------
-// BUYER CUSTOM PRODUCE REQUESTS (SPECIFIC AREA & DATE)
+// FLEET & DRIVERS MANAGEMENT
 // -------------------------------------------------------
 
+export const DEFAULT_COOP_DRIVERS = [
+  {
+    id: 'driver_default_1',
+    uid: 'driver_default_1',
+    fullName: 'Sunil Perera',
+    phoneNumber: '077 123 4567',
+    vehicleNumber: 'WP-CAB-4521',
+    vehicleType: 'lorry_heavy',
+    vehicleTypeLabel: 'Heavy Duty Truck (10T)',
+    capacity: 3500,
+    rating: '4.9',
+    district: { id: 'colombo', nameEn: 'Colombo', nameSi: 'කොළඹ', nameTa: 'கொழும்பு' },
+    isAvailable: true,
+  },
+  {
+    id: 'driver_default_2',
+    uid: 'driver_default_2',
+    fullName: 'Kasun Bandara',
+    phoneNumber: '071 987 6543',
+    vehicleNumber: 'CP-ND-8890',
+    vehicleType: 'refrigerated',
+    vehicleTypeLabel: 'Refrigerated Cold Chain Truck',
+    capacity: 2000,
+    rating: '5.0',
+    district: { id: 'kandy', nameEn: 'Kandy', nameSi: 'මහනුවර', nameTa: 'கண்டி' },
+    isAvailable: true,
+  },
+  {
+    id: 'driver_default_3',
+    uid: 'driver_default_3',
+    fullName: 'Nuwan Jayasinghe',
+    phoneNumber: '076 555 1234',
+    vehicleNumber: 'WP-LH-2311',
+    vehicleType: 'lorry_light',
+    vehicleTypeLabel: 'Light Truck (3.5T)',
+    capacity: 1500,
+    rating: '4.8',
+    district: { id: 'kurunegala', nameEn: 'Kurunegala', nameSi: 'කුරුණෑගල', nameTa: 'குருணாகல்' },
+    isAvailable: true,
+  },
+  {
+    id: 'driver_default_4',
+    uid: 'driver_default_4',
+    fullName: 'Kamal Fernando',
+    phoneNumber: '070 222 3344',
+    vehicleNumber: 'SP-DA-1092',
+    vehicleType: 'dimo_batta',
+    vehicleTypeLabel: 'Dimo Batta / Small Truck',
+    capacity: 800,
+    rating: '4.7',
+    district: { id: 'nuwara_eliya', nameEn: 'Nuwara Eliya', nameSi: 'නුවරඑළිය', nameTa: 'நுவரெலியா' },
+    isAvailable: true,
+  },
+];
+
 /**
- * Submit a custom produce request from a buyer
+ * Check if a driver is currently busy with an active shipment
  */
-export const createBuyerCustomRequest = async (requestData) => {
+export const checkDriverAvailability = (driver, ordersList = []) => {
+  if (!driver) return { isAvailable: false, activeOrder: null, reason: 'Driver not found' };
+  const driverId = driver.uid || driver.id;
+  const driverPhone = driver.phoneNumber;
+
+  const activeOrder = (ordersList || []).find((order) => {
+    const matchesDriver =
+      (order.driverId && order.driverId === driverId) ||
+      (order.driverPhone && driverPhone && order.driverPhone === driverPhone);
+    const isOngoing =
+      order.status === 'ACCEPTED' ||
+      order.status === 'ASSIGNED' ||
+      order.status === 'PICKED_UP' ||
+      order.status === 'IN_TRANSIT' ||
+      order.status === 'PENDING_DELIVERY';
+    return matchesDriver && isOngoing;
+  });
+
+  if (activeOrder) {
+    return {
+      isAvailable: false,
+      activeOrder,
+      reason: `Assigned: ${activeOrder.produceName || 'Produce shipment'} (${activeOrder.status || 'In Transit'})`,
+    };
+  }
+
+  return {
+    isAvailable: true,
+    activeOrder: null,
+    reason: null,
+  };
+};
+
+/**
+ * Real-time listener for Cooperative Fleet Drivers
+ */
+export const subscribeToDrivers = (onUpdate) => {
+  const usersRef = collection(db, 'users');
+  const driversQuery = query(usersRef, where('role', '==', 'driver'));
+
+  return onSnapshot(
+    driversQuery,
+    (snapshot) => {
+      const realDrivers = snapshot.docs.map((docSnap) => ({
+        id: docSnap.id,
+        uid: docSnap.id,
+        ...docSnap.data(),
+      }));
+
+      if (realDrivers.length > 0) {
+        onUpdate(realDrivers);
+      } else {
+        onUpdate(DEFAULT_COOP_DRIVERS);
+      }
+    },
+    (error) => {
+      console.warn('Firestore drivers subscription warning, using defaults:', error);
+      onUpdate(DEFAULT_COOP_DRIVERS);
+    }
+  );
+};
+
+/**
+ * Helpers for Delivery Filtering (GOVI-144, GOVI-145)
+ */
+export const getPendingDeliveriesList = (ordersList = []) => {
+  return (ordersList || []).filter(
+    (o) => !o.driverId && o.status !== 'DELIVERED' && o.status !== 'CANCELLED'
+  );
+};
+
+export const getAssignedDeliveriesList = (ordersList = []) => {
+  return (ordersList || []).filter(
+    (o) => o.driverId && o.status !== 'DELIVERED' && o.status !== 'CANCELLED'
+  );
+};
+
+export const getAvailableFleetDrivers = (driversList = [], ordersList = []) => {
+  return (driversList || []).filter((d) => {
+    const res = checkDriverAvailability(d, ordersList);
+    return res.isAvailable;
+  });
+};
+
+/**
+ * Assign a driver to an order (GOVI-146, GOVI-147)
+ * Validates admin authorization, driver availability, and delivery state.
+ *
+ * @param {object|string} orderOrId - Order object or orderId string
+ * @param {object} driver - Selected driver object
+ * @param {object} [adminProfile] - Authenticated admin user profile
+ * @param {object} [options] - Optional configurations { targetStatus, skipAvailabilityCheck }
+ */
+export const assignDriverToOrder = async (orderOrId, driver, adminProfile = null, options = {}) => {
   try {
-    const requestsRef = collection(db, 'buyer_requests');
-    const docRef = await addDoc(requestsRef, {
-      ...requestData,
-      status: 'OPEN',
-      createdAt: serverTimestamp(),
+    const orderId = typeof orderOrId === 'object' ? (orderOrId.id || orderOrId.orderNo) : orderOrId;
+    const orderObj = typeof orderOrId === 'object' ? orderOrId : {};
+
+    if (!orderId) {
+      return { success: false, error: 'Delivery order ID is required.' };
+    }
+    if (!driver || (!driver.uid && !driver.id)) {
+      return { success: false, error: 'A valid driver must be selected for assignment.' };
+    }
+
+    // 1. Admin Authorization Guard (GOVI-146)
+    if (adminProfile) {
+      const role = adminProfile.role;
+      const email = adminProfile.email?.toLowerCase();
+      const isAdmin = role === 'cooperative_admin' || role === 'admin' || email === 'govilink@admin.lk';
+      if (!isAdmin) {
+        return { success: false, error: 'Unauthorized: Only cooperative administrators can assign drivers.' };
+      }
+    }
+
+    const orderDocRef = doc(db, 'orders', orderId);
+    let existingOrderData = orderObj;
+
+    // Fetch live order doc if available
+    try {
+      const orderDocSnap = await getDoc(orderDocRef);
+      if (orderDocSnap.exists()) {
+        existingOrderData = { id: orderDocSnap.id, ...orderDocSnap.data(), ...orderObj };
+      }
+    } catch (_readErr) {
+      // In offline/mock fallback, use orderObj
+    }
+
+    // 2. Validate Delivery Eligibility
+    const currentStatus = (existingOrderData.status || 'PENDING').toUpperCase();
+    if (currentStatus === 'DELIVERED') {
+      return { success: false, error: 'Cannot assign a driver to a completed delivery.' };
+    }
+    if (currentStatus === 'CANCELLED') {
+      return { success: false, error: 'Cannot assign a driver to a cancelled delivery.' };
+    }
+
+    const nowIso = new Date().toISOString();
+    const targetStatus = options.targetStatus || (currentStatus === 'IN_TRANSIT' ? 'IN_TRANSIT' : 'ASSIGNED');
+
+    // 3. Driver assignment payload
+    const driverPayload = {
+      ...(existingOrderData.produceName ? { produceName: existingOrderData.produceName } : {}),
+      ...(existingOrderData.farmerName ? { farmerName: existingOrderData.farmerName } : {}),
+      ...(existingOrderData.farmerPhone ? { farmerPhone: existingOrderData.farmerPhone } : {}),
+      ...(existingOrderData.pickupLocation ? { pickupLocation: existingOrderData.pickupLocation } : {}),
+      ...(existingOrderData.deliveryAddress ? { deliveryAddress: existingOrderData.deliveryAddress } : {}),
+      ...(existingOrderData.buyerName ? { buyerName: existingOrderData.buyerName } : {}),
+      ...(existingOrderData.buyerPhone ? { buyerPhone: existingOrderData.buyerPhone } : {}),
+      ...(existingOrderData.qty ? { qty: existingOrderData.qty } : {}),
+      ...(existingOrderData.unit ? { unit: existingOrderData.unit } : {}),
+      driverId: driver.uid || driver.id,
+      driverName: driver.fullName || driver.name || 'Cooperative Driver',
+      driverPhone: driver.phoneNumber || driver.phone || '',
+      driverVehicle: driver.vehicleNumber || driver.plateNumber || driver.makeModel || 'Transport Vehicle',
+      driverVehicleType: driver.vehicleType || 'lorry',
+      driverRating: driver.rating || '4.9',
+      status: targetStatus,
+      assignedAt: serverTimestamp(),
+      assignedAtIso: nowIso,
       updatedAt: serverTimestamp(),
-    });
-    return { success: true, id: docRef.id };
+    };
+
+    // Append to statusHistory cleanly (GOVI-150)
+    const existingHistory = Array.isArray(existingOrderData.statusHistory) ? existingOrderData.statusHistory : [];
+    const statusEntry = {
+      status: targetStatus,
+      timestamp: nowIso,
+      changedBy: adminProfile?.fullName || 'Cooperative Administrator',
+      actorRole: 'admin',
+      notes: `Driver ${driver.fullName || 'Driver'} assigned to delivery`,
+    };
+    driverPayload.statusHistory = [...existingHistory, statusEntry];
+
+    // Append to assignmentHistory (GOVI-146, GOVI-147)
+    const existingAssignments = Array.isArray(existingOrderData.assignmentHistory) ? existingOrderData.assignmentHistory : [];
+    const assignmentEntry = {
+      driverId: driver.uid || driver.id,
+      driverName: driver.fullName || driver.name,
+      driverPhone: driver.phoneNumber || driver.phone || '',
+      driverVehicle: driver.vehicleNumber || driver.plateNumber || 'Transport Vehicle',
+      assignedAt: nowIso,
+      assignedBy: adminProfile?.fullName || 'Administrator',
+      action: 'INITIAL_ASSIGNMENT',
+    };
+    driverPayload.assignmentHistory = [...existingAssignments, assignmentEntry];
+
+    await setDoc(orderDocRef, driverPayload, { merge: true });
+
+    // 4. Trigger Notifications (GOVI-114, GOVI-146)
+    try {
+      const notificationsRef = collection(db, 'notifications');
+      const produceTitle = existingOrderData.produceName || 'Produce Batch';
+
+      // Notify Driver
+      if (driver.uid || driver.id) {
+        await addDoc(notificationsRef, {
+          orderId,
+          recipientUid: driver.uid || driver.id,
+          recipientRole: 'driver',
+          title: 'New Delivery Assigned 🚛',
+          message: `You have been assigned to transport ${produceTitle} from ${existingOrderData.pickupLocation || 'Farm'} to ${existingOrderData.deliveryAddress || 'Market'}.`,
+          status: targetStatus,
+          createdAt: serverTimestamp(),
+          createdIso: nowIso,
+          read: false,
+        });
+      }
+
+      // Notify Buyer
+      if (existingOrderData.buyerUid || existingOrderData.buyerId) {
+        await addDoc(notificationsRef, {
+          orderId,
+          recipientUid: existingOrderData.buyerUid || existingOrderData.buyerId,
+          recipientRole: 'buyer',
+          title: 'Driver Dispatched 🚛',
+          message: `Driver ${driver.fullName || 'Kamal'} (${driver.vehicleNumber || 'Vehicle'}) has been assigned to your order of ${produceTitle}.`,
+          status: targetStatus,
+          createdAt: serverTimestamp(),
+          createdIso: nowIso,
+          read: false,
+        });
+      }
+
+      // Notify Farmer
+      if (existingOrderData.farmerUid || existingOrderData.farmerId) {
+        await addDoc(notificationsRef, {
+          orderId,
+          recipientUid: existingOrderData.farmerUid || existingOrderData.farmerId,
+          recipientRole: 'farmer',
+          title: 'Pickup Driver Assigned 🚛',
+          message: `Driver ${driver.fullName || 'Kamal'} has been scheduled to collect ${produceTitle} from your farm.`,
+          status: targetStatus,
+          createdAt: serverTimestamp(),
+          createdIso: nowIso,
+          read: false,
+        });
+      }
+    } catch (_notifyErr) {
+      console.warn('Driver assignment notification warning (non-fatal):', _notifyErr);
+    }
+
+    return {
+      success: true,
+      orderId,
+      driver,
+      status: targetStatus,
+      assignedAtIso: nowIso,
+    };
   } catch (error) {
-    console.error('Error creating buyer custom request:', error);
+    console.error('Error assigning driver to order:', error);
     return { success: false, error: error.message };
   }
 };
 
 /**
- * Real-time listener for Buyer Custom Requests in Firestore
+ * Reassign driver to an existing delivery order (GOVI-151)
+ * Safely updates driver assignment while preventing reassignment on terminal states.
+ *
+ * @param {object|string} orderOrId - Order object or orderId string
+ * @param {object} newDriver - The newly selected replacement driver
+ * @param {object} [adminProfile] - Authenticated admin user profile
+ * @param {string} [reason] - Reason for reassignment
+ */
+export const reassignDriverForOrder = async (
+  orderOrId,
+  newDriver,
+  adminProfile = null,
+  reason = 'Driver reassigned by cooperative administrator'
+) => {
+  try {
+    const orderId = typeof orderOrId === 'object' ? (orderOrId.id || orderOrId.orderNo) : orderOrId;
+    const orderObj = typeof orderOrId === 'object' ? orderOrId : {};
+
+    if (!orderId) {
+      return { success: false, error: 'Delivery order ID is required for reassignment.' };
+    }
+    if (!newDriver || (!newDriver.uid && !newDriver.id)) {
+      return { success: false, error: 'A valid replacement driver must be selected.' };
+    }
+
+    // 1. Admin Authorization Guard (GOVI-151)
+    if (adminProfile) {
+      const role = adminProfile.role;
+      const email = adminProfile.email?.toLowerCase();
+      const isAdmin = role === 'cooperative_admin' || role === 'admin' || email === 'govilink@admin.lk';
+      if (!isAdmin) {
+        return { success: false, error: 'Unauthorized: Only cooperative administrators can reassign drivers.' };
+      }
+    }
+
+    const orderDocRef = doc(db, 'orders', orderId);
+    let existingOrderData = orderObj;
+
+    // Fetch live order doc
+    try {
+      const orderDocSnap = await getDoc(orderDocRef);
+      if (orderDocSnap.exists()) {
+        existingOrderData = { id: orderDocSnap.id, ...orderDocSnap.data(), ...orderObj };
+      }
+    } catch (_readErr) {
+      // Fallback to orderObj
+    }
+
+    const currentStatus = (existingOrderData.status || 'PENDING').toUpperCase();
+
+    // 2. Strict terminal state validations (GOVI-151)
+    if (currentStatus === 'DELIVERED') {
+      return {
+        success: false,
+        error: 'Driver cannot be reassigned after delivery completion.',
+      };
+    }
+    if (currentStatus === 'CANCELLED') {
+      return {
+        success: false,
+        error: 'Cannot reassign driver for a cancelled delivery order.',
+      };
+    }
+
+    // 3. Prevent duplicate assignment to same driver
+    const currentDriverId = existingOrderData.driverId;
+    const newDriverId = newDriver.uid || newDriver.id;
+    if (currentDriverId && currentDriverId === newDriverId) {
+      return {
+        success: false,
+        error: `"${newDriver.fullName}" is already the assigned driver for this delivery.`,
+      };
+    }
+
+    const nowIso = new Date().toISOString();
+    const previousDriverInfo = {
+      driverId: existingOrderData.driverId || null,
+      driverName: existingOrderData.driverName || 'Previous Driver',
+      driverPhone: existingOrderData.driverPhone || '',
+      driverVehicle: existingOrderData.driverVehicle || '',
+    };
+
+    // 4. Build update payload
+    const updatePayload = {
+      driverId: newDriverId,
+      driverName: newDriver.fullName || newDriver.name || 'Cooperative Driver',
+      driverPhone: newDriver.phoneNumber || newDriver.phone || '',
+      driverVehicle: newDriver.vehicleNumber || newDriver.plateNumber || newDriver.makeModel || 'Transport Vehicle',
+      driverVehicleType: newDriver.vehicleType || 'lorry',
+      driverRating: newDriver.rating || '4.9',
+      reassignedAt: serverTimestamp(),
+      reassignedAtIso: nowIso,
+      updatedAt: serverTimestamp(),
+    };
+
+    // Record in assignmentHistory (GOVI-151)
+    const existingAssignments = Array.isArray(existingOrderData.assignmentHistory) ? existingOrderData.assignmentHistory : [];
+    const reassignmentEntry = {
+      previousDriverId: previousDriverInfo.driverId,
+      previousDriverName: previousDriverInfo.driverName,
+      driverId: newDriverId,
+      driverName: newDriver.fullName || newDriver.name,
+      driverPhone: newDriver.phoneNumber || newDriver.phone || '',
+      driverVehicle: newDriver.vehicleNumber || newDriver.plateNumber || 'Transport Vehicle',
+      reassignedAt: nowIso,
+      reassignedBy: adminProfile?.fullName || 'Administrator',
+      reason,
+      action: 'REASSIGNMENT',
+    };
+    updatePayload.assignmentHistory = [...existingAssignments, reassignmentEntry];
+
+    // Record in statusHistory
+    const existingHistory = Array.isArray(existingOrderData.statusHistory) ? existingOrderData.statusHistory : [];
+    const statusEntry = {
+      status: currentStatus,
+      timestamp: nowIso,
+      changedBy: adminProfile?.fullName || 'Cooperative Administrator',
+      actorRole: 'admin',
+      notes: `Driver reassigned from ${previousDriverInfo.driverName} to ${newDriver.fullName}: ${reason}`,
+    };
+    updatePayload.statusHistory = [...existingHistory, statusEntry];
+
+    await updateDoc(orderDocRef, updatePayload);
+
+    // 5. Trigger Reassignment Notifications (GOVI-151)
+    try {
+      const notificationsRef = collection(db, 'notifications');
+      const produceTitle = existingOrderData.produceName || 'Produce Batch';
+
+      // Notify Previous Driver
+      if (previousDriverInfo.driverId) {
+        await addDoc(notificationsRef, {
+          orderId,
+          recipientUid: previousDriverInfo.driverId,
+          recipientRole: 'driver',
+          title: 'Delivery Reassigned ℹ️',
+          message: `Delivery #${orderId} (${produceTitle}) was reassigned by cooperative administration. Reason: ${reason}`,
+          status: currentStatus,
+          createdAt: serverTimestamp(),
+          createdIso: nowIso,
+          read: false,
+        });
+      }
+
+      // Notify New Driver
+      await addDoc(notificationsRef, {
+        orderId,
+        recipientUid: newDriverId,
+        recipientRole: 'driver',
+        title: 'New Delivery Assigned 🚛',
+        message: `You have been reassigned to deliver ${produceTitle} from ${existingOrderData.pickupLocation || 'Farm'} to ${existingOrderData.deliveryAddress || 'Destination'}.`,
+        status: currentStatus,
+        createdAt: serverTimestamp(),
+        createdIso: nowIso,
+        read: false,
+      });
+
+      // Notify Buyer
+      if (existingOrderData.buyerUid || existingOrderData.buyerId) {
+        await addDoc(notificationsRef, {
+          orderId,
+          recipientUid: existingOrderData.buyerUid || existingOrderData.buyerId,
+          recipientRole: 'buyer',
+          title: 'Delivery Driver Updated 🚛',
+          message: `Your delivery driver has been updated to ${newDriver.fullName} (${newDriver.vehicleNumber || 'Vehicle'}).`,
+          status: currentStatus,
+          createdAt: serverTimestamp(),
+          createdIso: nowIso,
+          read: false,
+        });
+      }
+    } catch (_notifErr) {
+      console.warn('Reassignment notification warning (non-fatal):', _notifErr);
+    }
+
+    return {
+      success: true,
+      orderId,
+      newDriver,
+      previousDriver: previousDriverInfo,
+      reassignedAtIso: nowIso,
+    };
+  } catch (error) {
+    console.error('Error reassigning driver for order:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+
+// -------------------------------------------------------
+// BUYER CUSTOM PRODUCE REQUESTS
+// -------------------------------------------------------
+
+/**
+ * Real-time listener for Buyer Produce Requests
  */
 export const subscribeToBuyerRequests = (onUpdate, buyerUid = null) => {
-  const requestsRef = collection(db, 'buyer_requests');
+  const requestsRef = collection(db, 'buyerRequests');
   const targetQuery = buyerUid
     ? query(requestsRef, where('buyerUid', '==', buyerUid))
     : requestsRef;
 
-  return onSnapshot(targetQuery, (snapshot) => {
-    let requests = snapshot.docs.map((docSnap) => ({
-      id: docSnap.id,
-      ...docSnap.data(),
-    }));
+  return onSnapshot(
+    targetQuery,
+    (snapshot) => {
+      let requests = snapshot.docs.map((docSnap) => ({
+        id: docSnap.id,
+        ...docSnap.data(),
+      }));
 
-    // Sort newest first
-    requests.sort((a, b) => {
-      const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : (a.createdAt?.seconds ? a.createdAt.seconds * 1000 : 0);
-      const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : (b.createdAt?.seconds ? b.createdAt.seconds * 1000 : 0);
-      return timeB - timeA;
-    });
+      if (buyerUid) {
+        requests = requests.filter((r) => r.buyerUid === buyerUid || r.buyerId === buyerUid);
+      }
 
-    onUpdate(requests);
-  }, (error) => {
-    console.error('Firestore buyer requests subscription error:', error);
-    onUpdate([]);
-  });
+      onUpdate(requests);
+    },
+    (error) => {
+      console.error('Firestore buyer requests subscription error:', error);
+      onUpdate([]);
+    }
+  );
 };
 
 /**
- * Delete or cancel a buyer custom request
+ * Create a new Buyer Custom Produce Request
+ */
+export const createBuyerCustomRequest = async (requestData) => {
+  try {
+    const requestsRef = collection(db, 'buyerRequests');
+    const docRef = await addDoc(requestsRef, {
+      ...requestData,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    return { success: true, id: docRef.id };
+  } catch (error) {
+    console.error('Error creating buyer request:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Delete a Buyer Custom Request
  */
 export const deleteBuyerRequest = async (requestId) => {
   try {
-    const requestDocRef = doc(db, 'buyer_requests', requestId);
-    await deleteDoc(requestDocRef);
+    const reqDocRef = doc(db, 'buyerRequests', requestId);
+    await deleteDoc(reqDocRef);
     return { success: true };
   } catch (error) {
     console.error('Error deleting buyer request:', error);
@@ -439,66 +1256,200 @@ export const deleteBuyerRequest = async (requestId) => {
 };
 
 /**
- * Accept a buyer custom request by a farmer ("I'll Provide")
+ * Farmer accepts a Buyer Custom Request -> Creates an active order
  */
-export const acceptBuyerCustomRequest = async (requestData, farmerProfile) => {
+export const acceptBuyerCustomRequest = async (request, farmerProfile) => {
   try {
-    const requestId = requestData.id;
-    // 1. Update the buyer_requests doc
-    const requestDocRef = doc(db, 'buyer_requests', requestId);
-    await updateDoc(requestDocRef, {
-      status: 'ACCEPTED',
-      farmerUid: farmerProfile?.uid || '',
-      farmerName: farmerProfile?.fullName || 'Registered Farmer',
+    const ordersRef = collection(db, 'orders');
+    const newOrder = {
+      buyerId: request.buyerUid || request.buyerId || 'buyer',
+      buyerName: request.buyerName || 'GoviLink Buyer',
+      buyerPhone: request.buyerPhone || '',
+      farmerId: farmerProfile?.uid || 'farmer',
+      farmerName: farmerProfile?.fullName || 'GoviLink Farmer',
       farmerPhone: farmerProfile?.phoneNumber || '',
-      farmerDistrict: farmerProfile?.district?.nameEn || '',
-      acceptedAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
-
-    // 2. Create an associated Order in Firestore orders collection so both parties & drivers track it
-    const unitPrice = Number(requestData.targetPricePerUnit) || 0;
-    const qty = Number(requestData.quantity) || 1;
-    const subtotal = unitPrice * qty;
-    const logisticsFee = requestData.deliveryNeeded !== false ? 350 : 0;
-    const totalPrice = subtotal + logisticsFee;
-
-    const orderPayload = {
-      customRequestId: requestId,
-      produceName: requestData.cropName || 'Custom Harvest Order',
-      category: requestData.category || 'Vegetables',
-      qty: qty,
-      unit: requestData.unit || 'kg',
-      unitPrice: unitPrice,
-      subtotal: subtotal,
-      logisticsFee: logisticsFee,
-      totalPrice: totalPrice,
-      farmerName: farmerProfile?.fullName || 'Registered Farmer',
-      farmerId: farmerProfile?.uid || '',
-      farmerPhone: farmerProfile?.phoneNumber || '',
-      pickupLocation: farmerProfile?.district?.nameEn || requestData.targetDistrictName || 'Farm Origin',
-      buyerName: requestData.buyerName || 'Buyer',
-      buyerPhone: requestData.buyerPhone || '',
-      buyerUid: requestData.buyerUid || '',
-      deliveryAddress: requestData.deliveryAddress || 'Self-Pickup',
-      deliveryNeeded: requestData.deliveryNeeded !== false,
-      datePeriod: requestData.datePeriodDescription || `${requestData.requiredDateStart} to ${requestData.requiredDateEnd}`,
-      qualityGrade: requestData.qualityGrade || 'Grade A',
-      notes: requestData.notes || '',
-      isCustomRequest: true,
-      status: 'ACCEPTED',
+      produceName: request.cropName || request.cropTitle || 'Requested Produce',
+      qty: request.quantity || 1,
+      unit: request.unit || 'kg',
+      unitPrice: request.targetPricePerUnit || 0,
+      totalPrice: (Number(request.targetPricePerUnit) || 0) * (Number(request.quantity) || 1),
+      pickupLocation: farmerProfile?.district?.nameEn || 'Farmer Farm Origin',
+      deliveryAddress: request.deliveryAddress || 'Distribution Center',
+      status: 'PENDING',
+      notes: request.notes || '',
+      requestId: request.id,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
+    await addDoc(ordersRef, newOrder);
 
-    const ordersRef = collection(db, 'orders');
-    const orderDocRef = await addDoc(ordersRef, orderPayload);
+    if (request.id) {
+      const reqDocRef = doc(db, 'buyerRequests', request.id);
+      await updateDoc(reqDocRef, {
+        status: 'FULFILLED',
+        fulfilledByFarmerId: farmerProfile?.uid,
+        fulfilledByFarmerName: farmerProfile?.fullName,
+        updatedAt: serverTimestamp(),
+      });
+    }
 
-    return { success: true, orderId: orderDocRef.id };
+    return { success: true };
   } catch (error) {
     console.error('Error accepting buyer custom request:', error);
     return { success: false, error: error.message };
   }
 };
 
+// -------------------------------------------------------
+// DRIVER VEHICLES MANAGEMENT
+// -------------------------------------------------------
 
+/**
+ * Real-time listener for Driver's registered vehicles
+ */
+export const subscribeToDriverVehicles = (driverUid, onUpdate) => {
+  if (!driverUid) {
+    onUpdate([]);
+    return () => {};
+  }
+  const vehiclesRef = collection(db, 'vehicles');
+  const q = query(vehiclesRef, where('driverUid', '==', driverUid));
+
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const vehicles = snapshot.docs.map((docSnap) => ({
+        id: docSnap.id,
+        ...docSnap.data(),
+      }));
+      onUpdate(vehicles);
+    },
+    (error) => {
+      console.warn('Firestore driver vehicles subscription error:', error);
+      onUpdate([]);
+    }
+  );
+};
+
+/**
+ * Real-time listener for ALL vehicles in Firestore (for Admin Dashboard & fleet metrics)
+ */
+export const subscribeToAllVehicles = (onUpdate) => {
+  const vehiclesRef = collection(db, 'vehicles');
+
+  return onSnapshot(
+    vehiclesRef,
+    (snapshot) => {
+      const vehicles = snapshot.docs.map((docSnap) => ({
+        id: docSnap.id,
+        ...docSnap.data(),
+      }));
+      onUpdate(vehicles);
+    },
+    (error) => {
+      console.warn('Firestore all vehicles subscription error:', error);
+      onUpdate([]);
+    }
+  );
+};
+
+
+/**
+ * Add a new vehicle to driver's fleet
+ */
+export const addDriverVehicle = async (driverUid, vehicleData) => {
+  try {
+    let finalImageUrl = vehicleData.image;
+    if (finalImageUrl && !finalImageUrl.startsWith('http://') && !finalImageUrl.startsWith('https://')) {
+      finalImageUrl = await uploadProduceImage(finalImageUrl, `veh_${Date.now()}`);
+    }
+
+    const vehiclesRef = collection(db, 'vehicles');
+    const docRef = await addDoc(vehiclesRef, {
+      ...vehicleData,
+      image: finalImageUrl || vehicleData.image,
+      driverUid,
+      isActive: vehicleData.isActive || false,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    return { success: true, id: docRef.id, vehicle: { id: docRef.id, ...vehicleData, driverUid } };
+  } catch (error) {
+    console.error('Error adding vehicle:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+export const saveDriverVehicle = addDriverVehicle;
+
+/**
+ * Update an existing vehicle
+ */
+export const updateDriverVehicle = async (vehicleId, vehicleData, driverUid) => {
+  try {
+    let finalImageUrl = vehicleData.image;
+    if (finalImageUrl && !finalImageUrl.startsWith('http://') && !finalImageUrl.startsWith('https://')) {
+      finalImageUrl = await uploadProduceImage(finalImageUrl, vehicleId);
+    }
+
+    const vehicleDocRef = doc(db, 'vehicles', vehicleId);
+    await updateDoc(vehicleDocRef, {
+      ...vehicleData,
+      image: finalImageUrl || vehicleData.image,
+      ...(driverUid ? { driverUid } : {}),
+      updatedAt: serverTimestamp(),
+    });
+    return { success: true, vehicle: { id: vehicleId, ...vehicleData } };
+  } catch (error) {
+    console.error('Error updating vehicle:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Delete a driver's vehicle
+ */
+export const deleteDriverVehicle = async (vehicleId, driverUid) => {
+  try {
+    const vehicleDocRef = doc(db, 'vehicles', vehicleId);
+    await deleteDoc(vehicleDocRef);
+    return { success: true };
+  } catch (error) {
+    console.error('Error deleting vehicle:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Set active vehicle for dispatch
+ */
+export const setActiveDriverVehicle = async (driverUid, vehicleId) => {
+  try {
+    const vehiclesRef = collection(db, 'vehicles');
+    const q = query(vehiclesRef, where('driverUid', '==', driverUid));
+    const snap = await getDocs(q);
+
+    for (const d of snap.docs) {
+      await updateDoc(doc(db, 'vehicles', d.id), {
+        isActive: d.id === vehicleId,
+        updatedAt: serverTimestamp(),
+      });
+    }
+
+    const activeDocSnap = await getDoc(doc(db, 'vehicles', vehicleId));
+    if (activeDocSnap.exists()) {
+      const activeData = activeDocSnap.data();
+      await updateDoc(doc(db, 'users', driverUid), {
+        vehicleNumber: activeData.plateNumber,
+        vehicleType: activeData.vehicleType,
+        vehicle: activeData,
+        updatedAt: serverTimestamp(),
+      });
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error('Error setting active driver vehicle:', error);
+    return { success: false, error: error.message };
+  }
+};
