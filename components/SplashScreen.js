@@ -1,3 +1,4 @@
+import AppLogo from './AppLogo';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   StyleSheet,
@@ -311,62 +312,31 @@ export default function SplashScreen({ onFinish, onLayout }) {
         pointerEvents="none"
       />
 
-      {/* ── TOP BRAND BADGE ─────────────────────────────── */}
-      <View style={styles.topBadge}>
-        <Text style={styles.topBadgeText}>SRI LANKA</Text>
-        <View style={styles.topBadgeDot} />
-        <Text style={styles.topBadgeText}>ENTERPRISE</Text>
-      </View>
-
-      {/* ── CENTER SECTION ──────────────────────────────── */}
-      <View style={styles.centerSection}>
-
-        {/* Logo with pulse rings + particles */}
-        <View style={styles.logoWrap}>
-          {/* Outer pulse rings */}
-          <Animated.View style={[
-            styles.pulseRing,
-            { transform: [{ scale: outerRing1Scale }], opacity: outerRing1Opacity },
-          ]} />
-          <Animated.View style={[
-            styles.pulseRing, styles.pulseRing2,
-            { transform: [{ scale: outerRing2Scale }], opacity: outerRing2Opacity },
-          ]} />
-
-          {/* Particle sparkle dots */}
-          {particlePositions.map((pos, i) => (
-            <Animated.View
-              key={i}
-              style={[styles.particle, pos, { opacity: particles[i] }]}
-            />
-          ))}
-
-          {/* Logo badge */}
-          <Animated.View style={[
-            styles.logoBadge,
-            {
-              opacity: logoOpacity,
-              transform: [{ scale: logoScale }, { translateY: logoTranslateY }],
-            },
-          ]}>
-            <View style={styles.logoBadgeInner}>
-              <Image
-                source={require('../assets/splash-icon.png')}
-                style={styles.logoImage}
-                resizeMode="contain"
-              />
-            </View>
+          <Animated.View
+            style={[
+              styles.emblemBadge,
+              {
+                opacity: logoOpacity,
+                transform: [{ scale: logoScale }],
+              },
+            ]}
+          >
+            <AppLogo width={216} />
           </Animated.View>
         </View>
 
-        {/* Brand name */}
-        <Animated.View style={[
-          styles.brandRow,
-          { opacity: titleOpacity, transform: [{ translateY: titleTranslateY }] },
-        ]}>
-          <Text style={styles.brandGovi}>Govi</Text>
-          <Text style={styles.brandLink}>Link</Text>
-        </Animated.View>
+        {/* BRAND TITLE & TRILINGUAL TAGLINE */}
+        <Animated.View
+          style={[
+            styles.titleContainer,
+            {
+              opacity: titleOpacity,
+              transform: [{ translateY: titleTranslateY }],
+            },
+          ]}
+        >
+
+          <View style={styles.dividerLine} />
 
         {/* Accent rule */}
         <Animated.View style={[styles.accentRule, { opacity: titleOpacity }]}>
@@ -439,6 +409,12 @@ const styles = StyleSheet.create({
     height: '100%',
     backgroundColor: C.bg,
     zIndex: 99999,
+    paddingHorizontal: 24,
+  },
+  logoWrapper: {
+    width: 240,
+    height: 176,
+    justifyContent: 'center',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingTop: Platform.OS === 'ios' ? 56 : (StatusBar.currentHeight || 24) + 16,
@@ -548,8 +524,10 @@ const styles = StyleSheet.create({
     elevation: 20,
     overflow: 'hidden',
   },
-  logoBadgeInner: {
-    flex: 1,
+  emblemBadge: {
+    width: 232,
+    height: 164,
+    borderRadius: 16,
     backgroundColor: '#FFFFFF',
     borderRadius: LOGO_SIZE / 2,
     margin: 8,

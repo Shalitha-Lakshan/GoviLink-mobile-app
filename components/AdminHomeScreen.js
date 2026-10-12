@@ -1,3 +1,4 @@
+import AppLogo from './AppLogo';
 import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
@@ -547,7 +548,7 @@ export default function AdminHomeScreen({
       <View style={styles.topHeader}>
         <View style={styles.brandContainer}>
           <Image
-            source={require('../assets/splash-icon.png')}
+            source={require('../assets/logo.png')}
             style={styles.brandLogo}
             resizeMode="contain"
           />

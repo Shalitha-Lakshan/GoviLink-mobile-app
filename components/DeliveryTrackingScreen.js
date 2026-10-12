@@ -1,3 +1,4 @@
+import AppLogo from './AppLogo';
 import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
@@ -356,19 +357,7 @@ export default function DeliveryTrackingScreen({
           <TouchableOpacity style={styles.backBtn} onPress={onBack} activeOpacity={0.7}>
             <Ionicons name="arrow-back" size={20} color={C.greenDark} />
           </TouchableOpacity>
-          <View style={styles.brand}>
-            <Image
-              source={require('../assets/splash-icon.png')}
-              style={styles.brandLogo}
-              resizeMode="contain"
-            />
-            <View>
-              <Text style={styles.brandTitle}>
-                Govi<Text style={{ color: C.green }}>Link</Text>
-              </Text>
-              <Text style={styles.brandCaption}>COOPERATIVE ADMIN</Text>
-            </View>
-          </View>
+          <AppLogo />
         </View>
 
         <TouchableOpacity style={styles.notifBtn} activeOpacity={0.7} onPress={onLogout}>
