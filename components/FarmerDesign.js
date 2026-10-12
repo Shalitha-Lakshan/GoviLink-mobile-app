@@ -15,6 +15,12 @@ export const FARMER_NAV = {
   ta: { home: 'சுருக்கம்', listings: 'விளைச்சல்', orders: 'கோரிக்கைகள்', accepted: 'ஆர்டர்கள்', profile: 'சுயவிவரம்', add: 'விளைச்சல் சேர்', search: 'தேடுக', all: 'அனைத்தும்', active: 'செயலில்', completed: 'முடிந்தவை', available: 'இருப்பில்', empty: 'முடிவுகள் இல்லை', reset: 'வடிகட்டிகளை நீக்கு' },
 };
 
+export const BUYER_NAV = {
+  en: { home: 'Overview', market: 'Marketplace', requests: 'Inquiries', orders: 'My Orders', profile: 'Profile', add: 'Request produce', search: 'Search', all: 'All', active: 'Active', completed: 'Completed', available: 'In stock', empty: 'No results found', reset: 'Clear filters' },
+  si: { home: 'සාරාංශය', market: 'වෙළඳපොළ', requests: 'ඉල්ලීම්', orders: 'ඇණවුම්', profile: 'ගිණුම', add: 'අස්වනු ඉල්ලුමක්', search: 'සොයන්න', all: 'සියල්ල', active: 'සක්‍රිය', completed: 'සම්පූර්ණයි', available: 'තොග ඇත', empty: 'ප්‍රතිඵල නොමැත', reset: 'පෙරහන් ඉවත් කරන්න' },
+  ta: { home: 'சுருக்கம்', market: 'சந்தை', requests: 'கோரிக்கைகள்', orders: 'ஆர்டர்கள்', profile: 'சுயவிவரம்', add: 'கோரிக்கை விடுக்க', search: 'தேடுக', all: 'அனைத்தும்', active: 'செயலில்', completed: 'முடிந்தவை', available: 'இருப்பில்', empty: 'முடிவுகள் இல்லை', reset: 'வடிகட்டிகளை நீக்கு' },
+};
+
 export const cleanLabel = (text = '') => text.replace(/[\p{Extended_Pictographic}\uFE0F\u200D]/gu, '').replace(/^\+\s*/, '').trim();
 
 export function FarmerButton({ label, icon, onPress, secondary, danger, loading, disabled, style }) {
