@@ -1,3 +1,4 @@
+import AppLogo from './AppLogo';
 import React, { useEffect, useState } from 'react';
 import { Image, Modal, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -104,7 +105,7 @@ export default function FarmerWorkspace({ userProfile, lang, t, activeTab, setAc
 
   return <SafeAreaView edges={['top', 'left', 'right']} style={s.safe}>
     <StatusBar barStyle="dark-content" backgroundColor={C.canvas} />
-    <View style={s.header}><View style={s.brand}><View style={s.brandMark}><Ionicons name="leaf" size={22} color="#FFFFFF" /></View><View><Text style={s.brandName}>Govi<Text style={{ color: C.green }}>Link</Text></Text><Text style={s.brandCaption}>FARMER WORKSPACE</Text></View></View>
+    <View style={s.header}><View style={s.brand}><View><AppLogo width={88} /><Text style={s.brandCaption}>FARMER WORKSPACE</Text></View></View>
       <View style={s.headerActions}>{onChangeLanguage && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Change language" onPress={() => onChangeLanguage(lang === 'en' ? 'si' : lang === 'si' ? 'ta' : 'en')} style={s.language}><Text style={s.languageText}>{lang === 'en' ? 'EN' : lang === 'si' ? 'සිං' : 'தம'}</Text></TouchableOpacity>}
         <TouchableOpacity accessibilityRole="button" accessibilityLabel={nav.profile} onPress={() => switchTab('profile')} style={s.avatarButton}>{userProfile?.photoURL ? <Image source={{ uri: userProfile.photoURL }} style={s.avatarImage} /> : <Text style={s.avatarInitial}>{(userProfile?.fullName || 'F').charAt(0).toUpperCase()}</Text>}</TouchableOpacity>
       </View>

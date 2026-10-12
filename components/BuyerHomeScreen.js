@@ -1,3 +1,4 @@
+import AppLogo from './AppLogo';
 import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
@@ -493,15 +494,11 @@ export default function BuyerHomeScreen({
           onPress={() => setShowProfileScreen(true)}
           activeOpacity={0.8}
         >
-          <Image
-            source={require('../assets/splash-icon.png')}
-            style={styles.logoBadge}
-            resizeMode="contain"
-          />
-          <View>
+          <AppLogo width={80} style={{ marginRight: 10 }} />
+          <View style={{ flex: 1, minWidth: 0 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Text style={styles.brandGovi}>Govi</Text>
-              <Text style={styles.brandLink}>Link</Text>
+
+
               <View style={styles.roleTag}>
                 <Text style={styles.roleTagText}>🛒 Buyer</Text>
               </View>

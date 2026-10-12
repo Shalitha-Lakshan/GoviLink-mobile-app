@@ -1,3 +1,4 @@
+import AppLogo from './AppLogo';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   StyleSheet,
@@ -166,11 +167,7 @@ export default function SplashScreen({ onFinish }) {
               },
             ]}
           >
-            <Image
-              source={require('../assets/splash-icon.png')}
-              style={styles.emblemImage}
-              resizeMode="contain"
-            />
+            <AppLogo width={216} />
           </Animated.View>
         </View>
 
@@ -184,10 +181,7 @@ export default function SplashScreen({ onFinish }) {
             },
           ]}
         >
-          <View style={styles.brandNameRow}>
-            <Text style={styles.brandGovi}>Govi</Text>
-            <Text style={styles.brandLink}>Link</Text>
-          </View>
+
           <View style={styles.dividerLine} />
 
           <Text style={styles.primaryTagline}>
@@ -260,8 +254,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   logoWrapper: {
-    width: 140,
-    height: 140,
+    width: 240,
+    height: 176,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 24,
@@ -276,9 +270,9 @@ const styles = StyleSheet.create({
     backgroundColor: BRAND.emeraldGlow,
   },
   emblemBadge: {
-    width: 110,
-    height: 110,
-    borderRadius: 55,
+    width: 232,
+    height: 164,
+    borderRadius: 16,
     backgroundColor: '#FFFFFF',
     justifyContent: 'center',
     alignItems: 'center',
