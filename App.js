@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   StyleSheet,
   Text,
@@ -52,6 +52,7 @@ const mapRoleToDashboard = (role, email) => {
 
 function AppInner() {
   const [isSplashVisible, setIsSplashVisible] = useState(true);
+  const [nativeSplashHidden, setNativeSplashHidden] = useState(false);
   // 'checking' while onAuthStateChanged runs, then 'language'|'login'|'register'|'authenticated'
   const [authScreen, setAuthScreen] = useState('checking');
   const [userProfile, setUserProfile] = useState(null);
@@ -61,12 +62,25 @@ function AppInner() {
   const [ordersList, setOrdersList] = useState([]);
   const [vehiclesList, setVehiclesList] = useState([]);
 
-  useEffect(() => {
-    async function hideNativeSplash() {
+  // Called by the custom SplashScreen once it has laid out and is visible.
+  const handleCustomSplashLayout = useCallback(async () => {
+    if (!nativeSplashHidden) {
+      setNativeSplashHidden(true);
       try {
         await SplashScreen.hideAsync();
       } catch (e) {
         // Native splash already hidden or unavailable
+      }
+    }
+  }, [nativeSplashHidden]);
+
+  // Hide native splash on mount so custom animated splash screen displays on mobile Expo Go app
+  useEffect(() => {
+    async function hideNativeSplash() {
+      try {
+        await SplashScreen.hideAsync();
+      } catch (_e) {
+        /* Already hidden or web mode */
       }
     }
     hideNativeSplash();
@@ -171,7 +185,12 @@ function AppInner() {
   };
 
   if (isSplashVisible) {
-    return <SplashScreenComponent onFinish={() => setIsSplashVisible(false)} />;
+    return (
+      <SplashScreenComponent
+        onFinish={() => setIsSplashVisible(false)}
+        onLayout={handleCustomSplashLayout}
+      />
+    );
   }
 
   // While onAuthStateChanged is determining auth state, show a loading screen
@@ -297,15 +316,21 @@ function AppInner() {
 // -------------------------------------------------------
 export default function App() {
   return (
-    <SafeAreaProvider>
-      <AuthProvider>
-        <AppInner />
-      </AuthProvider>
-    </SafeAreaProvider>
+    <View style={styles.rootBackground}>
+      <SafeAreaProvider style={styles.rootBackground}>
+        <AuthProvider>
+          <AppInner />
+        </AuthProvider>
+      </SafeAreaProvider>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  rootBackground: {
+    flex: 1,
+    backgroundColor: '#0B2545',
+  },
   safeArea: {
     flex: 1,
     backgroundColor: '#0B2545',
