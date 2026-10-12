@@ -600,15 +600,19 @@ export const registerWithFirebase = async (userData) => {
  */
 export const loginWithFirebase = async (email, password) => {
   const cleanEmail = email.trim().toLowerCase();
-  const isAdminEmail = cleanEmail === 'govilink@admin.lk';
+  const isAdminEmail = cleanEmail === 'govilink@admin.lk' || cleanEmail === 'admin.demo@govilink.lk';
+  const isDevFarmer = cleanEmail === 'farmer@govilink.lk' || cleanEmail === 'farmer.demo@govilink.lk';
+  const isDevBuyer = cleanEmail === 'buyer@govilink.lk' || cleanEmail === 'buyer.demo@govilink.lk';
+  const isDevDriver = cleanEmail === 'driver@govilink.lk' || cleanEmail === 'driver.demo@govilink.lk';
+  const isDevAccount = isAdminEmail || isDevFarmer || isDevBuyer || isDevDriver;
 
   try {
     let userCredential;
     try {
       userCredential = await signInWithEmailAndPassword(auth, cleanEmail, password);
     } catch (authErr) {
-      // If default admin account doesn't exist in Firebase Auth yet, auto-create it
-      if (isAdminEmail && (authErr.code === 'auth/user-not-found' || authErr.code === 'auth/invalid-credential')) {
+      // If default demo/dev account doesn't exist in Firebase Auth yet, auto-create it
+      if (isDevAccount && (authErr.code === 'auth/user-not-found' || authErr.code === 'auth/invalid-credential')) {
         try {
           userCredential = await createUserWithEmailAndPassword(auth, cleanEmail, password);
         } catch (_createErr) {
@@ -624,11 +628,27 @@ export const loginWithFirebase = async (email, password) => {
     // Fetch Firestore profile from users/{uid}
     const profileResult = await getUserProfile(user.uid);
 
+    let expectedDevRole = null;
+    let expectedDevName = null;
+    if (isAdminEmail) {
+      expectedDevRole = 'cooperative_admin';
+      expectedDevName = 'GoviLink Cooperative Admin';
+    } else if (isDevFarmer) {
+      expectedDevRole = 'farmer';
+      expectedDevName = 'Sunil Weerasinghe (Farmer)';
+    } else if (isDevBuyer) {
+      expectedDevRole = 'buyer';
+      expectedDevName = 'Nimal Perera (Buyer)';
+    } else if (isDevDriver) {
+      expectedDevRole = 'driver';
+      expectedDevName = 'Kamal Bandara (Driver)';
+    }
+
     if (profileResult.success) {
       const existingProfile = profileResult.profile;
-      // If admin email login, ensure role is set to cooperative_admin if missing
-      if (isAdminEmail && existingProfile.role !== 'cooperative_admin') {
-        const updatedProfile = { ...existingProfile, role: 'cooperative_admin' };
+      // If dev role login, ensure role matches expected role in Firestore
+      if (expectedDevRole && existingProfile.role !== expectedDevRole) {
+        const updatedProfile = { ...existingProfile, role: expectedDevRole };
         await setDoc(doc(db, 'users', user.uid), updatedProfile, { merge: true });
         return { success: true, user, profile: updatedProfile };
       }
@@ -639,9 +659,10 @@ export const loginWithFirebase = async (email, password) => {
     const newProfile = {
       uid: user.uid,
       email: cleanEmail,
-      fullName: isAdminEmail ? 'GoviLink Cooperative Admin' : (user.displayName || 'GoviLink User'),
+      fullName: expectedDevName || user.displayName || 'GoviLink User',
       phoneNumber: '0770000000',
-      role: isAdminEmail ? 'cooperative_admin' : 'buyer',
+      role: expectedDevRole || 'buyer',
+      district: 'Nuwara Eliya',
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };

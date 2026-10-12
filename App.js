@@ -37,7 +37,7 @@ const mapRoleToDashboard = (role, email) => {
   if (role === 'cooperative_admin' || role === 'admin') {
     return 'admin';
   }
-  if (email && email.toLowerCase() === 'govilink@admin.lk') {
+  if (email && (email.toLowerCase() === 'govilink@admin.lk' || email.toLowerCase() === 'admin.demo@govilink.lk')) {
     return 'admin';
   }
   switch (role) {
