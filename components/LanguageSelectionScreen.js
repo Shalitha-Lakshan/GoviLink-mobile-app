@@ -1,3 +1,4 @@
+import AppLogo from './AppLogo';
 import React, { useRef, useEffect } from 'react';
 import {
   StyleSheet,
@@ -68,16 +69,9 @@ export default function LanguageSelectionScreen({ onSelectLanguage }) {
         {/* ---------------------------------------------------- */}
         {/* PURE TRANSPARENT BRAND EMBLEM & DUAL-TONE TITLE     */}
         {/* ---------------------------------------------------- */}
-        <Image
-          source={require('../assets/splash-icon.png')}
-          style={styles.topLogoEmblem}
-          resizeMode="contain"
-        />
+        <AppLogo width={156} style={{ marginBottom: 8 }} />
 
-        <View style={styles.brandTitleRow}>
-          <Text style={styles.brandTitleNavy}>Govi</Text>
-          <Text style={styles.brandTitleGreen}>Link</Text>
-        </View>
+
 
         <Text style={styles.brandTitleSinhala}>ගොවි ලින්ක්</Text>
         <View style={styles.titleDivider} />
@@ -138,11 +132,7 @@ export default function LanguageSelectionScreen({ onSelectLanguage }) {
         <View style={styles.footerContent}>
           <View style={styles.footerBrandRow}>
             <View style={styles.footerLogoBadge}>
-              <Image
-                source={require('../assets/splash-icon.png')}
-                style={styles.footerLogoIcon}
-                resizeMode="contain"
-              />
+              <AppLogo width={48} />
             </View>
             <Text style={styles.footerBrandName}>GoviLink Sri Lanka</Text>
           </View>
@@ -327,9 +317,9 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   footerLogoBadge: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 52,
+    height: 38,
+    borderRadius: 4,
     backgroundColor: '#FFFFFF',
     justifyContent: 'center',
     alignItems: 'center',

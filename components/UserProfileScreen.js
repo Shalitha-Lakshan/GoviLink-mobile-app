@@ -11,9 +11,12 @@ import {
   ActivityIndicator,
   StatusBar,
   Switch,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { FARMER_COLORS as C, FarmerHeading } from './FarmerDesign';
 import * as ImagePicker from 'expo-image-picker';
 import { updateUserProfileInFirestore, uploadProduceImage } from '../services/firebaseDatabase';
 
@@ -54,7 +57,11 @@ export default function UserProfileScreen({
   onLogout,
   onChangeLanguage,
   onProfileUpdated,
+  embedded = false,
+  farmerDesign = false,
 }) {
+  const styles = farmerDesign ? farmerStyles : baseStyles;
+  const Container = embedded ? View : SafeAreaView;
   const [fullName, setFullName] = useState(userProfile?.fullName || '');
   const [phoneNumber, setPhoneNumber] = useState(userProfile?.phoneNumber || '');
   const [email, setEmail] = useState(userProfile?.email || userProfile?.userEmail || '');
@@ -67,13 +74,14 @@ export default function UserProfileScreen({
     userProfile?.farmName || userProfile?.businessName || ''
   );
   const [photoURL, setPhotoURL] = useState(
-    userProfile?.photoURL || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80'
+    userProfile?.photoURL || (farmerDesign ? null : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80')
   );
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState(null);
   const [showDistrictPicker, setShowDistrictPicker] = useState(false);
 
-  const role = userProfile?.role || 'FARMER'; // 'ADMIN' | 'FARMER' | 'DRIVER' | 'BUYER'
+  const role = (userProfile?.role || 'FARMER').toUpperCase(); // 'ADMIN' | 'FARMER' | 'DRIVER' | 'BUYER'
 
   const handlePickAvatar = async () => {
     try {
@@ -101,14 +109,15 @@ export default function UserProfileScreen({
 
   const handleSaveProfile = async () => {
     if (!fullName.trim()) {
-      Alert.alert('Required Field', 'Please enter your full name.');
+      setSaveMessage({ error: true, text: 'Please enter your full name.' });
       return;
     }
 
+    setSaveMessage(null);
     setIsSaving(true);
 
     let finalPhotoUrl = photoURL;
-    const targetUid = userProfile?.uid || userProfile?.id || `user_${Date.now()}`;
+    const targetUid = userProfile?.uid || userProfile?.id;
 
     // Upload local file:// or data: image to Firebase Storage / base64 fallback
     if (photoURL && (photoURL.startsWith('file://') || photoURL.startsWith('data:'))) {
@@ -133,11 +142,19 @@ export default function UserProfileScreen({
       photoURL: finalPhotoUrl,
     };
 
+    if (!targetUid) {
+      setIsSaving(false);
+      setSaveMessage({ error: true, text: 'Please sign in again before saving your profile.' });
+      return;
+    }
     if (targetUid) {
       try {
-        await updateUserProfileInFirestore(targetUid, updatedData);
+        const result = await updateUserProfileInFirestore(targetUid, updatedData);
+        if (!result?.success) throw new Error(result?.error || 'Please try again.');
       } catch (err) {
-        console.warn('Profile save warning:', err);
+        setIsSaving(false);
+        setSaveMessage({ error: true, text: 'Could not save your profile. ' + err.message });
+        return;
       }
     }
 
@@ -147,13 +164,14 @@ export default function UserProfileScreen({
       onProfileUpdated(updatedData);
     }
 
-    Alert.alert('Profile Updated! ✨', 'Your profile photo and details have been saved successfully.');
+    setSaveMessage({ error: false, text: 'Your profile changes have been saved.' });
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <Container style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
+      {!embedded && <>
       {/* TOP HEADER */}
       <View style={styles.topHeader}>
         <TouchableOpacity style={styles.backBtn} onPress={onBack} activeOpacity={0.7}>
@@ -167,18 +185,21 @@ export default function UserProfileScreen({
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
+      </>}
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+      <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+        {farmerDesign && <FarmerHeading eyebrow="YOUR ACCOUNT" title="My profile" subtitle="Your farm, your details, your connections." />}
         {/* AVATAR & COVER BANNER CARD */}
         <View style={styles.profileBannerCard}>
           <View style={styles.avatarWrapper}>
-            <Image source={{ uri: photoURL }} style={styles.avatarImage} />
-            <TouchableOpacity style={styles.cameraBadgeBtn} onPress={handlePickAvatar} activeOpacity={0.8}>
+            <View style={styles.avatarImage}>{photoURL ? <Image source={{ uri: photoURL }} style={{ width: '100%', height: '100%', borderRadius: 50 }} /> : <Text style={{ fontSize: 32, fontWeight: '700', color: C.greenDark }}>{(fullName || 'F').charAt(0).toUpperCase()}</Text>}</View>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Change profile photo" style={styles.cameraBadgeBtn} onPress={handlePickAvatar} activeOpacity={0.8}>
               <Ionicons name="camera" size={16} color="#FFFFFF" />
             </TouchableOpacity>
           </View>
 
           <Text style={styles.profileNameText}>{fullName || 'GoviLink User'}</Text>
-          <Text style={styles.profilePhoneText}>📞 {phoneNumber || 'No phone number added'}</Text>
+          <Text style={styles.profilePhoneText}>{phoneNumber || 'No phone number added'}</Text>
 
           {/* ROLE BADGE */}
           <View style={styles.roleBadgeContainer}>
@@ -203,7 +224,7 @@ export default function UserProfileScreen({
                 {role === 'ADMIN'
                   ? '🛡️ ADMINISTRATOR'
                   : role === 'FARMER'
-                  ? '🧑‍🌾 VERIFIED GROWER'
+                  ? (farmerDesign ? 'FARMER ACCOUNT' : '🧑‍🌾 VERIFIED GROWER')
                   : role === 'DRIVER'
                   ? '🚛 LOGISTICS PARTNER'
                   : '🛒 VERIFIED BUYER'}
@@ -214,7 +235,7 @@ export default function UserProfileScreen({
 
         {/* PERSONAL DETAILS CARD */}
         <View style={styles.cardBox}>
-          <Text style={styles.cardHeaderTitle}>Personal Information</Text>
+          <Text style={styles.cardHeaderTitle}>Personal information</Text>
 
           {/* FULL NAME INPUT */}
           <View style={styles.inputGroup}>
@@ -223,6 +244,7 @@ export default function UserProfileScreen({
               <Ionicons name="person-outline" size={18} color="#64748B" style={{ marginRight: 8 }} />
               <TextInput
                 style={styles.textInputField}
+                accessibilityLabel="Full name"
                 value={fullName}
                 onChangeText={setFullName}
                 placeholder="Enter full name"
@@ -238,6 +260,7 @@ export default function UserProfileScreen({
               <Ionicons name="call-outline" size={18} color="#64748B" style={{ marginRight: 8 }} />
               <TextInput
                 style={styles.textInputField}
+                accessibilityLabel="Phone number"
                 value={phoneNumber}
                 onChangeText={setPhoneNumber}
                 keyboardType="phone-pad"
@@ -254,6 +277,7 @@ export default function UserProfileScreen({
               <Ionicons name="mail-outline" size={18} color="#64748B" style={{ marginRight: 8 }} />
               <TextInput
                 style={styles.textInputField}
+                accessibilityLabel="Email address"
                 value={email}
                 onChangeText={setEmail}
                 keyboardType="email-address"
@@ -264,6 +288,9 @@ export default function UserProfileScreen({
             </View>
           </View>
 
+        </View>
+        <View style={styles.cardBox}>
+          <Text style={styles.cardHeaderTitle}>{role === 'FARMER' ? 'Farm details' : 'Location & business'}</Text>
           {/* DISTRICT SELECTOR */}
           <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>District & Hub Location</Text>
@@ -327,7 +354,8 @@ export default function UserProfileScreen({
                 />
                 <TextInput
                   style={styles.textInputField}
-                  value={farmOrBusinessName}
+                  accessibilityLabel="Farm or business name"
+                value={farmOrBusinessName}
                   onChangeText={setFarmOrBusinessName}
                   placeholder={role === 'FARMER' ? 'e.g. Green Valley Organic Plot' : 'e.g. Manning Market Outlet 4'}
                   placeholderTextColor="#94A3B8"
@@ -339,12 +367,12 @@ export default function UserProfileScreen({
 
         {/* APP PREFERENCES CARD */}
         <View style={styles.cardBox}>
-          <Text style={styles.cardHeaderTitle}>App Preferences & Settings</Text>
+          <Text style={styles.cardHeaderTitle}>Preferences</Text>
 
           {/* LANGUAGE SWITCHER */}
           <View style={styles.preferenceRow}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.prefTitle}>Language / ඡාෂාව / மொழி</Text>
+              <Text style={styles.prefTitle}>Language / භාෂාව / மொழி</Text>
               <Text style={styles.prefSub}>
                 {lang === 'en' ? 'English (Current)' : lang === 'si' ? 'සිංහල' : 'தமிழ்'}
               </Text>
@@ -383,9 +411,12 @@ export default function UserProfileScreen({
           </View>
         </View>
 
+        {!!saveMessage && <View accessibilityRole="alert" style={{ backgroundColor: saveMessage.error ? C.redBg : C.mint, padding: 16, borderRadius: 14, marginBottom: 14 }}><Text style={{ color: saveMessage.error ? C.red : C.greenDark, fontSize: 13, lineHeight: 20 }}>{saveMessage.text}</Text></View>}
         {/* ACTION BUTTONS */}
         <TouchableOpacity
           style={[styles.saveBtn, isSaving && styles.saveBtnDisabled]}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: isSaving, busy: isSaving }}
           onPress={handleSaveProfile}
           disabled={isSaving}
           activeOpacity={0.85}
@@ -400,16 +431,17 @@ export default function UserProfileScreen({
           )}
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.logoutOutlineBtn} onPress={onLogout} activeOpacity={0.8}>
+        <TouchableOpacity accessibilityRole="button" style={styles.logoutOutlineBtn} onPress={onLogout} activeOpacity={0.8}>
           <Ionicons name="log-out-outline" size={18} color="#DC2626" style={{ marginRight: 8 }} />
           <Text style={styles.logoutOutlineBtnText}>Log Out of GoviLink Account</Text>
         </TouchableOpacity>
       </ScrollView>
-    </SafeAreaView>
+      </KeyboardAvoidingView>
+    </Container>
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: '#F8FAFC',
@@ -669,3 +701,22 @@ const styles = StyleSheet.create({
     color: '#DC2626',
   },
 });
+
+// Farmer styling is scoped so the other account types keep their existing layout.
+const farmerStyles = {
+  ...baseStyles,
+  safeArea: { flex: 1, backgroundColor: C.canvas },
+  scrollContainer: { width: '100%', maxWidth: 760, alignSelf: 'center', paddingHorizontal: 20, paddingTop: 26, paddingBottom: 28 },
+  profileBannerCard: { backgroundColor: C.mint, borderRadius: 24, padding: 26, alignItems: 'center', marginBottom: 22, borderWidth: 1, borderColor: C.border },
+  avatarImage: { width: 90, height: 90, borderRadius: 45, backgroundColor: '#D4E7D9', alignItems: 'center', justifyContent: 'center', borderWidth: 4, borderColor: '#FFFFFF' },
+  profileNameText: { fontSize: 24, fontWeight: '700', color: C.ink, textAlign: 'center' },
+  cardBox: { backgroundColor: '#FFFFFF', borderRadius: 22, padding: 20, marginBottom: 18, borderWidth: 1, borderColor: C.border },
+  cardHeaderTitle: { fontSize: 17, fontWeight: '700', color: C.ink, marginBottom: 22 },
+  inputGroup: { marginBottom: 18 },
+  inputLabel: { fontSize: 12, fontWeight: '600', color: C.muted, marginBottom: 8 },
+  inputBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FBFCFA', borderRadius: 13, borderWidth: 1, borderColor: C.border, paddingHorizontal: 14, minHeight: 52, paddingVertical: 12 },
+  textInputField: { flex: 1, minWidth: 0, fontSize: 14, color: C.ink, paddingVertical: 0 },
+  saveBtn: { ...baseStyles.saveBtn, backgroundColor: C.green, elevation: 0, shadowOpacity: 0, minHeight: 52, height: undefined, paddingVertical: 15 },
+  logoutOutlineBtn: { ...baseStyles.logoutOutlineBtn, backgroundColor: C.redBg, borderColor: C.redBg, minHeight: 48, height: undefined, paddingVertical: 14 },
+  cameraBadgeBtn: { ...baseStyles.cameraBadgeBtn, width: 36, height: 36, borderRadius: 18, backgroundColor: C.green },
+};
