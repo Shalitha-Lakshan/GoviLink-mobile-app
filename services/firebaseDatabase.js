@@ -1198,9 +1198,12 @@ export const reassignDriverForOrder = async (
  */
 export const subscribeToBuyerRequests = (onUpdate, buyerUid = null) => {
   const requestsRef = collection(db, 'buyerRequests');
+  const targetQuery = buyerUid
+    ? query(requestsRef, where('buyerUid', '==', buyerUid))
+    : requestsRef;
 
   return onSnapshot(
-    requestsRef,
+    targetQuery,
     (snapshot) => {
       let requests = snapshot.docs.map((docSnap) => ({
         id: docSnap.id,
