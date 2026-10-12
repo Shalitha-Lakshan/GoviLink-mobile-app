@@ -15,31 +15,32 @@ import {
   deleteDriverVehicle,
   setActiveDriverVehicle,
 } from '../services/firebaseDatabase';
+import { FARMER_COLORS as C } from './FarmerDesign';
 
 // ----------------------------------------------------
 // THEME & COLOR PALETTE
 // ----------------------------------------------------
 const THEME = {
-  navy: '#0B2545',
-  navyDark: '#06172E',
-  emerald: '#16A34A',
-  emeraldDark: '#15803D',
-  emeraldLight: '#E8F5E9',
-  accentLeaf: '#2ECC71',
-  bg: '#F8FAFC',
-  cardBg: '#FFFFFF',
-  textDark: '#0F172A',
-  textMuted: '#64748B',
-  placeholder: '#94A3B8',
-  border: '#CBD5E1',
-  error: '#EF4444',
-  errorLight: '#FEE2E2',
-  warning: '#F59E0B',
-  warningLight: '#FEF3C7',
-  cyan: '#06B6D4',
-  cyanLight: '#ECFEFF',
-  purple: '#8B5CF6',
-  purpleLight: '#EDE9FE',
+  navy: C.greenDark,
+  navyDark: C.greenDark,
+  emerald: C.green,
+  emeraldDark: C.greenDark,
+  emeraldLight: C.mint,
+  accentLeaf: C.green,
+  bg: C.canvas,
+  cardBg: C.white,
+  textDark: C.ink,
+  textMuted: C.muted,
+  placeholder: C.muted,
+  border: C.border,
+  error: C.red,
+  errorLight: C.redBg,
+  warning: C.amber,
+  warningLight: C.amberBg,
+  cyan: C.blue,
+  cyanLight: C.mint,
+  purple: C.blue,
+  purpleLight: C.blueBg,
 };
 
 const TRANSLATIONS = {
@@ -174,7 +175,7 @@ export default function DriverVehiclesListScreen({
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="light-content" backgroundColor={THEME.navy} />
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
       {/* HEADER */}
       <View style={styles.headerBar}>
@@ -379,53 +380,54 @@ export default function DriverVehiclesListScreen({
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: THEME.navy,
+    backgroundColor: THEME.bg,
   },
   headerBar: {
-    backgroundColor: THEME.navy,
+    backgroundColor: '#FFFFFF',
     paddingHorizontal: 16,
     paddingTop: 10,
     paddingBottom: 14,
     flexDirection: 'row',
     alignItems: 'center',
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+    borderBottomColor: THEME.border,
   },
   backBtn: {
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    borderRadius: 8,
+    backgroundColor: THEME.emeraldLight,
+    borderRadius: 12,
     paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingVertical: 8,
     marginRight: 10,
   },
   backBtnText: {
-    color: '#FFFFFF',
+    color: THEME.emeraldDark,
     fontSize: 14,
-    fontWeight: 'bold',
+    fontWeight: '700',
   },
   headerTitleContainer: {
     flex: 1,
   },
   headerTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
+    fontWeight: '800',
+    color: THEME.textDark,
   },
   headerSubtitle: {
     fontSize: 11,
-    color: '#B0BEC5',
+    color: THEME.textMuted,
     marginTop: 2,
+    fontWeight: '500',
   },
   headerAddBtn: {
     backgroundColor: THEME.emerald,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
   },
   headerAddBtnText: {
     color: '#FFFFFF',
     fontSize: 13,
-    fontWeight: 'bold',
+    fontWeight: '700',
   },
   scrollContent: {
     backgroundColor: THEME.bg,
@@ -437,7 +439,7 @@ const styles = StyleSheet.create({
   // Summary Card
   summaryCard: {
     backgroundColor: THEME.cardBg,
-    borderRadius: 14,
+    borderRadius: 20,
     padding: 16,
     marginBottom: 16,
     flexDirection: 'row',
@@ -446,9 +448,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: THEME.border,
     elevation: 2,
-    shadowColor: '#000',
+    shadowColor: '#16352D',
     shadowOpacity: 0.04,
-    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 10,
   },
   summaryCol: {
     flex: 1,
@@ -456,14 +459,15 @@ const styles = StyleSheet.create({
   },
   summaryLabel: {
     fontSize: 10,
-    fontWeight: '600',
+    fontWeight: '700',
     color: THEME.textMuted,
     textTransform: 'uppercase',
     marginBottom: 4,
+    letterSpacing: 0.5,
   },
   summaryValue: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '800',
     color: THEME.textDark,
   },
   summaryUnit: {
@@ -480,15 +484,16 @@ const styles = StyleSheet.create({
   // Vehicle Card
   vehicleCard: {
     backgroundColor: THEME.cardBg,
-    borderRadius: 14,
-    padding: 14,
+    borderRadius: 20,
+    padding: 16,
     marginBottom: 16,
     borderWidth: 1,
     borderColor: THEME.border,
     elevation: 2,
-    shadowColor: '#000',
+    shadowColor: '#16352D',
     shadowOpacity: 0.04,
-    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 10,
   },
   vehicleCardActive: {
     borderColor: THEME.emerald,
@@ -670,7 +675,7 @@ const styles = StyleSheet.create({
   // Empty State
   emptyContainer: {
     backgroundColor: THEME.cardBg,
-    borderRadius: 14,
+    borderRadius: 22,
     padding: 32,
     alignItems: 'center',
     borderWidth: 1,
@@ -696,8 +701,8 @@ const styles = StyleSheet.create({
   },
   emptyActionBtn: {
     backgroundColor: THEME.emerald,
-    borderRadius: 10,
-    paddingHorizontal: 20,
+    borderRadius: 14,
+    paddingHorizontal: 22,
     paddingVertical: 12,
   },
   emptyActionBtnText: {
@@ -709,16 +714,16 @@ const styles = StyleSheet.create({
   // Bottom Add Button
   bottomAddBtn: {
     backgroundColor: THEME.emerald,
-    borderRadius: 12,
+    borderRadius: 16,
     paddingVertical: 14,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 8,
     shadowColor: THEME.emerald,
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
+    shadowOpacity: 0.2,
     shadowRadius: 6,
-    elevation: 4,
+    elevation: 3,
   },
   bottomAddBtnText: {
     color: '#FFFFFF',

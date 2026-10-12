@@ -10,23 +10,24 @@ import {
   Alert,
 } from 'react-native';
 import { checkDriverAvailability } from '../services/firebaseDatabase';
+import { FARMER_COLORS as C } from './FarmerDesign';
 
 const THEME = {
-  navy: '#0B2545',
-  emerald: '#16A34A',
-  emeraldLight: '#E8F5E9',
-  accentLeaf: '#2ECC71',
-  bg: '#F8FAFC',
-  cardBg: '#FFFFFF',
-  textDark: '#0F172A',
-  textMuted: '#64748B',
-  border: '#E2E8F0',
-  warning: '#F59E0B',
-  warningLight: '#FEF3C7',
-  danger: '#EF4444',
-  dangerLight: '#FEE2E2',
-  info: '#3B82F6',
-  infoLight: '#DBEAFE',
+  ink: C.ink,
+  green: C.green,
+  greenDark: C.greenDark,
+  mint: C.mint,
+  bg: C.canvas,
+  cardBg: C.white,
+  textDark: C.ink,
+  textMuted: C.muted,
+  border: C.border,
+  warning: C.amber,
+  warningLight: C.amberBg,
+  danger: C.red,
+  dangerLight: C.redBg,
+  info: C.blue,
+  infoLight: C.blueBg,
 };
 
 /**
@@ -304,19 +305,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: THEME.cardBg,
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderColor: THEME.border,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    borderRadius: 14,
+    minHeight: 52,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
   },
   dropdownBtnSelected: {
-    borderColor: THEME.emerald,
-    backgroundColor: '#F0FDF4',
+    borderColor: THEME.green,
+    backgroundColor: THEME.mint,
   },
   dropdownBtnDisabled: {
     opacity: 0.6,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: '#EDF1EC',
   },
   dropdownLeft: {
     flexDirection: 'row',
@@ -344,7 +346,7 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: THEME.emerald,
+    backgroundColor: THEME.green,
   },
   selectedDriverSub: {
     fontSize: 11,
@@ -365,7 +367,7 @@ const styles = StyleSheet.create({
   /* MODAL STYLES */
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(11, 37, 69, 0.65)',
+    backgroundColor: 'rgba(12, 35, 26, 0.55)',
     justifyContent: 'flex-end',
   },
   modalContent: {
@@ -387,7 +389,7 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 18,
     fontWeight: '800',
-    color: THEME.navy,
+    color: THEME.ink,
   },
   modalSubTitle: {
     fontSize: 12,
@@ -395,7 +397,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   boldGreen: {
-    color: THEME.emerald,
+    color: THEME.green,
     fontWeight: 'bold',
   },
   boldRed: {
@@ -406,13 +408,13 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#E2E8F0',
+    backgroundColor: THEME.mint,
     alignItems: 'center',
     justifyContent: 'center',
   },
   closeBtnText: {
     fontSize: 14,
-    color: THEME.textDark,
+    color: THEME.greenDark,
     fontWeight: 'bold',
   },
 
@@ -422,11 +424,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: THEME.border,
-    borderRadius: 12,
+    borderRadius: 15,
     marginHorizontal: 20,
     marginBottom: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 14,
+    minHeight: 48,
   },
   searchIcon: {
     fontSize: 14,
@@ -451,28 +453,23 @@ const styles = StyleSheet.create({
   },
   driverCard: {
     backgroundColor: THEME.cardBg,
-    borderRadius: 14,
-    padding: 12,
-    borderWidth: 1.5,
+    borderRadius: 18,
+    padding: 14,
+    borderWidth: 1,
     borderColor: THEME.border,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
   },
   driverCardAvailable: {
-    borderColor: '#BBF7D0',
+    borderColor: THEME.border,
   },
   driverCardBusy: {
-    borderColor: '#FECACA',
-    backgroundColor: '#FFF5F5',
-    opacity: 0.85,
+    borderColor: '#F5D5D5',
+    backgroundColor: '#FDF7F7',
+    opacity: 0.88,
   },
   driverCardSelected: {
-    borderColor: THEME.emerald,
-    backgroundColor: '#F0FDF4',
-    borderWidth: 2,
+    borderColor: THEME.green,
+    backgroundColor: THEME.mint,
+    borderWidth: 1.5,
   },
   driverTopRow: {
     flexDirection: 'row',
@@ -490,12 +487,12 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: THEME.navy,
+    backgroundColor: THEME.mint,
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarText: {
-    color: '#FFFFFF',
+    color: THEME.greenDark,
     fontSize: 16,
     fontWeight: 'bold',
   },
@@ -519,7 +516,7 @@ const styles = StyleSheet.create({
   ratingText: {
     fontSize: 10,
     fontWeight: 'bold',
-    color: '#B45309',
+    color: THEME.warning,
   },
   driverPhone: {
     fontSize: 11,
@@ -533,7 +530,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   statusBadgeAvailable: {
-    backgroundColor: THEME.emeraldLight,
+    backgroundColor: THEME.mint,
   },
   statusBadgeBusy: {
     backgroundColor: THEME.dangerLight,
@@ -543,7 +540,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   statusTextAvailable: {
-    color: THEME.emerald,
+    color: THEME.greenDark,
   },
   statusTextBusy: {
     color: THEME.danger,
@@ -553,8 +550,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#F8FAFC',
-    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: THEME.border,
+    borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 6,
     marginTop: 4,
@@ -574,7 +573,7 @@ const styles = StyleSheet.create({
 
   busyBanner: {
     marginTop: 8,
-    backgroundColor: '#FEF2F2',
+    backgroundColor: THEME.dangerLight,
     borderRadius: 8,
     padding: 8,
     borderLeftWidth: 3,
@@ -582,20 +581,21 @@ const styles = StyleSheet.create({
   },
   busyBannerText: {
     fontSize: 11,
-    color: '#991B1B',
+    color: THEME.danger,
     fontWeight: '600',
   },
   busySubNotice: {
     fontSize: 10,
-    color: '#B91C1C',
+    color: THEME.danger,
     marginTop: 2,
+    opacity: 0.8,
   },
 
   selectedMarker: {
     marginTop: 8,
-    backgroundColor: THEME.emerald,
-    borderRadius: 6,
-    paddingVertical: 4,
+    backgroundColor: THEME.green,
+    borderRadius: 8,
+    paddingVertical: 5,
     alignItems: 'center',
   },
   selectedMarkerText: {

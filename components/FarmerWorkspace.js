@@ -104,7 +104,7 @@ export default function FarmerWorkspace({ userProfile, lang, t, activeTab, setAc
 
   return <SafeAreaView edges={['top', 'left', 'right']} style={s.safe}>
     <StatusBar barStyle="dark-content" backgroundColor={C.canvas} />
-    <View style={s.header}><View style={s.brand}><View style={s.brandMark}><Ionicons name="leaf" size={22} color="#FFFFFF" /></View><View><Text style={s.brandName}>Govi<Text style={{ color: C.green }}>Link</Text></Text><Text style={s.brandCaption}>FARMER WORKSPACE</Text></View></View>
+    <View style={s.header}><View style={s.brand}><Image source={require('../assets/splash-icon.png')} style={s.brandLogo} resizeMode="contain" /><View><Text style={s.brandName}>Govi<Text style={{ color: C.green }}>Link</Text></Text><Text style={s.brandCaption}>FARMER WORKSPACE</Text></View></View>
       <View style={s.headerActions}>{onChangeLanguage && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Change language" onPress={() => onChangeLanguage(lang === 'en' ? 'si' : lang === 'si' ? 'ta' : 'en')} style={s.language}><Text style={s.languageText}>{lang === 'en' ? 'EN' : lang === 'si' ? 'සිං' : 'தம'}</Text></TouchableOpacity>}
         <TouchableOpacity accessibilityRole="button" accessibilityLabel={nav.profile} onPress={() => switchTab('profile')} style={s.avatarButton}>{userProfile?.photoURL ? <Image source={{ uri: userProfile.photoURL }} style={s.avatarImage} /> : <Text style={s.avatarInitial}>{(userProfile?.fullName || 'F').charAt(0).toUpperCase()}</Text>}</TouchableOpacity>
       </View>
@@ -156,7 +156,7 @@ export default function FarmerWorkspace({ userProfile, lang, t, activeTab, setAc
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.canvas }, flex: { flex: 1, minWidth: 0 },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14, gap: 12, borderBottomWidth: 1, borderBottomColor: C.border },
-  brand: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 1 }, brandMark: { width: 42, height: 42, borderRadius: 14, backgroundColor: C.greenDark, alignItems: 'center', justifyContent: 'center' },
+  brand: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 1 }, brandLogo: { width: 42, height: 42 }, brandMark: { width: 42, height: 42, borderRadius: 14, backgroundColor: C.greenDark, alignItems: 'center', justifyContent: 'center' },
   brandName: { fontSize: 22, fontWeight: '800', color: C.ink, letterSpacing: -0.6 }, brandCaption: { fontSize: 8, fontWeight: '700', color: C.muted, letterSpacing: 1.3, marginTop: 2 },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 }, language: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }, languageText: { fontSize: 12, fontWeight: '700', color: C.muted },
   avatarButton: { width: 42, height: 42, borderRadius: 21, backgroundColor: '#E1EBDD', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }, avatarImage: { width: '100%', height: '100%' }, avatarInitial: { fontSize: 17, fontWeight: '700', color: C.greenDark },
