@@ -6,7 +6,6 @@ import {
   TextInput,
   TouchableOpacity,
   ScrollView,
-  SafeAreaView,
   StatusBar,
   Modal,
   Alert,
@@ -16,6 +15,7 @@ import {
   Platform,
   Switch,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import {
   addDriverVehicle,

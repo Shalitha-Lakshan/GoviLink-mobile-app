@@ -6,7 +6,6 @@ import {
   TextInput,
   TouchableOpacity,
   ScrollView,
-  SafeAreaView,
   StatusBar,
   Alert,
   ActivityIndicator,
@@ -15,6 +14,7 @@ import {
   Keyboard,
   Image,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { loginWithFirebase } from '../services/firebaseDatabase';
 
 // ----------------------------------------------------
