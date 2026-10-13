@@ -31,7 +31,7 @@ import { db, auth, storage } from '../firebaseConfig';
 // -------------------------------------------------------
 
 /**
- * Helper to compress base64 images on web so they stay well below Firestore's 1MB document limit.
+ * Compress web images before embedding them in a shared Firestore document.
  */
 const compressWebDataUrl = async (dataUrl, maxDim = 800, quality = 0.65) => {
   if (Platform.OS === 'web' && typeof Image !== 'undefined' && dataUrl && dataUrl.startsWith('data:image')) {
@@ -66,9 +66,35 @@ const compressWebDataUrl = async (dataUrl, maxDim = 800, quality = 0.65) => {
   return dataUrl;
 };
 
+// Leave room for listing fields within Firestore's document size limit.
+const MAX_INLINE_IMAGE_LENGTH = 700000;
+const validateInlineImage = (value) => {
+  if (typeof value !== 'string' || !/^data:image\/(jpeg|png|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/.test(value)) {
+    throw new Error('Could not prepare a shareable photo. Please select the photo again.');
+  }
+  if (value.length > MAX_INLINE_IMAGE_LENGTH) {
+    throw new Error('The photo is too large to save without image hosting. Please choose a smaller photo or try uploading again.');
+  }
+  return value;
+};
+
+const readImageDataUrl = async (uri) => {
+  if (uri.startsWith('data:')) return uri;
+  const response = await fetch(uri);
+  if (response.ok === false) throw new Error('Could not read the selected photo.');
+  const blob = await response.blob();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('Could not read the selected photo.'));
+    reader.readAsDataURL(blob);
+  });
+};
+
 /**
  * Upload produce image to Firebase Storage (with base64 fallback)
- * Ensures the image is hosted and accessible across all devices & users.
+ * Return only a hosted URL or bounded, self-contained image data. Never persist
+ * file/content/blob addresses, which are only accessible on the originating device.
  */
 export const uploadProduceImage = async (imageUri, produceId) => {
   if (!imageUri) return null;
@@ -78,18 +104,17 @@ export const uploadProduceImage = async (imageUri, produceId) => {
     return imageUri;
   }
 
-  // 2. On Web: Browser CORS policy blocks XMLHttpRequests to Firebase Storage bucket
-  // unless CORS headers are deployed to Google Cloud Storage.
-  // Instead of triggering browser CORS preflight failures, compress to a lightweight
-  // ~35KB JPEG data URL and store directly. This works instantly on Web and Native
-  // while staying well under Firestore's 1MB limit.
+  // Web uses inline data for compatibility with the current bucket CORS setup.
+  // Resolve blob URLs first: returning a browser object URL would break on other devices.
   if (Platform.OS === 'web') {
-    return await compressWebDataUrl(imageUri);
+    const dataUrl = await readImageDataUrl(imageUri);
+    return validateInlineImage(await compressWebDataUrl(dataUrl));
   }
 
   // 3. On Native (Android / iOS): Upload to Firebase Storage
   // Native mobile platforms use native sockets/HTTP and do NOT have browser CORS restrictions.
-  const uniqueId = produceId || `produce_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+  // A new object for each replacement avoids stale cached images after editing.
+  const uniqueId = `${produceId || 'produce'}_${Date.now()}_${Math.random().toString(36).substring(7)}`;
   const storagePath = `produce_images/${uniqueId}.jpg`;
   const storageRef = ref(storage, storagePath);
 
@@ -105,22 +130,10 @@ export const uploadProduceImage = async (imageUri, produceId) => {
     }
   } catch (storageError) {
     console.warn('Native Firebase Storage upload error, falling back:', storageError);
-    if (imageUri.startsWith('data:')) {
-      return imageUri;
-    }
-
     try {
-      const response = await fetch(imageUri);
-      const blob = await response.blob();
-      const base64Data = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-      });
-      return base64Data;
-    } catch (_fallbackError) {
-      return imageUri;
+      return validateInlineImage(await readImageDataUrl(imageUri));
+    } catch (fallbackError) {
+      throw new Error(fallbackError.message || 'Photo upload failed. Please select the photo again and retry.');
     }
   }
 };

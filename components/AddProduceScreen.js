@@ -148,9 +148,9 @@ export default function AddProduceScreen({
   // Helper: Compress web images to keep memory and Firestore documents compact
   const compressWebImageDataUrl = (dataUrl, maxDim = 800, quality = 0.65) => {
     return new Promise((resolve) => {
-      if (typeof Image === 'undefined') return resolve(dataUrl);
+      if (typeof window === 'undefined' || typeof window.Image !== 'function') return resolve(dataUrl);
       try {
-        const img = new Image();
+        const img = new window.Image();
         img.onload = () => {
           let { width, height } = img;
           if (width > maxDim || height > maxDim) {
@@ -211,11 +211,13 @@ export default function AddProduceScreen({
         mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [4, 3],
+        base64: true,
         quality: 0.8,
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
-        setSelectedImage(result.assets[0].uri);
+        const asset = result.assets[0];
+        setSelectedImage(asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : asset.uri);
       }
     } catch (error) {
       console.warn('Gallery picker primary attempt failed, trying fallback:', error);
@@ -223,10 +225,12 @@ export default function AddProduceScreen({
         const fallbackResult = await ImagePicker.launchImageLibraryAsync({
           mediaTypes: ['images'],
           allowsEditing: false,
+          base64: true,
           quality: 0.8,
         });
         if (!fallbackResult.canceled && fallbackResult.assets && fallbackResult.assets.length > 0) {
-          setSelectedImage(fallbackResult.assets[0].uri);
+          const asset = fallbackResult.assets[0];
+          setSelectedImage(asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : asset.uri);
         }
       } catch (err) {
         console.error('Fallback gallery picker failed:', err);
@@ -281,11 +285,13 @@ export default function AddProduceScreen({
         mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [4, 3],
+        base64: true,
         quality: 0.8,
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
-        setSelectedImage(result.assets[0].uri);
+        const asset = result.assets[0];
+        setSelectedImage(asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : asset.uri);
       }
     } catch (error) {
       console.warn('Camera primary attempt failed, trying fallback:', error);
@@ -293,10 +299,12 @@ export default function AddProduceScreen({
         const fallbackResult = await ImagePicker.launchCameraAsync({
           mediaTypes: ['images'],
           allowsEditing: false,
+          base64: true,
           quality: 0.8,
         });
         if (!fallbackResult.canceled && fallbackResult.assets && fallbackResult.assets.length > 0) {
-          setSelectedImage(fallbackResult.assets[0].uri);
+          const asset = fallbackResult.assets[0];
+          setSelectedImage(asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : asset.uri);
         }
       } catch (err) {
         console.error('Fallback camera failed:', err);
