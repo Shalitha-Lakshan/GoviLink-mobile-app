@@ -1,4 +1,3 @@
-import AppLogo from './AppLogo';
 import React, { useState } from 'react';
 import {
   StyleSheet,
@@ -239,12 +238,20 @@ export default function LoginScreen({ lang = 'en', onBackToLang, onNavigateToReg
               <TouchableOpacity onPress={onBackToLang} activeOpacity={0.7} style={styles.backBtn}>
                 <BackArrowIcon color={THEME.textDark} />
               </TouchableOpacity>
-            ) : null}
+            ) : (
+              <View style={{ width: 40 }} />
+            )}
+            <Text style={styles.navBrandText}>GoviLink</Text>
+            <View style={{ width: 40 }} />
           </View>
 
           {/* BRAND EMBLEM & HEADER */}
           <View style={styles.headerSection}>
-            <AppLogo width={140} style={{ marginBottom: 14 }} />
+            <Image
+              source={require('../assets/splash-icon.png')}
+              style={styles.logoBadge}
+              resizeMode="contain"
+            />
             <Text style={styles.titleText}>{t.title}</Text>
             <Text style={styles.subtitleText}>{t.subtitle}</Text>
           </View>

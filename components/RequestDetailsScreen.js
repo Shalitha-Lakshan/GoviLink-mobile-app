@@ -1,4 +1,3 @@
-import AppLogo from './AppLogo';
 import React, { useState } from 'react';
 import {
   StyleSheet,
@@ -152,14 +151,13 @@ export default function RequestDetailsScreen({
             source={
               userProfile?.photoURL
                 ? { uri: userProfile.photoURL }
-                : require('../assets/logo.png')
+                : require('../assets/splash-icon.png')
             }
-            resizeMode={userProfile?.photoURL ? "cover" : "contain"}
             style={styles.profileAvatar}
           />
         </View>
 
-        <AppLogo />
+        <Text style={styles.brandTitle}>GoviLink</Text>
 
         <TouchableOpacity style={styles.notifBtn} activeOpacity={0.7} onPress={onLogout}>
           <Ionicons name="notifications-outline" size={22} color="#006837" />
@@ -219,8 +217,7 @@ export default function RequestDetailsScreen({
           <View style={styles.consignorLeftRow}>
             <View style={styles.farmerAvatarWrapper}>
               <Image
-                source={require('../assets/logo.png')}
-                resizeMode="contain"
+                source={require('../assets/splash-icon.png')}
                 style={styles.farmerAvatar}
               />
               <View style={styles.verifiedCheckBadge}>

@@ -1,4 +1,3 @@
-import AppLogo from './AppLogo';
 import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
@@ -513,14 +512,13 @@ export default function AdminHomeScreen({
             source={
               userProfile?.photoURL
                 ? { uri: userProfile.photoURL }
-                : require('../assets/logo.png')
+                : require('../assets/splash-icon.png')
             }
-            resizeMode={userProfile?.photoURL ? "cover" : "contain"}
             style={styles.profileAvatar}
           />
         </TouchableOpacity>
 
-        <AppLogo />
+        <Text style={styles.brandTitle}>GoviLink</Text>
 
         <TouchableOpacity
           style={styles.notifBtn}

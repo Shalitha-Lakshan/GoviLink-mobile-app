@@ -1,4 +1,3 @@
-import AppLogo from './AppLogo';
 import React, { useState } from 'react';
 import {
   StyleSheet,
@@ -437,7 +436,7 @@ export default function RegisterScreen({ lang = 'en', onBack, onNavigateToLogin,
             <TouchableOpacity onPress={handleBackPress} activeOpacity={0.7} style={styles.backBtn}>
               <BackArrowIcon color={THEME.textDark} />
             </TouchableOpacity>
-            <AppLogo width={68} />
+            <Text style={styles.navBrandText}>GoviLink</Text>
             <View style={{ width: 40 }} />
           </View>
 

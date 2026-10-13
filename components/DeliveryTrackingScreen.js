@@ -1,4 +1,3 @@
-import AppLogo from './AppLogo';
 import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
@@ -356,7 +355,7 @@ export default function DeliveryTrackingScreen({
           <Ionicons name="arrow-back" size={22} color="#0F172A" />
         </TouchableOpacity>
 
-        <AppLogo />
+        <Text style={styles.brandTitle}>GoviLink</Text>
 
         <TouchableOpacity style={styles.notifBtn} activeOpacity={0.7} onPress={onLogout}>
           <Ionicons name="notifications-outline" size={22} color="#006837" />

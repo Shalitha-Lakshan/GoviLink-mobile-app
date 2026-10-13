@@ -1,4 +1,3 @@
-import AppLogo from './AppLogo';
 import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
@@ -404,15 +403,14 @@ export default function DriverHomeScreen({
             source={
               userProfile?.photoURL
                 ? { uri: userProfile.photoURL }
-                : require('../assets/logo.png')
+                : require('../assets/splash-icon.png')
             }
-            resizeMode={userProfile?.photoURL ? "cover" : "contain"}
             style={styles.profileAvatar}
           />
         </TouchableOpacity>
 
         <View style={styles.brandTitleRow}>
-          <AppLogo />
+          <Text style={styles.brandTitle}>GoviLink</Text>
           <View style={styles.driverRoleBadge}>
             <Text style={styles.driverRoleBadgeText}>DRIVER</Text>
           </View>
