@@ -136,7 +136,7 @@ const getFriendlyLoginError = (errorCode) => {
     case 'auth/wrong-password':
     case 'auth/user-not-found':
     case 'auth/invalid-email':
-      return 'Invalid email or password.';
+      return 'Invalid email or password. If you haven\'t created this account yet, please tap Register below.';
     case 'auth/user-disabled':
       return 'This account has been disabled. Please contact support.';
     case 'auth/too-many-requests':
@@ -144,7 +144,7 @@ const getFriendlyLoginError = (errorCode) => {
     case 'auth/network-request-failed':
       return 'Network error. Please check your internet connection.';
     default:
-      return 'Invalid email or password.';
+      return 'Invalid email or password. Please verify your credentials or register.';
   }
 };
 
@@ -158,6 +158,7 @@ export default function LoginScreen({ lang = 'en', onBackToLang, onNavigateToReg
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
+  const [authError, setAuthError] = useState(null);
 
   const validateForm = () => {
     let newErrors = {};
@@ -179,6 +180,7 @@ export default function LoginScreen({ lang = 'en', onBackToLang, onNavigateToReg
 
   const handleLogin = async () => {
     Keyboard.dismiss();
+    setAuthError(null);
     if (!validateForm()) return;
 
     setIsSubmitting(true);
@@ -191,10 +193,13 @@ export default function LoginScreen({ lang = 'en', onBackToLang, onNavigateToReg
         }
       } else {
         const friendlyMsg = getFriendlyLoginError(result.error);
+        setAuthError(friendlyMsg);
         Alert.alert('Login Failed', friendlyMsg);
       }
     } catch (e) {
-      Alert.alert('Error', 'An unexpected error occurred. Please try again.');
+      const fallbackMsg = 'An unexpected error occurred. Please try again.';
+      setAuthError(fallbackMsg);
+      Alert.alert('Error', fallbackMsg);
     } finally {
       setIsSubmitting(false);
     }
@@ -239,6 +244,25 @@ export default function LoginScreen({ lang = 'en', onBackToLang, onNavigateToReg
 
           {/* FORM FIELDS */}
           <View style={styles.formSection}>
+            {authError ? (
+              <View style={styles.errorBannerContainer}>
+                <Text style={styles.errorBannerTitle}>⚠️ Login Failed</Text>
+                <Text style={styles.errorBannerText}>{authError}</Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    setAuthError(null);
+                    if (onNavigateToRegister) onNavigateToRegister();
+                  }}
+                  style={styles.errorBannerAction}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.errorBannerActionText}>
+                    Don't have an account yet? Tap here to Register →
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+
             {/* EMAIL INPUT */}
             <View style={styles.inputGroup}>
               <Text style={styles.label}>{t.emailLabel}</Text>
@@ -254,6 +278,7 @@ export default function LoginScreen({ lang = 'en', onBackToLang, onNavigateToReg
                   keyboardType="email-address"
                   onChangeText={(text) => {
                     setEmail(text);
+                    if (authError) setAuthError(null);
                     if (errors.email) setErrors((prev) => ({ ...prev, email: null }));
                   }}
                 />
@@ -275,6 +300,7 @@ export default function LoginScreen({ lang = 'en', onBackToLang, onNavigateToReg
                   value={password}
                   onChangeText={(text) => {
                     setPassword(text);
+                    if (authError) setAuthError(null);
                     if (errors.password) setErrors((prev) => ({ ...prev, password: null }));
                   }}
                 />
@@ -558,5 +584,36 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: THEME.primary,
     fontWeight: '800',
+  },
+  errorBannerContainer: {
+    backgroundColor: '#FEF2F2',
+    borderColor: '#FECACA',
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 20,
+  },
+  errorBannerTitle: {
+    color: '#991B1B',
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  errorBannerText: {
+    color: '#B91C1C',
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '500',
+  },
+  errorBannerAction: {
+    marginTop: 8,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: '#FEE2E2',
+  },
+  errorBannerActionText: {
+    color: THEME.primary,
+    fontSize: 13,
+    fontWeight: '700',
   },
 });
