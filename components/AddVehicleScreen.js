@@ -6,7 +6,6 @@ import {
   TextInput,
   TouchableOpacity,
   ScrollView,
-  SafeAreaView,
   StatusBar,
   Modal,
   Alert,
@@ -16,37 +15,39 @@ import {
   Platform,
   Switch,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import {
   addDriverVehicle,
   updateDriverVehicle,
   saveDriverVehicle,
 } from '../services/firebaseDatabase';
+import { FARMER_COLORS as C } from './FarmerDesign';
 
 // ----------------------------------------------------
 // THEME & COLOR PALETTE
 // ----------------------------------------------------
 const THEME = {
-  navy: '#0B2545',
-  navyDark: '#06172E',
-  emerald: '#16A34A',
-  emeraldDark: '#15803D',
-  emeraldLight: '#E8F5E9',
-  accentLeaf: '#2ECC71',
-  bg: '#F8FAFC',
-  cardBg: '#FFFFFF',
-  textDark: '#0F172A',
-  textMuted: '#64748B',
-  placeholder: '#94A3B8',
-  border: '#CBD5E1',
-  borderActive: '#16A34A',
-  error: '#EF4444',
-  warning: '#F59E0B',
-  warningLight: '#FEF3C7',
-  purple: '#8B5CF6',
-  purpleLight: '#EDE9FE',
-  cyan: '#06B6D4',
-  cyanLight: '#ECFEFF',
+  navy: C.greenDark,
+  navyDark: C.greenDark,
+  emerald: C.green,
+  emeraldDark: C.greenDark,
+  emeraldLight: C.mint,
+  accentLeaf: C.green,
+  bg: C.canvas,
+  cardBg: C.white,
+  textDark: C.ink,
+  textMuted: C.muted,
+  placeholder: C.muted,
+  border: C.border,
+  borderActive: C.green,
+  error: C.red,
+  warning: C.amber,
+  warningLight: C.amberBg,
+  purple: C.blue,
+  purpleLight: C.blueBg,
+  cyan: C.blue,
+  cyanLight: C.mint,
 };
 
 const VEHICLE_TYPES = [
@@ -379,7 +380,7 @@ export default function AddVehicleScreen({
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="light-content" backgroundColor={THEME.navy} />
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
       {/* HEADER BAR */}
       <View style={styles.headerBar}>
@@ -650,65 +651,64 @@ export default function AddVehicleScreen({
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: THEME.navy,
+    backgroundColor: C.canvas,
   },
   headerBar: {
-    backgroundColor: THEME.navy,
-    paddingHorizontal: 16,
-    paddingTop: 10,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 20,
+    paddingTop: 14,
     paddingBottom: 14,
     flexDirection: 'row',
     alignItems: 'center',
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+    borderBottomColor: C.border,
   },
   backBtn: {
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    borderRadius: 8,
+    backgroundColor: C.mint,
+    borderRadius: 12,
     paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingVertical: 8,
     marginRight: 12,
   },
   backBtnText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: 'bold',
+    color: C.greenDark,
+    fontSize: 13,
+    fontWeight: '700',
   },
   headerTitleContainer: {
     flex: 1,
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: '800',
+    color: C.ink,
   },
   headerSubtitle: {
-    fontSize: 11,
-    color: '#B0BEC5',
+    fontSize: 12,
+    color: C.muted,
     marginTop: 2,
   },
   scrollContent: {
-    backgroundColor: THEME.bg,
-    padding: 16,
-    paddingBottom: 40,
+    backgroundColor: C.canvas,
+    padding: 18,
+    paddingBottom: 50,
+    width: '100%',
+    maxWidth: 760,
+    alignSelf: 'center',
   },
   sectionCard: {
-    backgroundColor: THEME.cardBg,
-    borderRadius: 14,
-    padding: 16,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 22,
+    padding: 18,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: THEME.border,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
+    borderColor: C.border,
   },
   sectionTitle: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: THEME.textDark,
-    marginBottom: 12,
+    fontSize: 16,
+    fontWeight: '700',
+    color: C.ink,
+    marginBottom: 14,
   },
 
   // Vehicle Types Grid

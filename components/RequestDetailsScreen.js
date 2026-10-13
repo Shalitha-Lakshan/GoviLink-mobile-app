@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import DriverAssignmentDropdown from './DriverAssignmentDropdown';
 import { checkDriverAvailability, assignDriverToOrder } from '../services/firebaseDatabase';
+import { FARMER_COLORS as C } from './FarmerDesign';
 
 // Map preview placeholder image URL
 const MAP_PREVIEW_URI = 'https://maps.googleapis.com/maps/api/staticmap?center=7.8731,80.7718&zoom=10&size=600x200&sensor=false';
@@ -146,21 +147,22 @@ export default function RequestDetailsScreen({
 
       {/* TOP HEADER BAR */}
       <View style={styles.topHeader}>
-        <View style={styles.profileAvatarWrapper}>
+        <View style={styles.brand}>
           <Image
-            source={
-              userProfile?.photoURL
-                ? { uri: userProfile.photoURL }
-                : require('../assets/splash-icon.png')
-            }
-            style={styles.profileAvatar}
+            source={require('../assets/splash-icon.png')}
+            style={styles.brandLogo}
+            resizeMode="contain"
           />
+          <View>
+            <Text style={styles.brandTitle}>
+              Govi<Text style={{ color: C.green }}>Link</Text>
+            </Text>
+            <Text style={styles.brandCaption}>COOPERATIVE ADMIN</Text>
+          </View>
         </View>
 
-        <Text style={styles.brandTitle}>GoviLink</Text>
-
         <TouchableOpacity style={styles.notifBtn} activeOpacity={0.7} onPress={onLogout}>
-          <Ionicons name="notifications-outline" size={22} color="#006837" />
+          <Ionicons name="notifications-outline" size={22} color={C.greenDark} />
           <View style={styles.notifBadgeDot} />
         </TouchableOpacity>
       </View>
@@ -172,7 +174,7 @@ export default function RequestDetailsScreen({
       >
         {/* BACK LINK */}
         <TouchableOpacity style={styles.backBtnRow} onPress={onBack} activeOpacity={0.7}>
-          <Ionicons name="arrow-back" size={18} color="#3B82F6" style={{ marginRight: 6 }} />
+          <Ionicons name="arrow-back" size={18} color={C.green} style={{ marginRight: 6 }} />
           <Text style={styles.backBtnText}>Back to Requests</Text>
         </TouchableOpacity>
 
@@ -399,7 +401,7 @@ export default function RequestDetailsScreen({
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: C.canvas,
   },
 
   /* TOP HEADER */
@@ -408,48 +410,67 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingVertical: 12,
-    backgroundColor: '#F8FAFC',
+    paddingVertical: 14,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
   },
-  profileAvatarWrapper: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    overflow: 'hidden',
-    borderWidth: 1.5,
-    borderColor: '#E2E8F0',
+  brand: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
-  profileAvatar: {
-    width: '100%',
-    height: '100%',
+  brandLogo: {
+    width: 42,
+    height: 42,
+  },
+  brandMark: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: C.greenDark,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   brandTitle: {
     fontSize: 22,
     fontWeight: '800',
-    color: '#006837',
-    letterSpacing: -0.3,
+    color: C.ink,
+    letterSpacing: -0.6,
+  },
+  brandCaption: {
+    fontSize: 8,
+    fontWeight: '700',
+    color: C.muted,
+    letterSpacing: 1.3,
+    marginTop: 2,
   },
   notifBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#E1EBDD',
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
   },
   notifBadgeDot: {
     position: 'absolute',
-    top: 6,
-    right: 6,
+    top: 9,
+    right: 9,
     width: 7,
     height: 7,
     borderRadius: 3.5,
-    backgroundColor: '#EF4444',
+    backgroundColor: C.red,
   },
 
   scrollContainer: {
+    width: '100%',
+    maxWidth: 760,
+    alignSelf: 'center',
     paddingHorizontal: 20,
-    paddingBottom: 100,
+    paddingTop: 16,
+    paddingBottom: 110,
   },
 
   /* BACK BUTTON LINK */
@@ -457,75 +478,68 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: 6,
-    marginBottom: 12,
+    marginBottom: 16,
   },
   backBtnText: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#3B82F6',
+    fontWeight: '700',
+    color: C.green,
   },
 
   /* TITLE SECTION */
   titleSection: {
-    marginBottom: 16,
+    marginBottom: 20,
   },
   pageTitle: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: '800',
-    color: '#0F172A',
-    letterSpacing: -0.3,
+    color: C.ink,
+    letterSpacing: -0.8,
   },
   subTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 4,
+    marginTop: 6,
   },
   requestIdText: {
     fontSize: 13,
-    color: '#64748B',
+    color: C.muted,
     fontWeight: '600',
   },
   statusBadgeNeeds: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FEE2E2',
+    backgroundColor: C.amberBg,
     paddingHorizontal: 10,
     paddingVertical: 5,
-    borderRadius: 14,
+    borderRadius: 10,
   },
   statusDotRed: {
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#DC2626',
+    backgroundColor: C.amber,
     marginRight: 6,
   },
   statusTextNeeds: {
     fontSize: 10,
     fontWeight: '800',
-    color: '#DC2626',
+    color: C.amber,
     letterSpacing: 0.5,
   },
 
   /* CARD 1: CARGO PAYLOAD */
   cardPayload: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    padding: 16,
-    marginBottom: 14,
+    borderRadius: 22,
+    padding: 18,
+    marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderLeftWidth: 4,
-    borderLeftColor: '#EF4444',
+    borderColor: C.border,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 2,
   },
   payloadLeftRow: {
     flexDirection: 'row',
@@ -535,11 +549,11 @@ const styles = StyleSheet.create({
   payloadIconBox: {
     width: 48,
     height: 48,
-    borderRadius: 14,
-    backgroundColor: '#F1F5F9',
+    borderRadius: 15,
+    backgroundColor: C.mint,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: 14,
   },
   payloadInfoCol: {
     flex: 1,
@@ -547,59 +561,54 @@ const styles = StyleSheet.create({
   cardSubHeaderLabel: {
     fontSize: 10,
     fontWeight: '800',
-    color: '#64748B',
+    color: C.muted,
     letterSpacing: 0.8,
   },
   payloadTitle: {
-    fontSize: 20,
+    fontSize: 19,
     fontWeight: '800',
-    color: '#0F172A',
+    color: C.ink,
     marginTop: 2,
   },
   payloadGradeText: {
     fontSize: 12,
-    color: '#475569',
+    color: C.muted,
     fontWeight: '500',
     marginTop: 2,
   },
   volumeBox: {
-    backgroundColor: '#F8FAFC',
-    borderRadius: 12,
+    backgroundColor: C.canvas,
+    borderRadius: 14,
     paddingHorizontal: 14,
     paddingVertical: 10,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#F1F5F9',
+    borderColor: C.border,
   },
   volumeValue: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '800',
-    color: '#006837',
+    color: C.greenDark,
   },
   volumeLabel: {
     fontSize: 10,
-    color: '#64748B',
-    fontWeight: '500',
-    marginTop: 1,
+    color: C.muted,
+    fontWeight: '600',
+    marginTop: 2,
   },
 
   /* CARD 2: CONSIGNOR (FARMER INFO) */
   cardConsignor: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    padding: 16,
-    marginBottom: 14,
+    borderRadius: 22,
+    padding: 18,
+    marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: C.border,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 2,
   },
   consignorLeftRow: {
     flexDirection: 'row',
@@ -611,7 +620,10 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    marginRight: 12,
+    marginRight: 14,
+    backgroundColor: C.mint,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   farmerAvatar: {
     width: '100%',
@@ -631,7 +643,7 @@ const styles = StyleSheet.create({
   farmerName: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#0F172A',
+    color: C.ink,
     marginTop: 2,
   },
   ratingRow: {
@@ -642,17 +654,17 @@ const styles = StyleSheet.create({
   ratingText: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#0F172A',
+    color: C.ink,
   },
   ordersCountText: {
     fontWeight: '400',
-    color: '#64748B',
+    color: C.muted,
   },
   callBtn: {
     width: 44,
     height: 44,
-    borderRadius: 22,
-    backgroundColor: '#DBEAFE',
+    borderRadius: 14,
+    backgroundColor: C.mint,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -660,16 +672,11 @@ const styles = StyleSheet.create({
   /* CARD 3: TRANSIT ROUTE */
   cardRoute: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    padding: 16,
-    marginBottom: 14,
+    borderRadius: 22,
+    padding: 18,
+    marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 2,
+    borderColor: C.border,
   },
   routeHeaderRow: {
     flexDirection: 'row',
@@ -680,18 +687,20 @@ const styles = StyleSheet.create({
   routeSectionTitle: {
     fontSize: 16,
     fontWeight: '800',
-    color: '#0F172A',
+    color: C.ink,
   },
   estBadge: {
-    backgroundColor: '#F1F5F9',
-    paddingHorizontal: 8,
+    backgroundColor: C.canvas,
+    borderWidth: 1,
+    borderColor: C.border,
+    paddingHorizontal: 9,
     paddingVertical: 4,
-    borderRadius: 6,
+    borderRadius: 8,
   },
   estBadgeText: {
     fontSize: 10,
     fontWeight: '800',
-    color: '#475569',
+    color: C.muted,
     letterSpacing: 0.5,
   },
   routeNodeBlock: {
@@ -703,7 +712,7 @@ const styles = StyleSheet.create({
     height: 20,
     borderRadius: 10,
     borderWidth: 3,
-    borderColor: '#475569',
+    borderColor: C.green,
     backgroundColor: '#FFFFFF',
     justifyContent: 'center',
     alignItems: 'center',
@@ -714,7 +723,7 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#475569',
+    backgroundColor: C.green,
   },
   destPinIconBox: {
     width: 22,
@@ -725,29 +734,29 @@ const styles = StyleSheet.create({
   routeNodeLabel: {
     fontSize: 10,
     fontWeight: '800',
-    color: '#64748B',
+    color: C.muted,
     letterSpacing: 0.8,
   },
   locationMainTitle: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#0F172A',
+    color: C.ink,
     marginTop: 2,
   },
   locationSubTitle: {
     fontSize: 12,
-    color: '#475569',
+    color: C.muted,
     marginTop: 2,
   },
   mapContainer: {
     width: '100%',
     height: 100,
-    borderRadius: 12,
+    borderRadius: 14,
     marginTop: 10,
     overflow: 'hidden',
     position: 'relative',
     borderWidth: 1,
-    borderColor: '#CBD5E1',
+    borderColor: C.border,
   },
   mapImage: {
     width: '100%',
@@ -763,7 +772,7 @@ const styles = StyleSheet.create({
   routeConnectingLine: {
     width: 2,
     height: 32,
-    backgroundColor: '#CBD5E1',
+    backgroundColor: C.border,
     marginLeft: 9,
     marginVertical: 4,
   },
@@ -771,19 +780,14 @@ const styles = StyleSheet.create({
   /* CARD 4: REQUESTED SCHEDULE */
   cardSchedule: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    padding: 16,
-    marginBottom: 14,
+    borderRadius: 22,
+    padding: 18,
+    marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: C.border,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 2,
   },
   scheduleLeftRow: {
     flexDirection: 'row',
@@ -791,10 +795,10 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   calendarCircleIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#006837',
+    width: 46,
+    height: 46,
+    borderRadius: 15,
+    backgroundColor: C.greenDark,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
@@ -805,11 +809,11 @@ const styles = StyleSheet.create({
   scheduleDateTitle: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#0F172A',
+    color: C.ink,
     marginTop: 2,
   },
   timeSlotBadge: {
-    backgroundColor: '#DCFCE7',
+    backgroundColor: C.mint,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -817,22 +821,22 @@ const styles = StyleSheet.create({
   timeSlotBadgeText: {
     fontSize: 11,
     fontWeight: '800',
-    color: '#006837',
+    color: C.greenDark,
   },
 
   driverSelectionContainer: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 22,
+    padding: 18,
     borderWidth: 1,
-    borderColor: '#006837',
+    borderColor: C.border,
     marginTop: 10,
     marginBottom: 16,
   },
   driverPickerHeading: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#0F172A',
+    color: C.ink,
     marginBottom: 8,
   },
 
@@ -842,27 +846,22 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    height: 74,
+    minHeight: 76,
     backgroundColor: '#FFFFFF',
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 20,
+    paddingVertical: 12,
     borderTopWidth: 1,
-    borderTopColor: '#E2E8F0',
+    borderTopColor: C.border,
     gap: 12,
-    elevation: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -3 },
-    shadowOpacity: 0.05,
-    shadowRadius: 5,
   },
   editRequestBtn: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
-    borderRadius: 12,
-    paddingVertical: 13,
+    backgroundColor: C.mint,
+    borderRadius: 14,
+    minHeight: 48,
+    paddingVertical: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -870,19 +869,20 @@ const styles = StyleSheet.create({
   editRequestBtnText: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#0F172A',
+    color: C.greenDark,
   },
   assignPrimaryBtn: {
     flex: 1.4,
-    backgroundColor: '#006837',
-    borderRadius: 12,
-    paddingVertical: 13,
+    backgroundColor: C.green,
+    borderRadius: 14,
+    minHeight: 48,
+    paddingVertical: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
   },
   assignPrimaryBtnText: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '700',
     color: '#FFFFFF',
   },

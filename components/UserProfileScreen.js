@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
   Text,
@@ -13,6 +13,7 @@ import {
   Switch,
   KeyboardAvoidingView,
   Platform,
+  BackHandler,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -82,6 +83,16 @@ export default function UserProfileScreen({
   const [showDistrictPicker, setShowDistrictPicker] = useState(false);
 
   const role = (userProfile?.role || 'FARMER').toUpperCase(); // 'ADMIN' | 'FARMER' | 'DRIVER' | 'BUYER'
+
+  // Handle Android hardware back button
+  useEffect(() => {
+    if (!onBack) return;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      onBack();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [onBack]);
 
   const handlePickAvatar = async () => {
     try {
@@ -171,24 +182,85 @@ export default function UserProfileScreen({
     <Container style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
-      {!embedded && <>
-      {/* TOP HEADER */}
-      <View style={styles.topHeader}>
-        <TouchableOpacity style={styles.backBtn} onPress={onBack} activeOpacity={0.7}>
-          <Ionicons name="arrow-back" size={20} color="#0F172A" />
-        </TouchableOpacity>
+      {!embedded && (
+        <View style={styles.topHeader}>
+          <View style={styles.headerLeftGroup}>
+            {onBack && (
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="Back to Dashboard"
+                style={styles.backBtn}
+                onPress={onBack}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="arrow-back" size={20} color={farmerDesign ? C.greenDark : '#0F172A'} />
+              </TouchableOpacity>
+            )}
 
-        <Text style={styles.headerTitle}>User Profile</Text>
+            {farmerDesign ? (
+              <View style={styles.brand}>
+                <Image
+                  source={require('../assets/splash-icon.png')}
+                  style={styles.brandLogo}
+                  resizeMode="contain"
+                />
+                <View>
+                  <Text style={styles.brandTitle}>
+                    Govi<Text style={{ color: C.green }}>Link</Text>
+                  </Text>
+                  <Text style={styles.brandCaption}>
+                    {role === 'ADMIN' ? 'COOPERATIVE ADMIN' : 'FARMER PROFILE'}
+                  </Text>
+                </View>
+              </View>
+            ) : (
+              <Text style={styles.headerTitle}>User Profile</Text>
+            )}
+          </View>
 
-        <TouchableOpacity style={styles.logoutHeaderBtn} onPress={onLogout} activeOpacity={0.7}>
-          <Ionicons name="log-out-outline" size={20} color="#DC2626" />
-        </TouchableOpacity>
-      </View>
+          {onLogout && (
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Log out"
+              style={styles.logoutHeaderBtn}
+              onPress={onLogout}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="log-out-outline" size={20} color="#DC2626" />
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
 
-      </>}
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
       <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-        {farmerDesign && <FarmerHeading eyebrow="YOUR ACCOUNT" title="My profile" subtitle="Your farm, your details, your connections." />}
+        {onBack && (
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel={role === 'ADMIN' ? 'Back to Admin Dashboard' : 'Back to Dashboard'}
+            style={styles.backBtnRow}
+            onPress={onBack}
+            activeOpacity={0.7}
+          >
+            <Ionicons
+              name="arrow-back"
+              size={16}
+              color={farmerDesign ? C.green : '#0F172A'}
+              style={{ marginRight: 6 }}
+            />
+            <Text style={styles.backBtnText}>
+              {role === 'ADMIN' ? 'Back to Admin Dashboard' : 'Back to Dashboard'}
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        {farmerDesign && (
+          <FarmerHeading
+            eyebrow={role === 'ADMIN' ? 'ADMINISTRATOR ACCOUNT' : 'YOUR ACCOUNT'}
+            title={role === 'ADMIN' ? 'Admin Profile' : 'My profile'}
+            subtitle={role === 'ADMIN' ? 'Manage your administrator details and system preferences.' : 'Your farm, your details, your connections.'}
+          />
+        )}
         {/* AVATAR & COVER BANNER CARD */}
         <View style={styles.profileBannerCard}>
           <View style={styles.avatarWrapper}>
@@ -456,6 +528,11 @@ const baseStyles = StyleSheet.create({
     paddingVertical: 12,
     backgroundColor: '#F8FAFC',
   },
+  headerLeftGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
   backBtn: {
     width: 36,
     height: 36,
@@ -464,10 +541,43 @@ const baseStyles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  backBtnRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+    marginBottom: 14,
+  },
+  backBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
   headerTitle: {
     fontSize: 18,
     fontWeight: '800',
     color: '#0F172A',
+  },
+  brand: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  brandLogo: {
+    width: 36,
+    height: 36,
+    marginRight: 10,
+  },
+  brandTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#0F172A',
+    letterSpacing: -0.5,
+  },
+  brandCaption: {
+    fontSize: 8,
+    fontWeight: '700',
+    color: '#64748B',
+    letterSpacing: 1.2,
+    marginTop: 2,
   },
   logoutHeaderBtn: {
     width: 36,
@@ -706,7 +816,71 @@ const baseStyles = StyleSheet.create({
 const farmerStyles = {
   ...baseStyles,
   safeArea: { flex: 1, backgroundColor: C.canvas },
-  scrollContainer: { width: '100%', maxWidth: 760, alignSelf: 'center', paddingHorizontal: 20, paddingTop: 26, paddingBottom: 28 },
+  topHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
+  },
+  headerLeftGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  backBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: C.mint,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  backBtnRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+    marginBottom: 14,
+  },
+  backBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: C.green,
+  },
+  brand: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  brandLogo: {
+    width: 38,
+    height: 38,
+    marginRight: 10,
+  },
+  brandTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: C.ink,
+    letterSpacing: -0.6,
+  },
+  brandCaption: {
+    fontSize: 8,
+    fontWeight: '700',
+    color: C.muted,
+    letterSpacing: 1.3,
+    marginTop: 2,
+  },
+  logoutHeaderBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: C.redBg,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  scrollContainer: { width: '100%', maxWidth: 760, alignSelf: 'center', paddingHorizontal: 20, paddingTop: 16, paddingBottom: 28 },
   profileBannerCard: { backgroundColor: C.mint, borderRadius: 24, padding: 26, alignItems: 'center', marginBottom: 22, borderWidth: 1, borderColor: C.border },
   avatarImage: { width: 90, height: 90, borderRadius: 45, backgroundColor: '#D4E7D9', alignItems: 'center', justifyContent: 'center', borderWidth: 4, borderColor: '#FFFFFF' },
   profileNameText: { fontSize: 24, fontWeight: '700', color: C.ink, textAlign: 'center' },

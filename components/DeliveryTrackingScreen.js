@@ -25,6 +25,7 @@ import {
   checkDriverAvailability,
   DEFAULT_COOP_DRIVERS,
 } from '../services/firebaseDatabase';
+import { FARMER_COLORS as C } from './FarmerDesign';
 
 // Map background placeholder matching design mockup
 const MAP_PREVIEW_URI =
@@ -351,14 +352,27 @@ export default function DeliveryTrackingScreen({
 
       {/* TOP HEADER BAR */}
       <View style={styles.topHeader}>
-        <TouchableOpacity style={styles.backBtn} onPress={onBack} activeOpacity={0.7}>
-          <Ionicons name="arrow-back" size={22} color="#0F172A" />
-        </TouchableOpacity>
-
-        <Text style={styles.brandTitle}>GoviLink</Text>
+        <View style={styles.headerLeftGroup}>
+          <TouchableOpacity style={styles.backBtn} onPress={onBack} activeOpacity={0.7}>
+            <Ionicons name="arrow-back" size={20} color={C.greenDark} />
+          </TouchableOpacity>
+          <View style={styles.brand}>
+            <Image
+              source={require('../assets/splash-icon.png')}
+              style={styles.brandLogo}
+              resizeMode="contain"
+            />
+            <View>
+              <Text style={styles.brandTitle}>
+                Govi<Text style={{ color: C.green }}>Link</Text>
+              </Text>
+              <Text style={styles.brandCaption}>COOPERATIVE ADMIN</Text>
+            </View>
+          </View>
+        </View>
 
         <TouchableOpacity style={styles.notifBtn} activeOpacity={0.7} onPress={onLogout}>
-          <Ionicons name="notifications-outline" size={22} color="#006837" />
+          <Ionicons name="notifications-outline" size={22} color={C.greenDark} />
           <View style={styles.notifBadgeDot} />
         </TouchableOpacity>
       </View>
@@ -1036,7 +1050,7 @@ export default function DeliveryTrackingScreen({
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: C.canvas,
   },
 
   /* TOP HEADER */
@@ -1045,56 +1059,94 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingVertical: 12,
-    backgroundColor: '#F8FAFC',
+    paddingVertical: 14,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
   },
-  backBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#F1F5F9',
-    justifyContent: 'center',
+  headerLeftGroup: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 12,
+  },
+  brand: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  brandLogo: {
+    width: 42,
+    height: 42,
+  },
+  brandMark: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: C.greenDark,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   brandTitle: {
     fontSize: 22,
     fontWeight: '800',
-    color: '#006837',
-    letterSpacing: -0.3,
+    color: C.ink,
+    letterSpacing: -0.6,
+  },
+  brandCaption: {
+    fontSize: 8,
+    fontWeight: '700',
+    color: C.muted,
+    letterSpacing: 1.3,
+    marginTop: 2,
+  },
+  backBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: C.mint,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   notifBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#E1EBDD',
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
   },
   notifBadgeDot: {
     position: 'absolute',
-    top: 6,
-    right: 6,
+    top: 9,
+    right: 9,
     width: 7,
     height: 7,
     borderRadius: 3.5,
-    backgroundColor: '#EF4444',
+    backgroundColor: C.red,
   },
 
   scrollContainer: {
     paddingHorizontal: 20,
+    paddingTop: 16,
     paddingBottom: 40,
+    width: '100%',
+    maxWidth: 760,
+    alignSelf: 'center',
   },
 
   /* LIVE MAP BANNER */
   mapContainer: {
     width: '100%',
     height: 180,
-    borderRadius: 20,
+    borderRadius: 22,
     overflow: 'hidden',
     position: 'relative',
     marginTop: 6,
     marginBottom: 16,
-    backgroundColor: '#E0E7FF',
+    backgroundColor: C.mint,
+    borderWidth: 1,
+    borderColor: C.border,
   },
   mapImage: {
     width: '100%',
@@ -1111,23 +1163,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 14,
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    borderWidth: 1,
+    borderColor: C.border,
   },
   liveDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#10B981',
+    backgroundColor: C.green,
     marginRight: 6,
   },
   liveTrackingText: {
     fontSize: 10,
     fontWeight: '800',
-    color: '#0F172A',
+    color: C.ink,
     letterSpacing: 0.5,
   },
   mapPinNode: {
@@ -1137,36 +1186,26 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#006837',
+    backgroundColor: C.greenDark,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 3,
     borderColor: '#FFFFFF',
-    elevation: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.2,
-    shadowRadius: 5,
   },
 
   /* DELIVERY STATUS CARD */
   deliveryCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 18,
+    borderRadius: 22,
     padding: 18,
-    marginBottom: 14,
+    marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 2,
+    borderColor: C.border,
   },
   deliveryTitle: {
     fontSize: 20,
     fontWeight: '800',
-    color: '#0F172A',
+    color: C.ink,
   },
   estRow: {
     flexDirection: 'row',
@@ -1176,13 +1215,13 @@ const styles = StyleSheet.create({
   },
   estText: {
     fontSize: 13,
-    color: '#475569',
+    color: C.muted,
     fontWeight: '500',
   },
   inTransitPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#E6F4EA',
+    backgroundColor: C.mint,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -1191,28 +1230,24 @@ const styles = StyleSheet.create({
   inTransitPillText: {
     fontSize: 13,
     fontWeight: '800',
-    color: '#006837',
+    color: C.greenDark,
   },
 
   /* GENERIC CARD CONTAINER */
   cardBox: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    padding: 16,
-    marginBottom: 14,
+    borderRadius: 22,
+    padding: 18,
+    marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 2,
+    borderColor: C.border,
   },
   cardSublabel: {
     fontSize: 11,
     fontWeight: '800',
-    color: '#475569',
+    color: C.muted,
     marginBottom: 12,
+    letterSpacing: 0.8,
   },
 
   /* DRIVER CARD */
@@ -1230,11 +1265,11 @@ const styles = StyleSheet.create({
   driverName: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#0F172A',
+    color: C.ink,
   },
   driverRatingText: {
     fontSize: 12,
-    color: '#64748B',
+    color: C.muted,
     fontWeight: '500',
   },
   driverActionsRow: {
@@ -1243,9 +1278,10 @@ const styles = StyleSheet.create({
   },
   messageBtn: {
     flex: 1,
-    backgroundColor: '#F1F5F9',
-    borderRadius: 12,
-    paddingVertical: 11,
+    backgroundColor: C.mint,
+    borderRadius: 14,
+    minHeight: 48,
+    paddingVertical: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1253,13 +1289,14 @@ const styles = StyleSheet.create({
   messageBtnText: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#0F172A',
+    color: C.greenDark,
   },
   callBtn: {
     flex: 1,
-    backgroundColor: '#006837',
-    borderRadius: 12,
-    paddingVertical: 11,
+    backgroundColor: C.green,
+    borderRadius: 14,
+    minHeight: 48,
+    paddingVertical: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1278,8 +1315,8 @@ const styles = StyleSheet.create({
   vehicleIconBox: {
     width: 44,
     height: 44,
-    borderRadius: 12,
-    backgroundColor: '#EFF6FF',
+    borderRadius: 14,
+    backgroundColor: C.mint,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
@@ -1287,16 +1324,16 @@ const styles = StyleSheet.create({
   plateNumberText: {
     fontSize: 18,
     fontWeight: '800',
-    color: '#0F172A',
+    color: C.ink,
   },
   vehicleModelText: {
     fontSize: 13,
-    color: '#64748B',
+    color: C.muted,
     marginTop: 1,
   },
   vehicleDivider: {
     height: 1,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: C.border,
     marginVertical: 12,
   },
   vehicleSpecsRow: {
@@ -1309,19 +1346,19 @@ const styles = StyleSheet.create({
   specLabel: {
     fontSize: 10,
     fontWeight: '800',
-    color: '#64748B',
+    color: C.muted,
     letterSpacing: 0.5,
   },
   specValue: {
     fontSize: 14,
     fontWeight: '800',
-    color: '#0F172A',
+    color: C.ink,
     marginTop: 2,
   },
   tempControlValue: {
     fontSize: 14,
     fontWeight: '800',
-    color: '#059669',
+    color: C.green,
   },
 
   /* CARGO MANIFEST */
@@ -1334,10 +1371,12 @@ const styles = StyleSheet.create({
   manifestTitle: {
     fontSize: 16,
     fontWeight: '800',
-    color: '#0F172A',
+    color: C.ink,
   },
   itemsCountBadge: {
-    backgroundColor: '#F1F5F9',
+    backgroundColor: C.canvas,
+    borderWidth: 1,
+    borderColor: C.border,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
@@ -1345,7 +1384,7 @@ const styles = StyleSheet.create({
   itemsCountText: {
     fontSize: 10,
     fontWeight: '800',
-    color: '#475569',
+    color: C.muted,
   },
   manifestItemRow: {
     flexDirection: 'row',
@@ -1354,34 +1393,34 @@ const styles = StyleSheet.create({
   },
   manifestItemBorder: {
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
+    borderBottomColor: C.border,
   },
   manifestThumb: {
     width: 42,
     height: 42,
     borderRadius: 10,
     marginRight: 12,
-    backgroundColor: '#E2E8F0',
+    backgroundColor: C.mint,
   },
   cargoItemTitle: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#0F172A',
+    color: C.ink,
   },
   cargoItemFarm: {
     fontSize: 12,
-    color: '#64748B',
+    color: C.muted,
     marginTop: 1,
   },
   cargoItemWeight: {
     fontSize: 14,
     fontWeight: '800',
-    color: '#0F172A',
+    color: C.ink,
   },
   cargoItemSublabel: {
     fontSize: 10,
     fontWeight: '700',
-    color: '#64748B',
+    color: C.muted,
     marginTop: 1,
   },
 
@@ -1400,7 +1439,7 @@ const styles = StyleSheet.create({
     width: 22,
     height: 22,
     borderRadius: 11,
-    backgroundColor: '#006837',
+    backgroundColor: C.green,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1409,7 +1448,7 @@ const styles = StyleSheet.create({
     height: 22,
     borderRadius: 11,
     borderWidth: 2.5,
-    borderColor: '#006837',
+    borderColor: C.green,
     backgroundColor: '#FFFFFF',
     justifyContent: 'center',
     alignItems: 'center',
@@ -1418,26 +1457,26 @@ const styles = StyleSheet.create({
     width: 10,
     height: 10,
     borderRadius: 5,
-    backgroundColor: '#006837',
+    backgroundColor: C.green,
   },
   upcomingCircleNode: {
     width: 22,
     height: 22,
     borderRadius: 11,
     borderWidth: 1.5,
-    borderColor: '#CBD5E1',
-    backgroundColor: '#F8FAFC',
+    borderColor: C.border,
+    backgroundColor: C.canvas,
     justifyContent: 'center',
     alignItems: 'center',
   },
   timelineConnectingLine: {
     width: 2,
     height: 40,
-    backgroundColor: '#E2E8F0',
+    backgroundColor: C.border,
     marginTop: 2,
   },
   timelineLineActive: {
-    backgroundColor: '#006837',
+    backgroundColor: C.green,
   },
   timelineContentCol: {
     flex: 1,
@@ -1446,19 +1485,19 @@ const styles = StyleSheet.create({
   timelineEventTitle: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#0F172A',
+    color: C.ink,
   },
   timelineEventTitleActive: {
-    color: '#006837',
+    color: C.greenDark,
     fontWeight: '800',
   },
   timelineEventTitleUpcoming: {
-    color: '#94A3B8',
+    color: C.muted,
     fontWeight: '600',
   },
   timelineEventDetail: {
     fontSize: 12,
-    color: '#475569',
+    color: C.muted,
     marginTop: 2,
     lineHeight: 16,
   },
@@ -1472,8 +1511,8 @@ const styles = StyleSheet.create({
   statusUpdateIconBox: {
     width: 42,
     height: 42,
-    borderRadius: 12,
-    backgroundColor: '#E8F5E9',
+    borderRadius: 14,
+    backgroundColor: C.mint,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
@@ -1481,11 +1520,11 @@ const styles = StyleSheet.create({
   statusUpdateCardTitle: {
     fontSize: 15,
     fontWeight: '800',
-    color: '#0F172A',
+    color: C.ink,
   },
   statusUpdateCardSub: {
     fontSize: 11,
-    color: '#64748B',
+    color: C.muted,
     marginTop: 1,
   },
   statusCurrentRow: {
@@ -1494,14 +1533,16 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 10,
     paddingHorizontal: 12,
-    backgroundColor: '#F8FAFC',
-    borderRadius: 10,
+    backgroundColor: C.canvas,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: C.border,
     marginBottom: 14,
   },
   statusCurrentLabel: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#475569',
+    color: C.muted,
   },
   statusLivePill: {
     paddingHorizontal: 10,
@@ -1516,27 +1557,21 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   statusBtn: {
-    paddingVertical: 12,
+    paddingVertical: 13,
     paddingHorizontal: 16,
-    borderRadius: 12,
+    borderRadius: 14,
+    minHeight: 48,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 2,
   },
   statusBtnReady: {
-    backgroundColor: '#2563EB',
-    shadowColor: '#2563EB',
+    backgroundColor: C.blue,
   },
   statusBtnTransit: {
-    backgroundColor: '#0284C7',
-    shadowColor: '#0284C7',
+    backgroundColor: C.greenDark,
   },
   statusBtnDelivered: {
-    backgroundColor: '#006837',
-    shadowColor: '#006837',
+    backgroundColor: C.green,
   },
   statusBtnText: {
     color: '#FFFFFF',
@@ -1546,28 +1581,28 @@ const styles = StyleSheet.create({
   terminalStateCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#E8F5E9',
+    backgroundColor: C.mint,
     borderWidth: 1,
-    borderColor: '#A7F3D0',
-    borderRadius: 12,
-    padding: 12,
+    borderColor: C.border,
+    borderRadius: 14,
+    padding: 14,
   },
   terminalTitle: {
     fontSize: 13,
     fontWeight: '800',
-    color: '#006837',
+    color: C.greenDark,
     marginBottom: 2,
   },
   terminalSubtitle: {
     fontSize: 11,
-    color: '#065F46',
+    color: C.green,
     lineHeight: 15,
   },
 
   /* CONFIRMATION MODAL STYLES */
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.65)',
+    backgroundColor: 'rgba(12, 35, 26, 0.55)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
@@ -1576,34 +1611,29 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 380,
     backgroundColor: '#FFFFFF',
-    borderRadius: 20,
+    borderRadius: 24,
     padding: 24,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    elevation: 8,
   },
   modalIconCircle: {
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: C.mint,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
   },
   modalTitleText: {
-    fontSize: 17,
+    fontSize: 18,
     fontWeight: '800',
-    color: '#0F172A',
+    color: C.ink,
     marginBottom: 8,
     textAlign: 'center',
   },
   modalMsgText: {
     fontSize: 13,
-    color: '#64748B',
+    color: C.muted,
     textAlign: 'center',
     lineHeight: 18,
     marginBottom: 20,
@@ -1616,28 +1646,26 @@ const styles = StyleSheet.create({
   modalCancelBtn: {
     flex: 1,
     paddingVertical: 12,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: '#CBD5E1',
+    borderRadius: 14,
+    minHeight: 48,
+    borderWidth: 1,
+    borderColor: C.border,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: C.mint,
   },
   modalCancelBtnText: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#475569',
+    color: C.greenDark,
   },
   modalConfirmBtn: {
     flex: 1,
     paddingVertical: 12,
-    borderRadius: 12,
+    borderRadius: 14,
+    minHeight: 48,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
   },
   modalConfirmBtnText: {
     fontSize: 13,
@@ -1650,20 +1678,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FEF3C7',
-    borderWidth: 1.5,
-    borderColor: '#FCD34D',
-    borderRadius: 12,
-    paddingVertical: 11,
+    backgroundColor: C.amberBg,
+    borderWidth: 1,
+    borderColor: '#F5DCA8',
+    borderRadius: 14,
+    minHeight: 48,
+    paddingVertical: 12,
     marginTop: 12,
   },
   reassignDriverBtnDisabled: {
-    backgroundColor: '#F1F5F9',
-    borderColor: '#E2E8F0',
+    backgroundColor: C.canvas,
+    borderColor: C.border,
     opacity: 0.7,
   },
   reassignDriverBtnText: {
-    color: '#B45309',
+    color: C.amber,
     fontSize: 13,
     fontWeight: '800',
   },
@@ -1676,25 +1705,25 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   partyRoleBadgeFarmer: {
-    backgroundColor: '#E6F4EA',
+    backgroundColor: C.mint,
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
   },
   partyRoleTextFarmer: {
-    color: '#006837',
+    color: C.greenDark,
     fontSize: 10,
     fontWeight: '800',
     letterSpacing: 0.5,
   },
   partyRoleBadgeBuyer: {
-    backgroundColor: '#DBEAFE',
+    backgroundColor: C.blueBg,
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
   },
   partyRoleTextBuyer: {
-    color: '#1D4ED8',
+    color: C.blue,
     fontSize: 10,
     fontWeight: '800',
     letterSpacing: 0.5,
@@ -1708,29 +1737,29 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#E6F4EA',
+    backgroundColor: C.mint,
     justifyContent: 'center',
     alignItems: 'center',
   },
   partyName: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#0F172A',
+    color: C.ink,
   },
   partySub: {
     fontSize: 13,
-    color: '#475569',
+    color: C.muted,
     marginTop: 2,
     lineHeight: 18,
   },
   partyRegionText: {
     fontSize: 11,
-    color: '#94A3B8',
+    color: C.muted,
     marginTop: 1,
   },
   partyNotes: {
     fontSize: 12,
-    color: '#B45309',
+    color: C.amber,
     fontStyle: 'italic',
     marginTop: 3,
   },
@@ -1738,7 +1767,7 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: '#E6F4EA',
+    backgroundColor: C.mint,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1753,18 +1782,18 @@ const styles = StyleSheet.create({
   reassignModalIconBox: {
     width: 44,
     height: 44,
-    borderRadius: 22,
-    backgroundColor: '#FEF3C7',
+    borderRadius: 14,
+    backgroundColor: C.amberBg,
     justifyContent: 'center',
     alignItems: 'center',
   },
   currentDriverBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F8FAFC',
+    backgroundColor: C.canvas,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: 10,
+    borderColor: C.border,
+    borderRadius: 12,
     padding: 10,
     marginBottom: 10,
     gap: 8,
@@ -1772,120 +1801,122 @@ const styles = StyleSheet.create({
   currentDriverBannerLabel: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#64748B',
+    color: C.muted,
   },
   currentDriverBannerVal: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#0F172A',
+    color: C.ink,
     flex: 1,
   },
   driverSearchInputBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F1F5F9',
-    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 14,
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    minHeight: 48,
     marginBottom: 6,
   },
   driverSearchInputField: {
     flex: 1,
     fontSize: 13,
-    color: '#0F172A',
+    color: C.ink,
     padding: 0,
   },
   driverOptionCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 10,
-    borderRadius: 10,
+    padding: 12,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: C.border,
     marginBottom: 8,
     backgroundColor: '#FFFFFF',
     gap: 10,
   },
   driverOptionCardSelected: {
-    borderColor: '#B45309',
-    backgroundColor: '#FFFBEB',
+    borderColor: C.green,
+    backgroundColor: C.mint,
   },
   driverOptionCardDisabled: {
     opacity: 0.55,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: C.canvas,
   },
   driverOptionRadio: {
     width: 18,
     height: 18,
     borderRadius: 9,
     borderWidth: 1.5,
-    borderColor: '#94A3B8',
+    borderColor: C.border,
     justifyContent: 'center',
     alignItems: 'center',
   },
   driverOptionRadioSelected: {
-    borderColor: '#B45309',
+    borderColor: C.green,
   },
   driverOptionRadioInner: {
     width: 10,
     height: 10,
     borderRadius: 5,
-    backgroundColor: '#B45309',
+    backgroundColor: C.green,
   },
   driverOptionName: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#0F172A',
+    color: C.ink,
     marginRight: 6,
   },
   driverOptionSub: {
     fontSize: 11,
-    color: '#64748B',
+    color: C.muted,
     marginTop: 2,
   },
   driverOptionBusyText: {
     fontSize: 10,
-    color: '#DC2626',
+    color: C.red,
     marginTop: 2,
     fontStyle: 'italic',
   },
   availBadgeGreen: {
-    backgroundColor: '#DCFCE7',
+    backgroundColor: C.mint,
     paddingHorizontal: 6,
     paddingVertical: 1,
     borderRadius: 4,
   },
   availBadgeGreenText: {
-    color: '#16A34A',
+    color: C.greenDark,
     fontSize: 9,
     fontWeight: '800',
   },
   availBadgeRed: {
-    backgroundColor: '#FEE2E2',
+    backgroundColor: C.redBg,
     paddingHorizontal: 6,
     paddingVertical: 1,
     borderRadius: 4,
   },
   availBadgeRedText: {
-    color: '#DC2626',
+    color: C.red,
     fontSize: 9,
     fontWeight: '800',
   },
   reasonInputLabel: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#475569',
+    color: C.muted,
     marginBottom: 4,
   },
   reasonInputField: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#CBD5E1',
-    borderRadius: 10,
+    borderColor: C.border,
+    borderRadius: 14,
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 10,
     fontSize: 12,
-    color: '#0F172A',
+    color: C.ink,
     marginBottom: 14,
   },
 });

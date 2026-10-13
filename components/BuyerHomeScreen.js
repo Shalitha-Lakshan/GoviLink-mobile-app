@@ -661,114 +661,37 @@ export default function BuyerHomeScreen({
         </View>
       </View>
     );
-  };
+  }
 
-  // ----------------------------------------------------
-  // SUB-RENDER: CUSTOM INQUIRY CARD
-  // ----------------------------------------------------
-  const renderRequest = (req) => {
-    return (
-      <View key={req.id} style={s.card}>
-        <View style={s.cardHeading}>
-          <IconTile name="leaf-outline" />
-          <View style={s.flex}>
-            <Text style={s.cardTitle}>{req.cropName}</Text>
-            <Text style={s.smallText}>{req.category || 'Vegetables'}</Text>
-          </View>
-          <View style={s.openBadge}>
-            <Text style={s.openBadgeText}>Open Inquiry</Text>
-          </View>
-        </View>
+  return (
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="light-content" backgroundColor={THEME.navy} />
 
-        <View style={s.requestMetrics}>
-          <View style={s.flex}>
-            <Text style={s.metricCaption}>Required volume</Text>
-            <Text style={s.metricValue}>
-              {req.quantity} <Text style={s.unit}>{req.unit || 'kg'}</Text>
+      {/* TOP HEADER BAR */}
+      <View style={styles.headerBar}>
+        <TouchableOpacity
+          style={styles.brandRow}
+          onPress={() => setShowProfileScreen(true)}
+          activeOpacity={0.8}
+        >
+          <Image
+            source={require('../assets/splash-icon.png')}
+            style={styles.logoBadge}
+            resizeMode="contain"
+          />
+          <View>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text style={styles.brandGovi}>Govi</Text>
+              <Text style={styles.brandLink}>Link</Text>
+              <View style={styles.roleTag}>
+                <Text style={styles.roleTagText}>🛒 Buyer</Text>
+              </View>
+            </View>
+            <Text style={styles.buyerWelcome} numberOfLines={1}>
+              Hi, {userProfile?.fullName ? userProfile.fullName.split(' ')[0] : 'Buyer'} • 📍 {userProfile?.district?.nameEn || 'Colombo'}
             </Text>
           </View>
-          {!!req.targetPricePerUnit && (
-            <View style={s.flex}>
-              <Text style={s.metricCaption}>Target budget</Text>
-              <Text style={s.metricValue}>
-                {t.labels.currency} {money(req.targetPricePerUnit)}
-              </Text>
-            </View>
-          )}
-        </View>
-
-        <DetailRow
-          icon="location-outline"
-          label={cleanLabel(t.customRequests.targetDistrict)}
-          value={`${req.targetDistrictName || req.targetDistrictEn || 'Island-wide'}${
-            req.specificArea ? ` · ${req.specificArea}` : ''
-          }`}
-        />
-        <DetailRow
-          icon="calendar-outline"
-          label={cleanLabel(t.customRequests.datePeriod)}
-          value={
-            req.datePeriodDescription ||
-            [req.requiredDateStart, req.requiredDateEnd].filter(Boolean).join(' – ') ||
-            'Immediate'
-          }
-        />
-        <DetailRow
-          icon="car-outline"
-          label="Logistics"
-          value={
-            req.deliveryNeeded === false
-              ? 'Farm Self-Pickup by Buyer'
-              : `Delivery: ${req.deliveryAddress || 'Central Destination'}`
-          }
-        />
-        {!!req.qualityGrade && (
-          <DetailRow icon="ribbon-outline" label="Quality grade" value={req.qualityGrade} />
-        )}
-        {!!req.notes && (
-          <View style={s.note}>
-            <Text style={s.noteText}>{req.notes}</Text>
-          </View>
-        )}
-
-        <View style={s.orderActions}>
-          <FarmerButton
-            label={cleanLabel(t.customRequests.cancelBtn)}
-            icon="trash-outline"
-            danger
-            onPress={() => handleDeleteRequest(req.id, req.cropName)}
-          />
-        </View>
-      </View>
-    );
-  };
-
-  // ----------------------------------------------------
-  // SUB-RENDER: BUYER ORDER CARD
-  // ----------------------------------------------------
-  const renderOrder = (order) => {
-    const status = order.status || 'PENDING';
-    const [statusLabel, color, backgroundColor] = STATUS[status] || [
-      status.replace(/_/g, ' '),
-      C.muted,
-      C.canvas,
-    ];
-    const steps = ['PENDING', 'ACCEPTED', 'IN_TRANSIT', 'DELIVERED'];
-    const stepIndex = steps.indexOf(status);
-
-    return (
-      <View key={order.id} style={s.card}>
-        <View style={s.orderTop}>
-          <View style={[s.statusBadge, { backgroundColor }]}>
-            <View style={[s.dot, { backgroundColor: color }]} />
-            <Text style={[s.statusText, { color }]}>{statusLabel}</Text>
-          </View>
-          <Text style={s.orderId}>
-            #{String(order.id || '').slice(-6).toUpperCase()}
-          </Text>
-        </View>
-
-        <Text style={s.cardTitle}>{order.produceName || 'Produce Order'}</Text>
+        </TouchableOpacity>
 
         <View style={s.requestMetrics}>
           <View style={s.flex}>
