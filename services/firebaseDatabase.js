@@ -11,6 +11,8 @@ import {
   query,
   where,
   getDocs,
+  writeBatch,
+  runTransaction,
 } from 'firebase/firestore';
 import {
   signInWithEmailAndPassword,
@@ -806,6 +808,14 @@ export const checkDriverAvailability = (driver, ordersList = []) => {
     };
   }
 
+  if (Array.isArray(driver.dispatchVehicleIds) && driver.dispatchVehicleIds.length === 0) {
+    return {
+      isAvailable: false,
+      activeOrder: null,
+      reason: 'No vehicles are selected for dispatch.',
+    };
+  }
+
   return {
     isAvailable: true,
     activeOrder: null,
@@ -1418,6 +1428,49 @@ export const addDriverVehicle = async (driverUid, vehicleData) => {
 
 export const saveDriverVehicle = addDriverVehicle;
 
+/** Decline a driver's assignment before pickup, keeping the order open. */
+export const rejectDriverDelivery = async (orderId, driverUid) => {
+  try {
+    if (!orderId || !driverUid || auth.currentUser?.uid !== driverUid) {
+      throw new Error('Please sign in as the assigned driver.');
+    }
+    await runTransaction(db, async (transaction) => {
+      const orderRef = doc(db, 'orders', orderId);
+      const snapshot = await transaction.get(orderRef);
+      if (!snapshot.exists()) throw new Error('Delivery not found.');
+      const order = snapshot.data();
+      if (order.driverId !== driverUid) throw new Error('This delivery is no longer assigned to you.');
+      if (!['ASSIGNED', 'ACCEPTED', 'READY_FOR_PICKUP'].includes(order.status)) {
+        throw new Error('A delivery can only be rejected before pickup.');
+      }
+      const timestamp = new Date().toISOString();
+      transaction.update(orderRef, {
+        status: 'READY_FOR_PICKUP',
+        driverId: null,
+        driverName: null,
+        driverPhone: null,
+        driverVehicle: null,
+        driverVehicleType: null,
+        driverRating: null,
+        assignedAt: null,
+        assignedAtIso: null,
+        updatedAt: serverTimestamp(),
+        assignmentHistory: [
+          ...(Array.isArray(order.assignmentHistory) ? order.assignmentHistory : []),
+          { action: 'DRIVER_REJECTED', driverId: driverUid, driverName: order.driverName || '', timestamp },
+        ],
+        statusHistory: [
+          ...(Array.isArray(order.statusHistory) ? order.statusHistory : []),
+          { status: 'READY_FOR_PICKUP', timestamp, changedBy: order.driverName || 'Driver', actorRole: 'driver', notes: 'Driver rejected assignment; awaiting reassignment.' },
+        ],
+      });
+    });
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+};
+
 /**
  * Update an existing vehicle
  */
@@ -1442,50 +1495,56 @@ export const updateDriverVehicle = async (vehicleId, vehicleData, driverUid) => 
   }
 };
 
-/**
- * Delete a driver's vehicle
- */
+// Keep dispatch metadata in sync for clients that use the driver's profile.
+const driverDispatchProfile = (vehicles) => {
+  const selected = vehicles.filter((vehicle) => vehicle.isActive);
+  const primary = selected[0] || null;
+  return {
+    dispatchVehicleIds: selected.map((vehicle) => vehicle.id),
+    dispatchVehicles: selected.map((vehicle) => ({
+      id: vehicle.id,
+      plateNumber: vehicle.plateNumber || '',
+      makeModel: vehicle.makeModel || '',
+      vehicleType: vehicle.vehicleType || '',
+    })),
+    vehicleNumber: primary?.plateNumber || '',
+    vehicleType: primary?.vehicleType || '',
+    vehicle: primary,
+    updatedAt: serverTimestamp(),
+  };
+};
+
+/** Delete a vehicle and remove it from dispatch metadata. */
 export const deleteDriverVehicle = async (vehicleId, driverUid) => {
   try {
-    const vehicleDocRef = doc(db, 'vehicles', vehicleId);
-    await deleteDoc(vehicleDocRef);
+    if (!driverUid || !vehicleId) throw new Error('Please sign in and select a vehicle.');
+    const snapshot = await getDocs(query(collection(db, 'vehicles'), where('driverUid', '==', driverUid)));
+    const vehicles = snapshot.docs.map((item) => ({ ...item.data(), id: item.id }));
+    if (!vehicles.some((vehicle) => vehicle.id === vehicleId)) throw new Error('This vehicle is not in your fleet.');
+    const batch = writeBatch(db);
+    batch.delete(doc(db, 'vehicles', vehicleId));
+    batch.update(doc(db, 'users', driverUid), driverDispatchProfile(vehicles.filter((vehicle) => vehicle.id !== vehicleId)));
+    await batch.commit();
     return { success: true };
   } catch (error) {
-    console.error('Error deleting vehicle:', error);
     return { success: false, error: error.message };
   }
 };
 
-/**
- * Set active vehicle for dispatch
- */
-export const setActiveDriverVehicle = async (driverUid, vehicleId) => {
+/** Select or remove one vehicle without changing other fleet selections. */
+export const setActiveDriverVehicle = async (driverUid, vehicleId, isActive = true) => {
   try {
-    const vehiclesRef = collection(db, 'vehicles');
-    const q = query(vehiclesRef, where('driverUid', '==', driverUid));
-    const snap = await getDocs(q);
-
-    for (const d of snap.docs) {
-      await updateDoc(doc(db, 'vehicles', d.id), {
-        isActive: d.id === vehicleId,
-        updatedAt: serverTimestamp(),
-      });
-    }
-
-    const activeDocSnap = await getDoc(doc(db, 'vehicles', vehicleId));
-    if (activeDocSnap.exists()) {
-      const activeData = activeDocSnap.data();
-      await updateDoc(doc(db, 'users', driverUid), {
-        vehicleNumber: activeData.plateNumber,
-        vehicleType: activeData.vehicleType,
-        vehicle: activeData,
-        updatedAt: serverTimestamp(),
-      });
-    }
-
+    if (!driverUid || !vehicleId || typeof isActive !== 'boolean') throw new Error('Please sign in and select a valid vehicle.');
+    const snapshot = await getDocs(query(collection(db, 'vehicles'), where('driverUid', '==', driverUid)));
+    const vehicles = snapshot.docs.map((item) => ({ ...item.data(), id: item.id }));
+    if (!vehicles.some((vehicle) => vehicle.id === vehicleId)) throw new Error('This vehicle is not in your fleet.');
+    const selectedVehicles = vehicles.map((vehicle) => vehicle.id === vehicleId ? { ...vehicle, isActive } : vehicle);
+    const batch = writeBatch(db);
+    batch.update(doc(db, 'vehicles', vehicleId), { isActive, updatedAt: serverTimestamp() });
+    batch.update(doc(db, 'users', driverUid), driverDispatchProfile(selectedVehicles));
+    await batch.commit();
     return { success: true };
   } catch (error) {
-    console.error('Error setting active driver vehicle:', error);
     return { success: false, error: error.message };
   }
 };

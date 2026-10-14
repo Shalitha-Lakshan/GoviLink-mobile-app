@@ -55,6 +55,8 @@ const TRANSLATIONS = {
     vehiclesLabel: 'Vehicles',
     kgLabel: 'kg',
     activeBadge: '● Active for Dispatch',
+    removeActiveBtn: 'Remove from dispatch',
+    dispatchError: 'Could not update dispatch selection.',
     setActiveBtn: '⚡ Set as Active Vehicle',
     editBtn: '✏️ Edit',
     deleteBtn: '🗑️ Delete',
@@ -67,7 +69,6 @@ const TRANSLATIONS = {
     deleteConfirmMsg: (plate) => `Are you sure you want to remove vehicle "${plate}" from your registered fleet?`,
     deleteSuccess: 'Vehicle deleted successfully.',
     activeSuccess: 'Active vehicle updated successfully.',
-    cannotDeleteActive: 'This vehicle is currently set as your active dispatch vehicle. Please set another vehicle as active first or proceed with deletion (next available vehicle will become active).',
   },
   si: {
     title: 'මගේ වාහන එකතුව',
@@ -79,6 +80,8 @@ const TRANSLATIONS = {
     vehiclesLabel: 'වාහන',
     kgLabel: 'කි.ග්‍රෑ.',
     activeBadge: '● ප්‍රවාහනය සඳහා සක්‍රියයි',
+    removeActiveBtn: 'ප්‍රවාහනයෙන් ඉවත් කරන්න',
+    dispatchError: 'ප්‍රවාහන තේරීම යාවත්කාලීන කළ නොහැක.',
     setActiveBtn: '⚡ සක්‍රිය වාහනය ලෙස තෝරන්න',
     editBtn: '✏️ සංස්කරණය',
     deleteBtn: '🗑️ ඉවත් කරන්න',
@@ -91,7 +94,6 @@ const TRANSLATIONS = {
     deleteConfirmMsg: (plate) => `ඔබට "${plate}" අංක දරන වාහනය ඉවත් කිරීමට අවශ්‍යද?`,
     deleteSuccess: 'වාහනය සාර්ථකව ඉවත් කෙරිණි.',
     activeSuccess: 'ක්‍රියාකාරී වාහනය යාවත්කාලීන විය.',
-    cannotDeleteActive: 'මෙම වාහනය සක්‍රිය වාහනය ලෙස තෝරා ඇත.',
   },
   ta: {
     title: 'எனது வாகனங்கள்',
@@ -103,6 +105,8 @@ const TRANSLATIONS = {
     vehiclesLabel: 'வாகனங்கள்',
     kgLabel: 'கிலோ',
     activeBadge: '● விநியோகத்தில் செயலில் உள்ளது',
+    removeActiveBtn: 'விநியோகத்திலிருந்து நீக்கு',
+    dispatchError: 'விநியோகத் தேர்வை மாற்ற முடியவில்லை.',
     setActiveBtn: '⚡ செயலில் உள்ளதாக அமைக்கவும்',
     editBtn: '✏️ திருத்த',
     deleteBtn: '🗑️ நீக்க',
@@ -115,7 +119,6 @@ const TRANSLATIONS = {
     deleteConfirmMsg: (plate) => `வாகனம் "${plate}" ஐ நீக்க விரும்புகிறீர்களா?`,
     deleteSuccess: 'வாகனம் நீக்கப்பட்டது.',
     activeSuccess: 'செயலில் உள்ள வாகனம் மாற்றப்பட்டது.',
-    cannotDeleteActive: 'இந்த வாகனம் தற்போது செயலில் உள்ளது.',
   },
 };
 
@@ -134,20 +137,20 @@ export default function DriverVehiclesListScreen({
 
   // Compute fleet stats
   const totalVehiclesCount = vehicles.length;
-  const activeVehicleObj = vehicles.find((v) => v.isActive) || (vehicles.length > 0 ? vehicles[0] : null);
+  const activeVehicleCount = vehicles.filter((v) => v.isActive).length;
   const totalCapacityKg = vehicles.reduce((sum, v) => sum + (Number(v.capacity) || 0), 0);
 
-  // Set Active Handler
+  // Each vehicle can be selected or removed independently.
   const handleSetActive = async (vehicle) => {
-    if (vehicle.isActive) return;
+    if (processingId) return;
     setProcessingId(vehicle.id);
-    const result = await setActiveDriverVehicle(userProfile?.uid, vehicle.id);
-    setProcessingId(null);
-
-    if (result.success) {
-      Alert.alert('Active Vehicle Selected 🚛', `"${vehicle.makeModel || vehicle.plateNumber}" is now active for your delivery dispatches.`);
-    } else {
-      Alert.alert('Error', result.error || 'Failed to set active vehicle.');
+    try {
+      const result = await setActiveDriverVehicle(userProfile?.uid, vehicle.id, !vehicle.isActive);
+      if (!result.success) Alert.alert('Error', result.error || t.dispatchError);
+    } catch (_error) {
+      Alert.alert('Error', t.dispatchError);
+    } finally {
+      setProcessingId(null);
     }
   };
 
@@ -208,7 +211,7 @@ export default function DriverVehiclesListScreen({
           <View style={styles.summaryCard}>
             <View style={styles.summaryCol}>
               <Text style={styles.summaryLabel}>{t.totalFleet}</Text>
-              <Text style={styles.summaryValue}>
+              <Text style={styles.summaryValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
                 {totalVehiclesCount} <Text style={styles.summaryUnit}>{t.vehiclesLabel}</Text>
               </Text>
             </View>
@@ -217,7 +220,7 @@ export default function DriverVehiclesListScreen({
 
             <View style={styles.summaryCol}>
               <Text style={styles.summaryLabel}>{t.totalCapacity}</Text>
-              <Text style={styles.summaryValue}>
+              <Text style={styles.summaryValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
                 {totalCapacityKg >= 1000 ? `${(totalCapacityKg / 1000).toFixed(1)}T` : `${totalCapacityKg}kg`}
               </Text>
             </View>
@@ -226,8 +229,8 @@ export default function DriverVehiclesListScreen({
 
             <View style={styles.summaryCol}>
               <Text style={styles.summaryLabel}>{t.activeVehicle}</Text>
-              <Text style={[styles.summaryValue, { color: THEME.emerald }]} numberOfLines={1}>
-                {activeVehicleObj?.plateNumber || 'None'}
+              <Text style={[styles.summaryValue, { color: THEME.emerald }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
+                {activeVehicleCount}
               </Text>
             </View>
           </View>
@@ -323,25 +326,20 @@ export default function DriverVehiclesListScreen({
 
                 {/* Card Actions Footer */}
                 <View style={styles.cardFooter}>
-                  {/* Set Active Button */}
-                  {!isThisActive ? (
-                    <TouchableOpacity
-                      style={styles.setActiveBtn}
-                      disabled={isBusy}
-                      onPress={() => handleSetActive(veh)}
-                      activeOpacity={0.8}
-                    >
-                      {isBusy ? (
-                        <ActivityIndicator size="small" color={THEME.emerald} />
-                      ) : (
-                        <Text style={styles.setActiveBtnText}>{t.setActiveBtn}</Text>
-                      )}
-                    </TouchableOpacity>
-                  ) : (
-                    <View style={styles.inUseStatus}>
-                      <Text style={styles.inUseStatusText}>🟢 Currently In Use</Text>
-                    </View>
-                  )}
+                  <TouchableOpacity
+                    accessibilityRole="button"
+                    accessibilityLabel={isThisActive ? t.removeActiveBtn : cleanLabel(t.setActiveBtn)}
+                    style={[styles.setActiveBtn, isThisActive && styles.removeActiveBtn]}
+                    disabled={Boolean(processingId)}
+                    onPress={() => handleSetActive(veh)}
+                    activeOpacity={0.8}
+                  >
+                    {isBusy ? <ActivityIndicator size="small" color={C.green} /> : (
+                      <Text style={[styles.setActiveBtnText, isThisActive && { color: C.muted }]}>
+                        {isThisActive ? t.removeActiveBtn : cleanLabel(t.setActiveBtn)}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
 
                   <View style={styles.footerRightButtons}>
                     {/* Edit */}
@@ -385,6 +383,7 @@ export default function DriverVehiclesListScreen({
 }
 
 const styles = StyleSheet.create({
+  removeActiveBtn: { backgroundColor: C.canvas, borderColor: C.border },
   safeArea: {
     flex: 1,
     backgroundColor: THEME.bg,
@@ -428,8 +427,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   scrollContent: { backgroundColor: C.canvas, width: '100%', maxWidth: 760, alignSelf: 'center', paddingHorizontal: 20, paddingTop: 26, paddingBottom: 28 },
-
-  // Summary Card
   summaryCard: {
     backgroundColor: THEME.cardBg,
     borderRadius: 22,
@@ -437,13 +434,15 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'stretch',
     borderWidth: 1,
     borderColor: THEME.border,
   },
   summaryCol: {
     flex: 1,
-    alignItems: 'center',
+    minWidth: 0,
+    paddingHorizontal: 6,
+    alignItems: 'stretch',
   },
   summaryLabel: {
     fontSize: 10,
@@ -452,11 +451,17 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     marginBottom: 4,
     letterSpacing: 0.5,
+    lineHeight: 14,
+    minHeight: 32,
+    flexGrow: 1,
+    textAlign: 'center',
   },
   summaryValue: {
     fontSize: 16,
     fontWeight: '800',
     color: THEME.textDark,
+    lineHeight: 24,
+    textAlign: 'center',
   },
   summaryUnit: {
     fontSize: 11,
@@ -465,11 +470,10 @@ const styles = StyleSheet.create({
   },
   summaryDivider: {
     width: 1,
-    height: 32,
+    alignSelf: 'stretch',
+    marginVertical: 4,
     backgroundColor: THEME.border,
   },
-
-  // Vehicle Card
   vehicleCard: {
     backgroundColor: THEME.cardBg,
     borderRadius: 22,
@@ -594,8 +598,6 @@ const styles = StyleSheet.create({
     color: THEME.textMuted,
     fontSize: 10,
   },
-
-  // Card Footer Actions
   cardFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -617,14 +619,6 @@ const styles = StyleSheet.create({
     color: THEME.emeraldDark,
     fontSize: 11,
     fontWeight: 'bold',
-  },
-  inUseStatus: {
-    paddingVertical: 6,
-  },
-  inUseStatusText: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: THEME.emeraldDark,
   },
   footerRightButtons: {
     flexDirection: 'row',
@@ -654,8 +648,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: THEME.error,
   },
-
-  // Empty State
   emptyContainer: {
     backgroundColor: THEME.cardBg,
     borderRadius: 22,
@@ -693,8 +685,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: 'bold',
   },
-
-  // Bottom Add Button
   bottomAddBtn: {
     backgroundColor: THEME.emerald,
     borderRadius: 14,

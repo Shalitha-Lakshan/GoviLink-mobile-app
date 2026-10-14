@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import {
   updateOrderStatus,
   subscribeToDriverVehicles,
+  rejectDriverDelivery,
 } from '../services/firebaseDatabase';
 import { FARMER_COLORS as C, FarmerHeading, FarmerButton, IconTile, cleanLabel } from './FarmerDesign';
 import AddVehicleScreen from './AddVehicleScreen';
@@ -214,15 +215,11 @@ export default function DriverHomeScreen({
     };
   }, [userProfile?.uid]);
 
-  // Determine currently active vehicle
-  const activeVehicle =
-    vehiclesList.find((v) => v.isActive) ||
-    (vehiclesList.length > 0 ? vehiclesList[0] : null) ||
-    userProfile?.vehicle ||
-    null;
-
   // Real orders from Firestore mapped for Driver logistics view
-  const realOrdersForDriver = ordersList.map((o) => ({
+  const realOrdersForDriver = ordersList.filter((order) =>
+    Boolean(userProfile?.uid && order.driverId === userProfile.uid)
+  ).map((o) => ({
+    ...o,
     id: o.id,
     produceName: `${o.produceName || 'Produce Batch'} (${o.qty || 0} ${o.unit || 'kg'})`,
     qty: o.qty,
@@ -345,6 +342,11 @@ export default function DriverHomeScreen({
         lang={lang}
         onBack={() => setSelectedTripForTracking(null)}
         onLogout={onLogout}
+        onRejectDelivery={async (orderId) => {
+          const result = await rejectDriverDelivery(orderId, userProfile?.uid);
+          if (result.success) setSelectedTripForTracking(null);
+          return result;
+        }}
       />
     );
   }
@@ -407,113 +409,21 @@ export default function DriverHomeScreen({
           </TouchableOpacity>
         </View>
 
-        {/* ACTIVE DISPATCH VEHICLE CARD */}
-        {activeVehicle ? (
-          <View style={styles.registeredVehicleCard}>
-            <View style={styles.vehicleHeaderRow}>
-              <View style={styles.vehicleTitleRow}>
-                <View style={{ marginRight: 10 }}><IconTile name="car-outline" /></View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.vehicleCardTitle} numberOfLines={1}>
-                    {activeVehicle.makeModel || 'Assigned Vehicle'}
-                  </Text>
-                  <Text style={styles.vehicleTypeTag}>
-                    {activeVehicle.vehicleTypeLabel || 'Logistics Vehicle'} • Operational
-                  </Text>
-                </View>
-              </View>
-
-              <TouchableOpacity
-                style={styles.editVehicleBtn}
-                onPress={() => {
-                  setEditingVehicle(activeVehicle);
-                  setCurrentScreen('addVehicle');
-                }}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.editVehicleBtnText}>{cleanLabel(t.vehicle.editBtn)}</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.vehicleDetailsRow}>
-              <View style={styles.platePill}>
-                <Text style={styles.platePillText}>{activeVehicle.plateNumber || 'WP-NB-4482'}</Text>
-              </View>
-
-              <View style={styles.capacityBadge}>
-                <Text style={styles.capacityBadgeText}>
-                  {activeVehicle.capacity ? `${activeVehicle.capacity} kg` : '3500 kg'}
-                </Text>
-              </View>
-
-              {activeVehicle.hasColdChain ? (
-                <View style={styles.coldBadge}>
-                  <Text style={styles.coldBadgeText}>{cleanLabel(t.vehicle.coldChain)}</Text>
-                </View>
-              ) : (
-                <View style={styles.ambientBadge}>
-                  <Text style={styles.ambientBadgeText}>{cleanLabel(t.vehicle.standardCargo)}</Text>
-                </View>
-              )}
-            </View>
-
-            {activeVehicle.image ? (
-              <View style={styles.vehicleThumbnailContainer}>
-                <Image
-                  source={{ uri: activeVehicle.image }}
-                  style={styles.vehicleThumbnail}
-                  resizeMode="cover"
-                />
-              </View>
-            ) : null}
-
-            <View style={styles.fleetActionsRow}>
-              <TouchableOpacity
-                style={styles.viewAllVehiclesBtn}
-                onPress={() => setCurrentScreen('vehiclesList')}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.viewAllVehiclesBtnText}>
-                  {cleanLabel(t.vehicle.viewAllBtn)} ({vehiclesList.length || 1})
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.quickAddVehicleBtn}
-                onPress={() => {
-                  setEditingVehicle(null);
-                  setCurrentScreen('addVehicle');
-                }}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.quickAddVehicleBtnText}>
-                  {cleanLabel(t.vehicle.addNewBtn)}
-                </Text>
-              </TouchableOpacity>
-            </View>
+        {/* COMPACT FLEET ENTRY */}
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel={cleanLabel(t.vehicle.viewAllBtn)}
+          style={styles.fleetShortcut}
+          onPress={() => setWorkspaceTab('fleet')}
+          activeOpacity={0.75}
+        >
+          <IconTile name="car-outline" />
+          <View style={styles.fleetShortcutContent}>
+            <Text style={styles.fleetShortcutTitle}>{t.vehicle.fleetLabel} ({vehiclesList.length})</Text>
+            <Text style={styles.fleetShortcutSubtitle}>{cleanLabel(t.vehicle.viewAllBtn)} · {cleanLabel(t.vehicle.addNewBtn)}</Text>
           </View>
-        ) : (
-          <View style={styles.noVehicleCard}>
-            <View style={styles.noVehicleContent}>
-              <View style={{ marginRight: 12 }}><IconTile name="car-outline" /></View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.noVehicleTitle}>{t.vehicle.noVehicleTitle}</Text>
-                <Text style={styles.noVehicleSub}>{t.vehicle.noVehicleSub}</Text>
-              </View>
-            </View>
-
-            <TouchableOpacity
-              style={styles.addVehicleBtn}
-              onPress={() => {
-                setEditingVehicle(null);
-                setCurrentScreen('addVehicle');
-              }}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.addVehicleBtnText}>{cleanLabel(t.vehicle.addBtn)}</Text>
-            </TouchableOpacity>
-          </View>
-        )}
+          <Ionicons name="chevron-forward" size={20} color={C.green} />
+        </TouchableOpacity>
 
         {/* DRIVER METRICS GRID */}
         <View style={styles.statsGrid}>
@@ -681,27 +591,31 @@ export default function DriverHomeScreen({
 }
 
 const styles = StyleSheet.create({
-brandCaption: {
+  fleetShortcut: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: C.white, borderWidth: 1, borderColor: C.border, borderRadius: 22, padding: 18, marginBottom: 20 },
+  fleetShortcutContent: { flex: 1, minWidth: 0 },
+  fleetShortcutTitle: { fontSize: 16, fontWeight: '700', color: C.ink },
+  fleetShortcutSubtitle: { fontSize: 12, lineHeight: 18, color: C.muted, marginTop: 4 },
+  brandCaption: {
     fontSize: 8,
     fontWeight: '700',
     color: C.muted,
     letterSpacing: 1.3,
     marginTop: 2,
   },
-avatarInitial: { fontSize: 17, fontWeight: '700', color: C.greenDark },
-hero: {
+  avatarInitial: { fontSize: 17, fontWeight: '700', color: C.greenDark },
+  hero: {
     backgroundColor: C.greenDark,
     borderRadius: 24,
     padding: 24,
     marginBottom: 20,
   },
-heroTop: {
+  heroTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 16,
   },
-heroPill: {
+  heroPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
@@ -711,28 +625,28 @@ heroPill: {
     paddingVertical: 6,
     borderRadius: 20,
   },
-heroEyebrow: { fontSize: 11, color: '#D1E9D9' },
-heroTitle: {
+  heroEyebrow: { fontSize: 11, color: '#D1E9D9' },
+  heroTitle: {
     fontSize: 27,
     lineHeight: 34,
     fontWeight: '700',
     color: '#FFFFFF',
     letterSpacing: -0.6,
   },
-heroSub: {
+  heroSub: {
     fontSize: 13,
     lineHeight: 21,
     color: '#C1D9CC',
     marginTop: 12,
     marginBottom: 20,
   },
-heroButton: {
+  heroButton: {
     backgroundColor: '#2A9068',
     alignSelf: 'flex-start',
     minWidth: 180,
   },
-navSafe: { backgroundColor: '#FFFFFF', borderTopWidth: 1, borderTopColor: C.border },
-nav: {
+  navSafe: { backgroundColor: '#FFFFFF', borderTopWidth: 1, borderTopColor: C.border },
+  nav: {
     flexDirection: 'row',
     width: '100%',
     maxWidth: 760,
@@ -741,16 +655,16 @@ nav: {
     paddingTop: 9,
     paddingBottom: 7,
   },
-navItem: { flex: 1, minHeight: 58, alignItems: 'center', gap: 4 },
-navIcon: {
+  navItem: { flex: 1, minHeight: 58, alignItems: 'center', gap: 4 },
+  navIcon: {
     width: 48,
     height: 32,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
-navIconActive: { backgroundColor: C.mint },
-navLabel: {
+  navIconActive: { backgroundColor: C.mint },
+  navLabel: {
     width: '100%',
     fontSize: 10,
     lineHeight: 14,
@@ -759,13 +673,11 @@ navLabel: {
     paddingHorizontal: 2,
     flexShrink: 1,
   },
-navLabelActive: { color: C.greenDark, fontWeight: '700' },
-sectionHeading: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-sectionTitle: { fontSize: 18, fontWeight: '700', color: C.ink, flexShrink: 1 },
-sectionMeta: { fontSize: 12, fontWeight: '600', color: C.green },
+  navLabelActive: { color: C.greenDark, fontWeight: '700' },
+  sectionHeading: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  sectionTitle: { fontSize: 18, fontWeight: '700', color: C.ink, flexShrink: 1 },
+  sectionMeta: { fontSize: 12, fontWeight: '600', color: C.green },
   safeArea: { flex: 1, backgroundColor: C.canvas },
-
-  /* TOP APP HEADER */
   topHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -791,36 +703,9 @@ sectionMeta: { fontSize: 12, fontWeight: '600', color: C.green },
     height: '100%',
   },
   brandTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 1 },
-  brandTitle: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: C.green,
-    letterSpacing: -0.3,
-  },
-  driverRoleBadge: {
-    backgroundColor: C.mint,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 12,
-  },
-  driverRoleBadgeText: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: C.green,
-    letterSpacing: 0.5,
-  },
   headerRightActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   langPill: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   langPillText: { fontSize: 12, fontWeight: '700', color: C.muted },
-  notifBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: C.redBg,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-
   scrollContainer: {
     width: '100%',
     maxWidth: 760,
@@ -829,25 +714,6 @@ sectionMeta: { fontSize: 12, fontWeight: '600', color: C.green },
     paddingTop: 26,
     paddingBottom: 28,
   },
-
-  /* PAGE TITLE SECTION */
-  pageTitleSection: {
-    marginTop: 6,
-    marginBottom: 16,
-  },
-  pageTitle: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: C.ink,
-    letterSpacing: -0.3,
-  },
-  pageSubtitle: {
-    fontSize: 13,
-    color: C.muted,
-    marginTop: 2,
-  },
-
-  /* DUTY AVAILABILITY CARD */
   dutyCard: { backgroundColor: C.white, borderRadius: 22, padding: 18, marginBottom: 20, borderWidth: 1, borderColor: C.border, flexDirection: 'row', flexWrap: 'wrap', gap: 12, alignItems: 'center' },
   dutyInfo: { flexGrow: 1, flexBasis: 180 },
   dutyTitle: {
@@ -879,185 +745,6 @@ sectionMeta: { fontSize: 12, fontWeight: '600', color: C.green },
     fontSize: 11,
     fontWeight: '800',
   },
-
-  /* REGISTERED VEHICLE CARD */
-  registeredVehicleCard: { backgroundColor: C.white, borderRadius: 22, padding: 18, marginBottom: 20, borderWidth: 1, borderColor: C.border },
-  vehicleHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  vehicleTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  vehicleIconBadge: {
-    fontSize: 26,
-    marginRight: 10,
-  },
-  vehicleCardTitle: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: C.ink,
-  },
-  vehicleTypeTag: {
-    fontSize: 11,
-    color: C.muted,
-    marginTop: 1,
-  },
-  editVehicleBtn: {
-    backgroundColor: C.mint,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  editVehicleBtnText: {
-    color: C.ink,
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  vehicleDetailsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  platePill: {
-    backgroundColor: C.ink,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-  },
-  platePillText: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-  },
-  capacityBadge: {
-    backgroundColor: C.mint,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  capacityBadgeText: {
-    color: C.ink,
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  coldBadge: {
-    backgroundColor: C.blueBg,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderWidth: 1,
-    borderColor: C.blueBg,
-  },
-  coldBadgeText: {
-    color: C.blue,
-    fontSize: 11,
-    fontWeight: '800',
-  },
-  ambientBadge: {
-    backgroundColor: C.canvas,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  ambientBadgeText: {
-    color: C.muted,
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  vehicleThumbnailContainer: {
-    marginTop: 12,
-    borderRadius: 12,
-    overflow: 'hidden',
-    height: 120,
-    backgroundColor: C.border,
-  },
-  vehicleThumbnail: {
-    width: '100%',
-    height: '100%',
-  },
-  fleetActionsRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 14,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: C.mint,
-  },
-  viewAllVehiclesBtn: {
-    flex: 1.5,
-    backgroundColor: C.mint,
-    borderRadius: 10,
-    paddingVertical: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  viewAllVehiclesBtnText: {
-    color: C.green,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  quickAddVehicleBtn: {
-    flex: 1,
-    backgroundColor: C.mint,
-    borderRadius: 10,
-    paddingVertical: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  quickAddVehicleBtnText: {
-    color: C.ink,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-
-  /* NO VEHICLE CARD */
-  noVehicleCard: { backgroundColor: C.white, borderRadius: 22, padding: 20, marginBottom: 20, borderWidth: 1, borderColor: C.border },
-  noVehicleContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  noVehicleIcon: {
-    fontSize: 32,
-    marginRight: 12,
-  },
-  noVehicleTitle: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: C.ink,
-  },
-  noVehicleSub: {
-    fontSize: 11,
-    color: C.muted,
-    marginTop: 2,
-    lineHeight: 15,
-  },
-  addVehicleBtn: { backgroundColor: C.green, borderRadius: 14, minHeight: 48, paddingVertical: 12, alignItems: 'center', justifyContent: 'center' },
-  addVehicleBtnText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-
-  /* KPI METRICS GRID */
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 26 },
   kpiCard: {
     flexBasis: '46%',
@@ -1076,8 +763,6 @@ sectionMeta: { fontSize: 12, fontWeight: '600', color: C.green },
     marginTop: 14,
   },
   kpiLabel: { fontSize: 12, color: C.muted, marginTop: 5 },
-
-  /* DELIVERY CARD (MATCHES REQUEST CARDS) */
   deliveryCard: { backgroundColor: C.white, borderRadius: 22, padding: 18, marginBottom: 16, borderWidth: 1, borderColor: C.border },
   tripHeaderRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center', justifyContent: 'space-between' },
   cargoTitle: {
@@ -1103,7 +788,6 @@ sectionMeta: { fontSize: 12, fontWeight: '600', color: C.green },
     fontWeight: '800',
     letterSpacing: 0.5,
   },
-
   farmerRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1119,8 +803,6 @@ sectionMeta: { fontSize: 12, fontWeight: '600', color: C.green },
     backgroundColor: C.mint,
     marginVertical: 14,
   },
-
-  /* ROUTE TIMELINE */
   routeContainer: {
     paddingLeft: 2,
   },
@@ -1188,7 +870,6 @@ sectionMeta: { fontSize: 12, fontWeight: '600', color: C.green },
     color: C.muted,
     marginTop: 2,
   },
-
   specialNotesCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1205,7 +886,6 @@ sectionMeta: { fontSize: 12, fontWeight: '600', color: C.green },
     fontWeight: '500',
     flex: 1,
   },
-
   actionBtn: { borderRadius: 14, minHeight: 48, paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
   actionBtnTransit: {
     backgroundColor: C.green,
@@ -1227,8 +907,6 @@ sectionMeta: { fontSize: 12, fontWeight: '600', color: C.green },
     fontSize: 12,
     fontWeight: '700',
   },
-
-  /* EMPTY STATE */
   emptyCard: { backgroundColor: C.white, borderRadius: 22, padding: 28, alignItems: 'center', borderWidth: 1, borderColor: C.border, gap: 6 },
   emptyTitle: {
     fontSize: 16,

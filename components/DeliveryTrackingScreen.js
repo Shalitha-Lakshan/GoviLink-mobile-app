@@ -75,7 +75,10 @@ export default function DeliveryTrackingScreen({
   onBack,
   onLogout,
   onStatusUpdated,
+  onRejectDelivery,
 }) {
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [isRejecting, setIsRejecting] = useState(false);
   const [currentDelivery, setCurrentDelivery] = useState(delivery);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [statusActionModal, setStatusActionModal] = useState(null);
@@ -200,6 +203,30 @@ export default function DeliveryTrackingScreen({
 
   const handleMessageDriver = () => {
     Alert.alert('Message Driver', `Opening message thread with ${driverName}...`);
+  };
+
+  const rejectText = lang === 'si' ? 'බෙදාහැරීම ප්‍රතික්ෂේප කරන්න' : lang === 'ta' ? 'விநியோகத்தை நிராகரி' : 'Reject Delivery';
+  const canRejectDelivery = typeof onRejectDelivery === 'function' &&
+    userRole === 'driver' && currentDelivery.driverId === userProfile?.uid &&
+    ['ASSIGNED', 'ACCEPTED', 'READY_FOR_PICKUP'].includes(currentStatus);
+  const handleRejectDelivery = async () => {
+    if (!canRejectDelivery || isRejecting) return;
+    setIsRejecting(true);
+    try {
+      const result = await onRejectDelivery(currentDelivery.id || currentDelivery.orderNo);
+      if (!result?.success) {
+        const message = result?.error || 'Could not reject this delivery. Please try again.';
+        if (Platform.OS === 'web') window.alert(message);
+        else Alert.alert('Rejection failed', message);
+      } else {
+        setShowRejectModal(false);
+      }
+    } catch (_error) {
+      if (Platform.OS === 'web') window.alert('Could not reject this delivery. Please try again.');
+      else Alert.alert('Error', 'Could not reject this delivery. Please try again.');
+    } finally {
+      setIsRejecting(false);
+    }
   };
 
   // Status update execution (GOVI-108, GOVI-109, GOVI-110, GOVI-115)
@@ -757,7 +784,7 @@ export default function DeliveryTrackingScreen({
                   title: 'Mark Ready for Pickup 📦',
                   message: 'Confirm that produce is packed and ready for driver collection at the farm origin?',
                 })}
-                disabled={isUpdatingStatus}
+                disabled={isUpdatingStatus || isRejecting}
                 activeOpacity={0.8}
               >
                 <Text style={styles.statusBtnText}>📦 Ready for Pickup</Text>
@@ -812,6 +839,16 @@ export default function DeliveryTrackingScreen({
             </View>
           )}
 
+          {canRejectDelivery && <TouchableOpacity
+            accessibilityRole="button" accessibilityLabel={rejectText}
+            style={[styles.statusBtn, { backgroundColor: C.redBg, marginTop: 12 }]}
+            disabled={isUpdatingStatus || isRejecting}
+            onPress={() => setShowRejectModal(true)}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.statusBtnText, { color: C.red }]}>{rejectText}</Text>
+          </TouchableOpacity>}
+
           {currentStatus === 'DELIVERED' && (
             <View style={styles.terminalStateCard}>
               <Ionicons name="checkmark-circle" size={24} color="#006837" style={{ marginRight: 10 }} />
@@ -837,6 +874,21 @@ export default function DeliveryTrackingScreen({
           )}
         </View>
       </ScrollView>
+
+      {onRejectDelivery && <Modal visible={showRejectModal} transparent animationType="fade" onRequestClose={() => !isRejecting && setShowRejectModal(false)}>
+        <View style={styles.modalOverlay}><View style={styles.modalCard}>
+          <Text style={styles.modalTitleText}>{rejectText}?</Text>
+          <Text style={styles.modalMsgText}>This removes the delivery from your assignments and returns it for reassignment. The buyer's order stays open.</Text>
+          <View style={styles.modalButtonsRow}>
+            <TouchableOpacity style={styles.modalCancelBtn} disabled={isRejecting} onPress={() => setShowRejectModal(false)}>
+              <Text style={styles.modalCancelBtnText}>Keep Delivery</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.modalConfirmBtn, { backgroundColor: C.red }]} disabled={isRejecting || !canRejectDelivery} onPress={handleRejectDelivery}>
+              {isRejecting ? <ActivityIndicator color={C.white} /> : <Text style={styles.modalConfirmBtnText}>{rejectText}</Text>}
+            </TouchableOpacity>
+          </View>
+        </View></View>
+      </Modal>}
 
       {/* STATUS CONFIRMATION MODAL */}
       <Modal

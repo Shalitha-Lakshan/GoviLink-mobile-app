@@ -90,7 +90,7 @@ export default function DriverAssignmentDropdown({
     if (!driver.isAvailable) {
       Alert.alert(
         'Driver Currently Busy 🚛',
-        `"${driver.fullName}" is currently assigned to another active shipment.\n\n${driver.busyReason || 'In-transit'}\n\nDrivers become available automatically once they confirm delivery.`
+        `"${driver.fullName}" is unavailable.\n\n${driver.busyReason || 'Currently busy'}\n\n${driver.activeOrder ? 'Drivers become available once they confirm delivery, provided they have a vehicle selected for dispatch.' : 'The driver can select vehicles for dispatch in My Fleet.'}`
       );
       return;
     }
@@ -253,7 +253,7 @@ export default function DriverAssignmentDropdown({
                             item.isAvailable ? styles.statusTextAvailable : styles.statusTextBusy,
                           ]}
                         >
-                          {item.isAvailable ? '🟢 Available' : '🔴 On Delivery'}
+                          {item.isAvailable ? '🟢 Available' : item.activeOrder ? '🔴 On Delivery' : '🔴 No Dispatch Vehicle'}
                         </Text>
                       </View>
                     </View>
@@ -273,7 +273,7 @@ export default function DriverAssignmentDropdown({
                           ⏳ {item.busyReason || 'Currently handling active delivery'}
                         </Text>
                         <Text style={styles.busySubNotice}>
-                          Unavailable until delivery confirmation
+                          {item.activeOrder ? 'Unavailable until delivery confirmation' : 'Driver can select vehicles for dispatch in My Fleet'}
                         </Text>
                       </View>
                     )}
