@@ -96,8 +96,6 @@ export default function AdminHomeScreen({
   const [searchQuery, setSearchQuery] = useState('');
   const [driverModalOrderId, setDriverModalOrderId] = useState(null);
   const [selectedOrderForDetails, setSelectedOrderForDetails] = useState(null);
-  const [selectedDriverForDetails, setSelectedDriverForDetails] = useState(null);
-  const [selectedVehicleForDetails, setSelectedVehicleForDetails] = useState(null);
   const [driverSearchQuery, setDriverSearchQuery] = useState('');
   const [driverStatusFilter, setDriverStatusFilter] = useState('all'); // 'all' | 'available' | 'busy' | 'on_delivery' | 'inactive'
   const [vehicleSearchQuery, setVehicleSearchQuery] = useState('');
@@ -121,6 +119,14 @@ export default function AdminHomeScreen({
   const [selectedDeliveryForTracking, setSelectedDeliveryForTracking] = useState(null);
   const [showProfileScreen, setShowProfileScreen] = useState(false);
 
+  // Drivers tab — driver detail modal
+  const [selectedDriverDetail, setSelectedDriverDetail] = useState(null);
+
+  // Vehicles tab — per-driver filter, status filter, vehicle detail modal
+  const [vehicleDriverFilter, setVehicleDriverFilter] = useState(null);
+  const [vehicleStatusFilter, setVehicleStatusFilter] = useState('all');
+  const [selectedVehicleDetail, setSelectedVehicleDetail] = useState(null);
+
   // Handle Android hardware back button
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -128,12 +134,12 @@ export default function AdminHomeScreen({
         setShowProfileScreen(false);
         return true;
       }
-      if (selectedDriverForDetails) {
-        setSelectedDriverForDetails(null);
+      if (selectedDriverDetail) {
+        setSelectedDriverDetail(null);
         return true;
       }
-      if (selectedVehicleForDetails) {
-        setSelectedVehicleForDetails(null);
+      if (selectedVehicleDetail) {
+        setSelectedVehicleDetail(null);
         return true;
       }
       if (selectedOrderForDetails) {
@@ -156,6 +162,10 @@ export default function AdminHomeScreen({
         setSelectedReassignVehicle(null);
         return true;
       }
+      if (vehicleDriverFilter) {
+        setVehicleDriverFilter(null);
+        return true;
+      }
       if (activeTab !== 'dashboard') {
         setActiveTab('dashboard');
         return true;
@@ -165,14 +175,15 @@ export default function AdminHomeScreen({
     return () => subscription.remove();
   }, [
     showProfileScreen,
+    selectedDriverDetail,
+    selectedVehicleDetail,
     selectedOrderForDetails,
     selectedDeliveryForTracking,
     assignModalOrder,
     reassignModalOrder,
+    vehicleDriverFilter,
     activeTab,
   ]);
-
-  // Role Access Guard Verification
   const userRole = userProfile?.role;
   const userEmail = userProfile?.email?.toLowerCase();
   const isAdmin = userRole === 'cooperative_admin' || userRole === 'admin' || userEmail === 'govilink@admin.lk';
@@ -208,65 +219,6 @@ export default function AdminHomeScreen({
 
   const allVehiclesList = (vehiclesList && vehiclesList.length > 0) ? vehiclesList : localVehiclesList;
 
-  // Standard Fleet fallback merged with real Firebase vehicles
-  const VEHICLE_FLEET = allVehiclesList.length > 0 ? allVehiclesList : [
-    {
-      id: 'v1',
-      title: 'Lorry - 5 Tonne',
-      plateNumber: 'WP LL-4092',
-      type: 'lorry',
-      capacity: '5,000 kg',
-      status: 'AVAILABLE',
-      image: 'https://images.unsplash.com/photo-1601584115197-04ecc0da31d7?auto=format&fit=crop&w=400&q=80',
-    },
-    {
-      id: 'v2',
-      title: 'Pickup Double Cab',
-      plateNumber: 'CP PK-8821',
-      type: 'pickup',
-      capacity: '1,000 kg',
-      status: 'ASSIGNED',
-      driverName: 'Sunil Perera',
-      driverStatus: 'In Transit',
-      location: 'En route to Dambulla Market',
-      image: 'https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&w=400&q=80',
-    },
-    {
-      id: 'v3',
-      title: '4WD Tractor',
-      plateNumber: 'NW TR-0012',
-      type: 'tractor',
-      capacity: '2,500 kg',
-      status: 'MAINTENANCE',
-      maintenanceNote: 'Est. ready tomorrow',
-      image: 'https://images.unsplash.com/photo-1592838064575-70ed626d3a0e?auto=format&fit=crop&w=400&q=80',
-    },
-    {
-      id: 'v4',
-      title: 'Lorry - 10 Tonne',
-      plateNumber: 'SP LC-5544',
-      type: 'lorry',
-      capacity: '10,000 kg',
-      status: 'ASSIGNED',
-      driverName: 'Kamal Silva',
-      driverStatus: 'Loading',
-      location: 'Nuwara Eliya Hub',
-      image: 'https://images.unsplash.com/photo-1586191582056-96fcfded1b17?auto=format&fit=crop&w=400&q=80',
-    },
-  ];
-
-  const filteredVehicles = VEHICLE_FLEET.filter((v) => {
-    const matchesCategory = selectedVehicleCategory === 'all' || v.type === selectedVehicleCategory;
-    if (!vehicleSearchQuery.trim()) return matchesCategory;
-    const q = vehicleSearchQuery.toLowerCase().trim();
-    const matchesSearch =
-      (v.title && v.title.toLowerCase().includes(q)) ||
-      (v.plateNumber && v.plateNumber.toLowerCase().includes(q)) ||
-      (v.driverName && v.driverName.toLowerCase().includes(q)) ||
-      (v.location && v.location.toLowerCase().includes(q));
-    return matchesCategory && matchesSearch;
-  });
-
   // Subscribe to real-time driver fleet
   useEffect(() => {
     const unsubscribe = subscribeToDrivers((drivers) => {
@@ -292,7 +244,10 @@ export default function AdminHomeScreen({
   });
 
   const availableDriversCount = evaluatedDrivers.filter((d) => d.isAvailable).length;
-  const availableVehiclesCount = VEHICLE_FLEET.filter((v) => v.status === 'AVAILABLE' || (!v.status && v.isActive)).length;
+  const availableVehiclesCount = allVehiclesList.filter((v) => {
+    const s = String(v.status || '').toUpperCase();
+    return s === 'AVAILABLE' || (!v.status && v.isActive !== false);
+  }).length;
 
   // Filter orders dynamically from Firebase
   const unassignedOrders = (ordersList || []).filter(
@@ -1112,184 +1067,1128 @@ export default function AdminHomeScreen({
           </View>
         )}
 
-        {/* DRIVERS TAB */}
-        {activeTab === 'drivers' && (
-          <View style={styles.tabContentContainer}>
-            <Text style={styles.requestsPageTitle}>Cooperative Drivers Roster</Text>
-            <Text style={styles.requestsPageSub}>
-              Real-time roster and status of cooperative transport drivers.
-            </Text>
+        {/* ====================================================
+            DRIVERS TAB — Updated Admin Drivers Management
+            ==================================================== */}
+        {activeTab === 'drivers' && (() => {
+          // Compute vehicle count per driver from the real vehicle list
+          const allVehiclesForDriverTab = allVehiclesList;
 
-            {evaluatedDrivers.map((driver) => (
-              <View
-                key={driver.uid || driver.id}
-                style={[
-                  styles.requestCard,
-                  { borderLeftColor: driver.isAvailable ? '#10B981' : '#EF4444' }
-                ]}
-              >
-                <View style={styles.cardHeaderRow}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-                    <View style={styles.pickupCircleOuter}>
-                      <Ionicons name="person" size={12} color="#006837" />
-                    </View>
-                    <View style={{ marginLeft: 8, flex: 1 }}>
-                      <Text style={styles.cardProduceTitle}>{driver.fullName}</Text>
-                      <Text style={styles.farmerNameText}>📞 {driver.phoneNumber || 'N/A'}</Text>
-                    </View>
-                  </View>
+          const enrichedDrivers = evaluatedDrivers.map((driver) => {
+            const driverId = driver.uid || driver.id;
+            const driverVehicles = allVehiclesForDriverTab.filter((v) => {
+              const owner = v.driverUid || v.driverId || v.ownerDriverId || v.userId;
+              return owner === driverId;
+            });
+            const activeDeliveryCount = (ordersList || []).filter((o) => {
+              return o.driverId === driverId &&
+                !['DELIVERED', 'COMPLETED', 'CANCELLED'].includes(o.status);
+            }).length;
+            return { ...driver, vehicleCount: driverVehicles.length, activeDeliveryCount };
+          });
 
-                  <View style={[
-                    styles.pendingBadge,
-                    driver.isAvailable ? { backgroundColor: '#DCFCE7' } : { backgroundColor: '#FEE2E2' }
-                  ]}>
-                    <Text style={[
-                      styles.pendingBadgeText,
-                      driver.isAvailable ? { color: '#059669' } : { color: '#DC2626' }
-                    ]}>
-                      {driver.isAvailable ? 'AVAILABLE' : 'ON ROUTE'}
-                    </Text>
-                  </View>
-                </View>
+          const filteredDriversList = enrichedDrivers.filter((driver) => {
+            // Status filter
+            if (driverStatusFilter === 'available' && !driver.isAvailable) return false;
+            if (driverStatusFilter === 'busy' && driver.isAvailable) return false;
+            // Text search
+            if (!driverSearchQuery.trim()) return true;
+            const q = driverSearchQuery.toLowerCase().trim();
+            return (
+              (driver.fullName && driver.fullName.toLowerCase().includes(q)) ||
+              (driver.phoneNumber && driver.phoneNumber.includes(q)) ||
+              (driver.email && driver.email.toLowerCase().includes(q))
+            );
+          });
 
-                <View style={styles.cardDivider} />
+          return (
+            <View style={styles.tabContentContainer}>
+              {/* Header */}
+              <Text style={styles.requestsPageTitle}>Cooperative Drivers</Text>
+              <Text style={styles.requestsPageSub}>
+                Registered delivery drivers and their fleet status.
+              </Text>
 
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Text style={styles.locationTitle}>
-                    🚛 {driver.vehicleNumber || 'Standard Fleet Truck'}
-                  </Text>
-                  <Text style={styles.dateBannerText}>
-                    📍 {driver.district?.nameEn || 'Western Hub'}
-                  </Text>
+              {/* Search */}
+              <View style={[styles.searchFilterRow, { marginTop: 12, marginBottom: 8 }]}>
+                <View style={styles.searchInputContainer}>
+                  <Ionicons name="search-outline" size={20} color="#64748B" style={{ marginRight: 8 }} />
+                  <TextInput
+                    style={styles.searchInputField}
+                    placeholder="Search by name, phone, or email..."
+                    placeholderTextColor="#94A3B8"
+                    value={driverSearchQuery}
+                    onChangeText={setDriverSearchQuery}
+                  />
+                  {driverSearchQuery.length > 0 && (
+                    <TouchableOpacity onPress={() => setDriverSearchQuery('')}>
+                      <Ionicons name="close-circle" size={18} color="#94A3B8" />
+                    </TouchableOpacity>
+                  )}
                 </View>
               </View>
-            ))}
-          </View>
-        )}
 
-        {/* VEHICLES TAB */}
-        {activeTab === 'vehicles' && (
-          <View style={styles.tabContentContainer}>
-            <Text style={styles.requestsPageTitle}>Cooperative Vehicle Fleet</Text>
-            <Text style={styles.requestsPageSub}>
-              Logistics vehicle fleet capacity and availability records.
-            </Text>
+              {/* Status filter chips */}
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.categoryChipsScroll}
+              >
+                {[
+                  { id: 'all', label: `All (${enrichedDrivers.length})` },
+                  { id: 'available', label: `Available (${enrichedDrivers.filter(d => d.isAvailable).length})` },
+                  { id: 'busy', label: `On Route (${enrichedDrivers.filter(d => !d.isAvailable).length})` },
+                ].map((chip) => (
+                  <TouchableOpacity
+                    key={chip.id}
+                    style={[
+                      styles.categoryChip,
+                      driverStatusFilter === chip.id && styles.categoryChipActive,
+                    ]}
+                    onPress={() => setDriverStatusFilter(chip.id)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[
+                      styles.categoryChipText,
+                      driverStatusFilter === chip.id && styles.categoryChipTextActive,
+                    ]}>
+                      {chip.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
 
-            <View style={[styles.searchFilterRow, { marginTop: 12, marginBottom: 4 }]}>
-              <View style={styles.searchInputContainer}>
-                <Ionicons name="search-outline" size={20} color="#64748B" style={{ marginRight: 8 }} />
-                <TextInput
-                  style={styles.searchInputField}
-                  placeholder="Search license plate, title..."
-                  placeholderTextColor="#94A3B8"
-                  value={vehicleSearchQuery}
-                  onChangeText={setVehicleSearchQuery}
-                />
-                {vehicleSearchQuery.length > 0 && (
-                  <TouchableOpacity onPress={() => setVehicleSearchQuery('')}>
-                    <Ionicons name="close-circle" size={18} color="#94A3B8" />
+              {/* Loading state */}
+              {driversList.length === 0 && (
+                <View style={styles.emptyBox}>
+                  <ActivityIndicator size="large" color={C.green} />
+                  <Text style={[styles.emptySub, { marginTop: 12 }]}>Loading drivers...</Text>
+                </View>
+              )}
+
+              {/* Empty state */}
+              {driversList.length > 0 && filteredDriversList.length === 0 && (
+                <View style={styles.emptyBox}>
+                  <Ionicons name="people-outline" size={44} color={C.green} />
+                  <Text style={styles.emptyTitle}>No Drivers Found</Text>
+                  <Text style={styles.emptySub}>
+                    {driverSearchQuery.trim()
+                      ? `No drivers match "${driverSearchQuery}".`
+                      : 'No drivers match the selected filter.'}
+                  </Text>
+                  {(driverSearchQuery.trim() || driverStatusFilter !== 'all') && (
+                    <TouchableOpacity
+                      style={[styles.detailsBtnSmall, { marginTop: 12 }]}
+                      onPress={() => { setDriverSearchQuery(''); setDriverStatusFilter('all'); }}
+                    >
+                      <Text style={styles.detailsBtnSmallText}>Clear Filters</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )}
+
+              {/* Driver cards */}
+              {filteredDriversList.map((driver) => {
+                const driverId = driver.uid || driver.id;
+                const statusColor = driver.isAvailable ? C.green : C.amber;
+                const statusBg = driver.isAvailable ? C.mint : C.amberBg;
+                const statusLabel = driver.isAvailable ? 'AVAILABLE' : 'ON ROUTE';
+                const districtLabel = typeof driver.district === 'string'
+                  ? driver.district
+                  : driver.district?.nameEn || null;
+                const initials = (driver.fullName || 'D').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+
+                return (
+                  <View key={driverId} style={styles.driverCard}>
+                    {/* Card top row */}
+                    <View style={styles.driverCardTopRow}>
+                      {/* Avatar */}
+                      <View style={styles.driverAvatarWrap}>
+                        {driver.photoURL ? (
+                          <Image source={{ uri: driver.photoURL }} style={styles.driverAvatar} />
+                        ) : (
+                          <View style={styles.driverAvatarFallback}>
+                            <Text style={styles.driverAvatarInitials}>{initials}</Text>
+                          </View>
+                        )}
+                        {/* Online dot */}
+                        <View style={[
+                          styles.driverAvatarDot,
+                          { backgroundColor: driver.isAvailable ? '#10B981' : '#F59E0B' }
+                        ]} />
+                      </View>
+
+                      {/* Name / contact */}
+                      <View style={styles.driverCardInfo}>
+                        <Text style={styles.driverCardName} numberOfLines={1}>{driver.fullName || 'Driver'}</Text>
+                        <Text style={styles.driverCardPhone} numberOfLines={1}>
+                          <Ionicons name="call-outline" size={11} color={C.muted} /> {driver.phoneNumber || 'N/A'}
+                        </Text>
+                        {driver.email ? (
+                          <Text style={styles.driverCardEmail} numberOfLines={1}>
+                            <Ionicons name="mail-outline" size={11} color={C.muted} /> {driver.email}
+                          </Text>
+                        ) : null}
+                      </View>
+
+                      {/* Status badge */}
+                      <View style={[styles.driverStatusBadge, { backgroundColor: statusBg }]}>
+                        <View style={[styles.driverStatusDot, { backgroundColor: statusColor }]} />
+                        <Text style={[styles.driverStatusText, { color: statusColor }]}>{statusLabel}</Text>
+                      </View>
+                    </View>
+
+                    {/* Stats row */}
+                    <View style={styles.driverCardStatsRow}>
+                      <View style={styles.driverStatItem}>
+                        <MaterialCommunityIcons name="truck-outline" size={15} color={C.muted} />
+                        <Text style={styles.driverStatValue}>{driver.vehicleCount}</Text>
+                        <Text style={styles.driverStatLabel}>Vehicles</Text>
+                      </View>
+                      <View style={styles.driverStatDivider} />
+                      <View style={styles.driverStatItem}>
+                        <Ionicons name="navigate-outline" size={15} color={C.muted} />
+                        <Text style={styles.driverStatValue}>{driver.activeDeliveryCount}</Text>
+                        <Text style={styles.driverStatLabel}>Active Deliveries</Text>
+                      </View>
+                      {districtLabel ? (
+                        <>
+                          <View style={styles.driverStatDivider} />
+                          <View style={styles.driverStatItem}>
+                            <Ionicons name="location-outline" size={15} color={C.muted} />
+                            <Text style={[styles.driverStatLabel, { marginLeft: 0, color: C.ink, fontWeight: '600' }]} numberOfLines={1}>{districtLabel}</Text>
+                          </View>
+                        </>
+                      ) : null}
+                    </View>
+
+                    {/* Actions */}
+                    <View style={styles.driverCardActions}>
+                      <TouchableOpacity
+                        style={styles.driverActionBtn}
+                        onPress={() => setSelectedDriverDetail(driver)}
+                        activeOpacity={0.8}
+                      >
+                        <Ionicons name="eye-outline" size={14} color={C.greenDark} style={{ marginRight: 4 }} />
+                        <Text style={styles.driverActionBtnText}>View Details</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[styles.driverActionBtn, styles.driverActionBtnPrimary]}
+                        onPress={() => {
+                          setVehicleDriverFilter(driver);
+                          setSelectedVehicleCategory('all');
+                          setVehicleSearchQuery('');
+                          setVehicleStatusFilter('all');
+                          setActiveTab('vehicles');
+                        }}
+                        activeOpacity={0.8}
+                      >
+                        <MaterialCommunityIcons name="truck-outline" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
+                        <Text style={[styles.driverActionBtnText, { color: '#FFFFFF' }]}>
+                          View Vehicles {driver.vehicleCount > 0 ? `(${driver.vehicleCount})` : ''}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                );
+              })}
+
+              {/* ---- Driver Detail Modal ---- */}
+              {selectedDriverDetail && (() => {
+                const d = selectedDriverDetail;
+                const dId = d.uid || d.id;
+                const driverVehicles = allVehiclesForDriverTab.filter((v) => {
+                  const owner = v.driverUid || v.driverId || v.ownerDriverId || v.userId;
+                  return owner === dId;
+                });
+                const driverOrders = (ordersList || []).filter((o) =>
+                  o.driverId === dId && !['DELIVERED', 'COMPLETED', 'CANCELLED'].includes(o.status)
+                );
+                const districtDisplay = typeof d.district === 'string'
+                  ? d.district
+                  : d.district?.nameEn || 'N/A';
+                const initials2 = (d.fullName || 'D').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+
+                return (
+                  <Modal
+                    visible={!!selectedDriverDetail}
+                    transparent
+                    animationType="slide"
+                    onRequestClose={() => setSelectedDriverDetail(null)}
+                  >
+                    <View style={styles.modalOverlay}>
+                      <View style={[styles.modalCard, { maxHeight: '90%' }]}>
+                        {/* Header */}
+                        <View style={styles.modalHeaderRow}>
+                          <View style={styles.driverDetailAvatarWrap}>
+                            {d.photoURL ? (
+                              <Image source={{ uri: d.photoURL }} style={styles.driverDetailAvatar} />
+                            ) : (
+                              <View style={styles.driverDetailAvatarFallback}>
+                                <Text style={styles.driverDetailAvatarInitials}>{initials2}</Text>
+                              </View>
+                            )}
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.modalTitleText}>{d.fullName || 'Driver'}</Text>
+                            <Text style={styles.modalMsgText}>{d.email || 'No email'}</Text>
+                          </View>
+                          <TouchableOpacity onPress={() => setSelectedDriverDetail(null)}>
+                            <Ionicons name="close" size={22} color="#64748B" />
+                          </TouchableOpacity>
+                        </View>
+
+                        <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: '80%' }}>
+                          {/* Status banner */}
+                          <View style={[
+                            styles.driverDetailBanner,
+                            { backgroundColor: d.isAvailable ? C.mint : C.amberBg,
+                              borderColor: d.isAvailable ? '#C5E2D0' : '#FCD34D' }
+                          ]}>
+                            <View style={[styles.driverStatusDot, { backgroundColor: d.isAvailable ? C.green : C.amber }]} />
+                            <Text style={[styles.driverDetailBannerText, { color: d.isAvailable ? C.greenDark : C.amber }]}>
+                              {d.isAvailable ? 'Available for Assignment' : d.busyReason || 'Currently On Route'}
+                            </Text>
+                          </View>
+
+                          {/* Detail rows */}
+                          <View style={styles.driverDetailSection}>
+                            <Text style={styles.driverDetailSectionTitle}>Contact Information</Text>
+                            <View style={styles.driverDetailRow}>
+                              <Ionicons name="call-outline" size={16} color={C.muted} />
+                              <View style={{ flex: 1, marginLeft: 10 }}>
+                                <Text style={styles.driverDetailRowLabel}>Phone</Text>
+                                <Text style={styles.driverDetailRowValue}>{d.phoneNumber || 'N/A'}</Text>
+                              </View>
+                            </View>
+                            <View style={styles.driverDetailRow}>
+                              <Ionicons name="mail-outline" size={16} color={C.muted} />
+                              <View style={{ flex: 1, marginLeft: 10 }}>
+                                <Text style={styles.driverDetailRowLabel}>Email</Text>
+                                <Text style={styles.driverDetailRowValue}>{d.email || 'N/A'}</Text>
+                              </View>
+                            </View>
+                            <View style={styles.driverDetailRow}>
+                              <Ionicons name="location-outline" size={16} color={C.muted} />
+                              <View style={{ flex: 1, marginLeft: 10 }}>
+                                <Text style={styles.driverDetailRowLabel}>Base District</Text>
+                                <Text style={styles.driverDetailRowValue}>{districtDisplay}</Text>
+                              </View>
+                            </View>
+                            <View style={styles.driverDetailRow}>
+                              <Ionicons name="id-card-outline" size={16} color={C.muted} />
+                              <View style={{ flex: 1, marginLeft: 10 }}>
+                                <Text style={styles.driverDetailRowLabel}>Driver ID</Text>
+                                <Text style={[styles.driverDetailRowValue, { fontFamily: 'monospace', fontSize: 11 }]}>{dId}</Text>
+                              </View>
+                            </View>
+                          </View>
+
+                          {/* Active deliveries */}
+                          <View style={styles.driverDetailSection}>
+                            <Text style={styles.driverDetailSectionTitle}>
+                              Active Deliveries ({driverOrders.length})
+                            </Text>
+                            {driverOrders.length === 0 ? (
+                              <Text style={styles.driverDetailEmptyText}>No active deliveries assigned.</Text>
+                            ) : (
+                              driverOrders.map((o) => (
+                                <View key={o.id} style={styles.driverDetailDeliveryRow}>
+                                  <Ionicons name="navigate-outline" size={14} color={C.green} />
+                                  <View style={{ flex: 1, marginLeft: 8 }}>
+                                    <Text style={styles.driverDetailDeliveryTitle} numberOfLines={1}>
+                                      {o.produceName || 'Produce'} — #{String(o.id).slice(-6).toUpperCase()}
+                                    </Text>
+                                    <Text style={styles.driverDetailDeliverySub} numberOfLines={1}>
+                                      {o.pickupLocation || 'Origin'} → {o.deliveryAddress || 'Destination'}
+                                    </Text>
+                                  </View>
+                                  {renderStatusBadge(o.status)}
+                                </View>
+                              ))
+                            )}
+                          </View>
+
+                          {/* Vehicles */}
+                          <View style={styles.driverDetailSection}>
+                            <Text style={styles.driverDetailSectionTitle}>
+                              Registered Vehicles ({driverVehicles.length})
+                            </Text>
+                            {driverVehicles.length === 0 ? (
+                              <Text style={styles.driverDetailEmptyText}>No vehicles registered to this driver.</Text>
+                            ) : (
+                              driverVehicles.map((v) => {
+                                const vStatus = String(v.status || 'AVAILABLE').toUpperCase();
+                                const vStatusColor = vStatus === 'AVAILABLE' ? C.green : vStatus === 'MAINTENANCE' ? C.red : C.amber;
+                                const vStatusBg = vStatus === 'AVAILABLE' ? C.mint : vStatus === 'MAINTENANCE' ? C.redBg : C.amberBg;
+                                return (
+                                  <View key={v.id} style={styles.driverDetailVehicleRow}>
+                                    <View style={[styles.driverDetailVehicleIconBox, { backgroundColor: C.mint }]}>
+                                      <MaterialCommunityIcons name="truck-outline" size={18} color={C.greenDark} />
+                                    </View>
+                                    <View style={{ flex: 1, marginLeft: 10 }}>
+                                      <Text style={styles.driverDetailVehiclePlate}>{v.plateNumber || v.vehicleNumber || 'N/A'}</Text>
+                                      <Text style={styles.driverDetailVehicleSub} numberOfLines={1}>
+                                        {v.makeModel || v.vehicleTypeLabel || v.vehicleType || 'Vehicle'}{v.capacity ? ` • ${v.capacity} kg` : ''}
+                                      </Text>
+                                    </View>
+                                    <View style={[styles.driverStatusBadge, { backgroundColor: vStatusBg }]}>
+                                      <Text style={[styles.driverStatusText, { color: vStatusColor, fontSize: 9 }]}>{vStatus}</Text>
+                                    </View>
+                                  </View>
+                                );
+                              })
+                            )}
+                          </View>
+                        </ScrollView>
+
+                        {/* Footer buttons */}
+                        <View style={[styles.modalButtonsRow, { marginTop: 14 }]}>
+                          <TouchableOpacity
+                            style={styles.modalCancelBtn}
+                            onPress={() => setSelectedDriverDetail(null)}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={styles.modalCancelBtnText}>Close</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[styles.modalConfirmBtn, { backgroundColor: C.greenDark }]}
+                            onPress={() => {
+                              setSelectedDriverDetail(null);
+                              setVehicleDriverFilter(d);
+                              setSelectedVehicleCategory('all');
+                              setVehicleSearchQuery('');
+                              setVehicleStatusFilter('all');
+                              setActiveTab('vehicles');
+                            }}
+                            activeOpacity={0.8}
+                          >
+                            <MaterialCommunityIcons name="truck-outline" size={15} color="#FFFFFF" style={{ marginRight: 6 }} />
+                            <Text style={styles.modalConfirmBtnText}>View Vehicles</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    </View>
+                  </Modal>
+                );
+              })()}
+            </View>
+          );
+        })()}
+
+        {/* ====================================================
+            VEHICLES TAB — Updated Admin Vehicles Management
+            ==================================================== */}
+        {activeTab === 'vehicles' && (() => {
+          // Build the "real" vehicle list (Firestore) enriched with owner driver info
+          const baseVehicles = allVehiclesList.length > 0 ? allVehiclesList : [];
+
+          // Unique drivers that own at least one vehicle — for the driver filter chips
+          const vehicleOwnerDriverIds = [...new Set(
+            baseVehicles.map(v => v.driverUid || v.driverId || v.ownerDriverId || v.userId).filter(Boolean)
+          )];
+          const vehicleOwnerDrivers = vehicleOwnerDriverIds
+            .map(id => driversList.find(d => (d.uid || d.id) === id))
+            .filter(Boolean);
+
+          // Apply all filters
+          const filteredVehiclesList = baseVehicles.filter((v) => {
+            // Driver filter
+            if (vehicleDriverFilter) {
+              const filterDriverId = vehicleDriverFilter.uid || vehicleDriverFilter.id;
+              const vOwner = v.driverUid || v.driverId || v.ownerDriverId || v.userId;
+              if (vOwner !== filterDriverId) return false;
+            }
+
+            // Vehicle type / category filter
+            if (selectedVehicleCategory !== 'all') {
+              const vType = String(v.vehicleType || v.type || '').toLowerCase();
+              if (selectedVehicleCategory === 'lorry' && !vType.includes('lorry')) return false;
+              if (selectedVehicleCategory === 'pickup' && !vType.includes('pickup')) return false;
+              if (selectedVehicleCategory === 'tractor' && !vType.includes('tractor')) return false;
+              if (selectedVehicleCategory === 'cold_chain' && !vType.includes('cold')) return false;
+            }
+
+            // Status filter
+            if (vehicleStatusFilter !== 'all') {
+              const vNormStatus = String(v.status || 'AVAILABLE').toUpperCase();
+              if (vehicleStatusFilter === 'AVAILABLE' && vNormStatus !== 'AVAILABLE') return false;
+              if (vehicleStatusFilter === 'IN_USE' && !['ASSIGNED','IN_USE','IN TRANSIT'].includes(vNormStatus)) return false;
+              if (vehicleStatusFilter === 'MAINTENANCE' && vNormStatus !== 'MAINTENANCE') return false;
+            }
+
+            // Text search
+            if (!vehicleSearchQuery.trim()) return true;
+            const q = vehicleSearchQuery.toLowerCase().trim();
+            const ownerDriver = driversList.find((d) => {
+              const id = d.uid || d.id;
+              return id === (v.driverUid || v.driverId || v.ownerDriverId || v.userId);
+            });
+            return (
+              (v.plateNumber && v.plateNumber.toLowerCase().includes(q)) ||
+              (v.vehicleNumber && v.vehicleNumber.toLowerCase().includes(q)) ||
+              (v.makeModel && v.makeModel.toLowerCase().includes(q)) ||
+              (v.vehicleTypeLabel && v.vehicleTypeLabel.toLowerCase().includes(q)) ||
+              (v.vehicleType && v.vehicleType.toLowerCase().includes(q)) ||
+              (v.driverName && v.driverName.toLowerCase().includes(q)) ||
+              (ownerDriver?.fullName && ownerDriver.fullName.toLowerCase().includes(q))
+            );
+          });
+
+          // Helper: get owner driver object for a vehicle
+          const getOwnerDriver = (vehicle) => {
+            const ownerId = vehicle.driverUid || vehicle.driverId || vehicle.ownerDriverId || vehicle.userId;
+            return driversList.find(d => (d.uid || d.id) === ownerId) || null;
+          };
+
+          return (
+            <View style={styles.tabContentContainer}>
+              {/* Header */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.requestsPageTitle}>
+                    {vehicleDriverFilter ? `${vehicleDriverFilter.fullName}'s Vehicles` : 'Cooperative Vehicles'}
+                  </Text>
+                  <Text style={styles.requestsPageSub}>
+                    {vehicleDriverFilter
+                      ? `Showing vehicles registered to ${vehicleDriverFilter.fullName}.`
+                      : 'All registered vehicles across the cooperative fleet.'}
+                  </Text>
+                </View>
+                {vehicleDriverFilter && (
+                  <TouchableOpacity
+                    style={styles.clearFilterPill}
+                    onPress={() => setVehicleDriverFilter(null)}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="close" size={13} color={C.greenDark} />
+                    <Text style={styles.clearFilterPillText}>All Vehicles</Text>
                   </TouchableOpacity>
                 )}
               </View>
-            </View>
 
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.categoryChipsScroll}
-            >
-              {[
-                { id: 'all', label: 'All Fleet' },
-                { id: 'lorry', label: 'Lorries' },
-                { id: 'pickup', label: 'Pickups' },
-                { id: 'tractor', label: 'Tractors' },
-              ].map((chip) => (
-                <TouchableOpacity
-                  key={chip.id}
-                  style={[
-                    styles.categoryChip,
-                    selectedVehicleCategory === chip.id && styles.categoryChipActive,
-                  ]}
-                  onPress={() => setSelectedVehicleCategory(chip.id)}
-                  activeOpacity={0.8}
+              {/* Search */}
+              <View style={[styles.searchFilterRow, { marginTop: 12, marginBottom: 8 }]}>
+                <View style={styles.searchInputContainer}>
+                  <Ionicons name="search-outline" size={20} color="#64748B" style={{ marginRight: 8 }} />
+                  <TextInput
+                    style={styles.searchInputField}
+                    placeholder="Search by plate, model, or driver name..."
+                    placeholderTextColor="#94A3B8"
+                    value={vehicleSearchQuery}
+                    onChangeText={setVehicleSearchQuery}
+                  />
+                  {vehicleSearchQuery.length > 0 && (
+                    <TouchableOpacity onPress={() => setVehicleSearchQuery('')}>
+                      <Ionicons name="close-circle" size={18} color="#94A3B8" />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+
+              {/* Driver filter chips (only when not already filtered to one driver) */}
+              {!vehicleDriverFilter && vehicleOwnerDrivers.length > 0 && (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={[styles.categoryChipsScroll, { marginBottom: 4 }]}
                 >
-                  <Text
+                  <TouchableOpacity
+                    style={[styles.categoryChip, !vehicleDriverFilter && styles.categoryChipActive]}
+                    onPress={() => setVehicleDriverFilter(null)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.categoryChipText, !vehicleDriverFilter && styles.categoryChipTextActive]}>
+                      All Drivers
+                    </Text>
+                  </TouchableOpacity>
+                  {vehicleOwnerDrivers.map((d) => {
+                    const isSelected = vehicleDriverFilter && (vehicleDriverFilter.uid || vehicleDriverFilter.id) === (d.uid || d.id);
+                    return (
+                      <TouchableOpacity
+                        key={d.uid || d.id}
+                        style={[styles.categoryChip, isSelected && styles.categoryChipActive]}
+                        onPress={() => setVehicleDriverFilter(isSelected ? null : d)}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={[styles.categoryChipText, isSelected && styles.categoryChipTextActive]} numberOfLines={1}>
+                          {(d.fullName || 'Driver').split(' ')[0]}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              )}
+
+              {/* Type chips */}
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.categoryChipsScroll}
+              >
+                {[
+                  { id: 'all', label: 'All Types' },
+                  { id: 'lorry', label: 'Lorries' },
+                  { id: 'pickup', label: 'Pickups' },
+                  { id: 'tractor', label: 'Tractors' },
+                  { id: 'cold_chain', label: 'Cold Chain' },
+                ].map((chip) => (
+                  <TouchableOpacity
+                    key={chip.id}
                     style={[
+                      styles.categoryChip,
+                      selectedVehicleCategory === chip.id && styles.categoryChipActive,
+                    ]}
+                    onPress={() => setSelectedVehicleCategory(chip.id)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[
                       styles.categoryChipText,
                       selectedVehicleCategory === chip.id && styles.categoryChipTextActive,
-                    ]}
-                  >
-                    {chip.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+                    ]}>
+                      {chip.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
 
-            {filteredVehicles.length === 0 ? (
-              <View style={styles.emptyBox}>
-                <Ionicons name="car-outline" size={44} color="#006837" />
-                <Text style={styles.emptyTitle}>No Vehicles Found</Text>
-                <Text style={styles.emptySub}>No vehicles match your search or filter selection.</Text>
-              </View>
-            ) : (
-              filteredVehicles.map((vehicle) => {
-                let accentColor = '#10B981';
-                if (vehicle.status === 'ASSIGNED') accentColor = '#3B82F6';
-                if (vehicle.status === 'MAINTENANCE') accentColor = '#EF4444';
+              {/* Status filter chips */}
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={[styles.categoryChipsScroll, { marginTop: 0 }]}
+              >
+                {[
+                  { id: 'all', label: 'All Status' },
+                  { id: 'AVAILABLE', label: 'Available' },
+                  { id: 'IN_USE', label: 'In Use' },
+                  { id: 'MAINTENANCE', label: 'Maintenance' },
+                ].map((chip) => (
+                  <TouchableOpacity
+                    key={chip.id}
+                    style={[
+                      styles.categoryChip,
+                      vehicleStatusFilter === chip.id && styles.categoryChipActive,
+                    ]}
+                    onPress={() => setVehicleStatusFilter(chip.id)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[
+                      styles.categoryChipText,
+                      vehicleStatusFilter === chip.id && styles.categoryChipTextActive,
+                    ]}>
+                      {chip.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              {/* Loading state */}
+              {allVehiclesList.length === 0 && (
+                <View style={styles.emptyBox}>
+                  <ActivityIndicator size="large" color={C.green} />
+                  <Text style={[styles.emptySub, { marginTop: 12 }]}>Loading vehicles...</Text>
+                </View>
+              )}
+
+              {/* Empty state */}
+              {allVehiclesList.length > 0 && filteredVehiclesList.length === 0 && (
+                <View style={styles.emptyBox}>
+                  <MaterialCommunityIcons name="truck-outline" size={44} color={C.green} />
+                  <Text style={styles.emptyTitle}>No Vehicles Found</Text>
+                  <Text style={styles.emptySub}>
+                    {vehicleSearchQuery.trim()
+                      ? `No vehicles match "${vehicleSearchQuery}".`
+                      : vehicleDriverFilter
+                      ? `${vehicleDriverFilter.fullName} has no registered vehicles.`
+                      : 'No vehicles match the selected filters.'}
+                  </Text>
+                  {(vehicleSearchQuery.trim() || vehicleDriverFilter || vehicleStatusFilter !== 'all' || selectedVehicleCategory !== 'all') && (
+                    <TouchableOpacity
+                      style={[styles.detailsBtnSmall, { marginTop: 12 }]}
+                      onPress={() => {
+                        setVehicleSearchQuery('');
+                        setVehicleDriverFilter(null);
+                        setVehicleStatusFilter('all');
+                        setSelectedVehicleCategory('all');
+                      }}
+                    >
+                      <Text style={styles.detailsBtnSmallText}>Clear Filters</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )}
+
+              {/* Vehicle cards */}
+              {filteredVehiclesList.map((vehicle) => {
+                const normStatus = String(vehicle.status || 'AVAILABLE').toUpperCase();
+                const isAvailableV = normStatus === 'AVAILABLE' || (!vehicle.status && vehicle.isActive !== false);
+                const isInUse = ['ASSIGNED','IN_USE','IN TRANSIT'].includes(normStatus);
+                const isMaint = normStatus === 'MAINTENANCE';
+
+                let accentColor = C.green;
+                let statusBgV = C.mint;
+                let statusTextV = C.greenDark;
+                let statusLabelV = 'AVAILABLE';
+                if (isInUse) { accentColor = C.blue; statusBgV = C.blueBg; statusTextV = C.blue; statusLabelV = 'IN USE'; }
+                if (isMaint) { accentColor = C.red; statusBgV = C.redBg; statusTextV = C.red; statusLabelV = 'MAINTENANCE'; }
+
+                const ownerDriver = getOwnerDriver(vehicle);
+                const ownerName = ownerDriver?.fullName || vehicle.driverName || null;
+                const ownerPhone = ownerDriver?.phoneNumber || vehicle.driverPhone || null;
 
                 return (
-                  <View
-                    key={vehicle.id}
-                    style={[styles.requestCard, { borderLeftColor: accentColor }]}
-                  >
+                  <View key={vehicle.id} style={[styles.vehicleDetailCard, { borderLeftColor: accentColor }]}>
+                    {/* Top row: image + info */}
                     <View style={styles.vehicleCardTopRow}>
                       <Image
                         source={{ uri: vehicle.image || 'https://images.unsplash.com/photo-1601584115197-04ecc0da31d7?auto=format&fit=crop&w=400&q=80' }}
                         style={styles.vehicleCardImage}
                         resizeMode="cover"
                       />
-
                       <View style={styles.vehicleCardMainCol}>
+                        {/* Model + status badge */}
                         <View style={styles.vehicleCardHeaderRow}>
                           <Text style={styles.cardProduceTitle} numberOfLines={1}>
-                            {vehicle.title || vehicle.makeModel || 'Coop Truck'}
+                            {vehicle.makeModel || vehicle.title || vehicle.vehicleTypeLabel || 'Vehicle'}
                           </Text>
+                          <View style={[styles.vehicleStatusBadge, { backgroundColor: statusBgV }]}>
+                            <Text style={[styles.vehicleStatusBadgeText, { color: statusTextV }]}>{statusLabelV}</Text>
+                          </View>
+                        </View>
 
-                          {vehicle.status === 'AVAILABLE' && (
-                            <View style={styles.badgeAvailable}>
-                              <Text style={styles.badgeAvailableText}>AVAILABLE</Text>
+                        {/* Plate */}
+                        <Text style={styles.vehiclePlateText}>
+                          {vehicle.plateNumber || vehicle.vehicleNumber || 'N/A'}
+                        </Text>
+
+                        {/* Type + capacity */}
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4, gap: 8, flexWrap: 'wrap' }}>
+                          {(vehicle.vehicleTypeLabel || vehicle.vehicleType) && (
+                            <View style={styles.vehicleTagChip}>
+                              <Text style={styles.vehicleTagChipText}>
+                                {vehicle.vehicleIcon ? `${vehicle.vehicleIcon} ` : ''}{vehicle.vehicleTypeLabel || vehicle.vehicleType}
+                              </Text>
                             </View>
                           )}
-
-                          {vehicle.status === 'ASSIGNED' && (
-                            <View style={styles.badgeAssigned}>
-                              <Text style={styles.badgeAssignedText}>ASSIGNED</Text>
+                          {vehicle.capacity ? (
+                            <View style={styles.vehicleTagChip}>
+                              <Ionicons name="scale-outline" size={11} color={C.muted} style={{ marginRight: 3 }} />
+                              <Text style={styles.vehicleTagChipText}>{vehicle.capacity} kg</Text>
                             </View>
-                          )}
-
-                          {vehicle.status === 'MAINTENANCE' && (
-                            <View style={styles.badgeMaintenance}>
-                              <Text style={styles.badgeMaintenanceText}>MAINTENANCE</Text>
+                          ) : null}
+                          {vehicle.hasColdChain && (
+                            <View style={[styles.vehicleTagChip, { backgroundColor: C.blueBg }]}>
+                              <Text style={[styles.vehicleTagChipText, { color: C.blue }]}>❄️ Cold Chain</Text>
                             </View>
                           )}
                         </View>
-
-                        <Text style={styles.vehiclePlateText}>{vehicle.plateNumber || vehicle.vehicleNumber || 'WP-COL-0000'}</Text>
-
-                        {vehicle.capacity && (
-                          <View style={styles.vehicleCapacityRow}>
-                            <Ionicons name="bag-handle-outline" size={14} color="#0F172A" style={{ marginRight: 6 }} />
-                            <Text style={styles.vehicleCapacityText}>{vehicle.capacity}</Text>
-                          </View>
-                        )}
                       </View>
+                    </View>
+
+                    {/* Owner row */}
+                    {ownerName && (
+                      <View style={styles.vehicleOwnerRow}>
+                        <Ionicons name="person-outline" size={14} color={C.muted} style={{ marginRight: 6 }} />
+                        <Text style={styles.vehicleOwnerText}>
+                          {ownerName}{ownerPhone ? ` • ${ownerPhone}` : ''}
+                        </Text>
+                      </View>
+                    )}
+
+                    {/* Actions */}
+                    <View style={styles.driverCardActions}>
+                      <TouchableOpacity
+                        style={styles.driverActionBtn}
+                        onPress={() => setSelectedVehicleDetail(vehicle)}
+                        activeOpacity={0.8}
+                      >
+                        <Ionicons name="eye-outline" size={14} color={C.greenDark} style={{ marginRight: 4 }} />
+                        <Text style={styles.driverActionBtnText}>View Details</Text>
+                      </TouchableOpacity>
+
+                      {ownerDriver && (
+                        <TouchableOpacity
+                          style={[styles.driverActionBtn, styles.driverActionBtnPrimary]}
+                          onPress={() => setSelectedDriverDetail(ownerDriver)}
+                          activeOpacity={0.8}
+                        >
+                          <Ionicons name="person-outline" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
+                          <Text style={[styles.driverActionBtnText, { color: '#FFFFFF' }]}>View Driver</Text>
+                        </TouchableOpacity>
+                      )}
                     </View>
                   </View>
                 );
-              })
-            )}
-          </View>
-        )}
+              })}
+
+              {/* ---- Vehicle Detail Modal ---- */}
+              {selectedVehicleDetail && (() => {
+                const v = selectedVehicleDetail;
+                const normS = String(v.status || 'AVAILABLE').toUpperCase();
+                const isAvailableVM = normS === 'AVAILABLE';
+                const isInUseVM = ['ASSIGNED','IN_USE','IN TRANSIT'].includes(normS);
+                const isMaintVM = normS === 'MAINTENANCE';
+                let vStatusColor = C.green;
+                let vStatusBgColor = C.mint;
+                let vStatusLabelVM = 'AVAILABLE';
+                if (isInUseVM) { vStatusColor = C.blue; vStatusBgColor = C.blueBg; vStatusLabelVM = 'IN USE'; }
+                if (isMaintVM) { vStatusColor = C.red; vStatusBgColor = C.redBg; vStatusLabelVM = 'MAINTENANCE'; }
+
+                const ownerDrv = getOwnerDriver(v);
+                const currentOrderForVehicle = isInUseVM ? (ordersList || []).find((o) =>
+                  (o.vehicleId === v.id || o.driverVehicleId === v.id) &&
+                  !['DELIVERED','COMPLETED','CANCELLED'].includes(o.status)
+                ) : null;
+
+                return (
+                  <Modal
+                    visible={!!selectedVehicleDetail}
+                    transparent
+                    animationType="slide"
+                    onRequestClose={() => setSelectedVehicleDetail(null)}
+                  >
+                    <View style={styles.modalOverlay}>
+                      <View style={[styles.modalCard, { maxHeight: '90%' }]}>
+                        {/* Header */}
+                        <View style={styles.modalHeaderRow}>
+                          <View style={styles.modalIconBoxGreen}>
+                            <MaterialCommunityIcons name="truck-outline" size={24} color={C.greenDark} />
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.modalTitleText} numberOfLines={1}>
+                              {v.plateNumber || v.vehicleNumber || 'Vehicle'}
+                            </Text>
+                            <Text style={styles.modalMsgText}>{v.makeModel || v.vehicleTypeLabel || 'Fleet Vehicle'}</Text>
+                          </View>
+                          <TouchableOpacity onPress={() => setSelectedVehicleDetail(null)}>
+                            <Ionicons name="close" size={22} color="#64748B" />
+                          </TouchableOpacity>
+                        </View>
+
+                        <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: '80%' }}>
+                          {/* Vehicle image */}
+                          {v.image && (
+                            <Image
+                              source={{ uri: v.image }}
+                              style={styles.vehicleDetailModalImage}
+                              resizeMode="cover"
+                            />
+                          )}
+
+                          {/* Status banner */}
+                          <View style={[styles.driverDetailBanner, { backgroundColor: vStatusBgColor, borderColor: vStatusBgColor }]}>
+                            <View style={[styles.driverStatusDot, { backgroundColor: vStatusColor }]} />
+                            <Text style={[styles.driverDetailBannerText, { color: vStatusColor }]}>{vStatusLabelVM}</Text>
+                          </View>
+
+                          {/* Vehicle details */}
+                          <View style={styles.driverDetailSection}>
+                            <Text style={styles.driverDetailSectionTitle}>Vehicle Information</Text>
+                            <View style={styles.driverDetailRow}>
+                              <Ionicons name="car-outline" size={16} color={C.muted} />
+                              <View style={{ flex: 1, marginLeft: 10 }}>
+                                <Text style={styles.driverDetailRowLabel}>Registration Number</Text>
+                                <Text style={styles.driverDetailRowValue}>{v.plateNumber || v.vehicleNumber || 'N/A'}</Text>
+                              </View>
+                            </View>
+                            <View style={styles.driverDetailRow}>
+                              <MaterialCommunityIcons name="truck-outline" size={16} color={C.muted} />
+                              <View style={{ flex: 1, marginLeft: 10 }}>
+                                <Text style={styles.driverDetailRowLabel}>Type</Text>
+                                <Text style={styles.driverDetailRowValue}>{v.vehicleIcon ? `${v.vehicleIcon} ` : ''}{v.vehicleTypeLabel || v.vehicleType || 'N/A'}</Text>
+                              </View>
+                            </View>
+                            <View style={styles.driverDetailRow}>
+                              <Ionicons name="build-outline" size={16} color={C.muted} />
+                              <View style={{ flex: 1, marginLeft: 10 }}>
+                                <Text style={styles.driverDetailRowLabel}>Make / Model</Text>
+                                <Text style={styles.driverDetailRowValue}>{v.makeModel || 'N/A'}</Text>
+                              </View>
+                            </View>
+                            {v.capacity ? (
+                              <View style={styles.driverDetailRow}>
+                                <Ionicons name="scale-outline" size={16} color={C.muted} />
+                                <View style={{ flex: 1, marginLeft: 10 }}>
+                                  <Text style={styles.driverDetailRowLabel}>Payload Capacity</Text>
+                                  <Text style={styles.driverDetailRowValue}>{v.capacity} kg</Text>
+                                </View>
+                              </View>
+                            ) : null}
+                            {v.district ? (
+                              <View style={styles.driverDetailRow}>
+                                <Ionicons name="location-outline" size={16} color={C.muted} />
+                                <View style={{ flex: 1, marginLeft: 10 }}>
+                                  <Text style={styles.driverDetailRowLabel}>Base District</Text>
+                                  <Text style={styles.driverDetailRowValue}>{typeof v.district === 'string' ? v.district : v.district?.nameEn || 'N/A'}</Text>
+                                </View>
+                              </View>
+                            ) : null}
+                            <View style={styles.driverDetailRow}>
+                              <Ionicons name="snow-outline" size={16} color={C.muted} />
+                              <View style={{ flex: 1, marginLeft: 10 }}>
+                                <Text style={styles.driverDetailRowLabel}>Cold Chain</Text>
+                                <Text style={styles.driverDetailRowValue}>{v.hasColdChain ? '❄️ Available' : 'Not Available'}</Text>
+                              </View>
+                            </View>
+                          </View>
+
+                          {/* Owner / Driver */}
+                          <View style={styles.driverDetailSection}>
+                            <Text style={styles.driverDetailSectionTitle}>Registered Driver</Text>
+                            {ownerDrv ? (
+                              <View style={styles.vehicleDetailDriverCard}>
+                                <View style={styles.driverAvatarFallback}>
+                                  <Text style={styles.driverAvatarInitials}>
+                                    {(ownerDrv.fullName || 'D').split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase()}
+                                  </Text>
+                                </View>
+                                <View style={{ flex: 1, marginLeft: 10 }}>
+                                  <Text style={styles.driverDetailRowValue}>{ownerDrv.fullName}</Text>
+                                  <Text style={styles.driverDetailRowLabel}>{ownerDrv.phoneNumber || 'N/A'}</Text>
+                                  {ownerDrv.email ? <Text style={styles.driverDetailRowLabel}>{ownerDrv.email}</Text> : null}
+                                </View>
+                                <View style={[
+                                  styles.driverStatusBadge,
+                                  { backgroundColor: ownerDrv.isAvailable ? C.mint : C.amberBg }
+                                ]}>
+                                  <View style={[styles.driverStatusDot, { backgroundColor: ownerDrv.isAvailable ? C.green : C.amber }]} />
+                                  <Text style={[styles.driverStatusText, { color: ownerDrv.isAvailable ? C.greenDark : C.amber }]}>
+                                    {ownerDrv.isAvailable ? 'AVAIL.' : 'BUSY'}
+                                  </Text>
+                                </View>
+                              </View>
+                            ) : (
+                              <Text style={styles.driverDetailEmptyText}>
+                                {v.driverName || 'Driver info not available.'}
+                              </Text>
+                            )}
+                          </View>
+
+                          {/* Current delivery */}
+                          {currentOrderForVehicle && (
+                            <View style={styles.driverDetailSection}>
+                              <Text style={styles.driverDetailSectionTitle}>Current Delivery</Text>
+                              <View style={styles.driverDetailDeliveryRow}>
+                                <Ionicons name="navigate" size={14} color={C.green} />
+                                <View style={{ flex: 1, marginLeft: 8 }}>
+                                  <Text style={styles.driverDetailDeliveryTitle} numberOfLines={1}>
+                                    {currentOrderForVehicle.produceName || 'Produce'} — #{String(currentOrderForVehicle.id).slice(-6).toUpperCase()}
+                                  </Text>
+                                  <Text style={styles.driverDetailDeliverySub} numberOfLines={1}>
+                                    {currentOrderForVehicle.pickupLocation || 'Origin'} → {currentOrderForVehicle.deliveryAddress || 'Destination'}
+                                  </Text>
+                                </View>
+                                {renderStatusBadge(currentOrderForVehicle.status)}
+                              </View>
+                            </View>
+                          )}
+                        </ScrollView>
+
+                        {/* Footer */}
+                        <View style={[styles.modalButtonsRow, { marginTop: 14 }]}>
+                          <TouchableOpacity
+                            style={styles.modalCancelBtn}
+                            onPress={() => setSelectedVehicleDetail(null)}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={styles.modalCancelBtnText}>Close</Text>
+                          </TouchableOpacity>
+                          {ownerDrv && (
+                            <TouchableOpacity
+                              style={[styles.modalConfirmBtn, { backgroundColor: C.greenDark }]}
+                              onPress={() => {
+                                setSelectedVehicleDetail(null);
+                                // need a slight delay so drivers tab renders before modal opens
+                                setTimeout(() => {
+                                  setActiveTab('drivers');
+                                  setSelectedDriverDetail(ownerDrv);
+                                }, 80);
+                              }}
+                              activeOpacity={0.8}
+                            >
+                              <Ionicons name="person-outline" size={15} color="#FFFFFF" style={{ marginRight: 6 }} />
+                              <Text style={styles.modalConfirmBtnText}>View Driver</Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      </View>
+                    </View>
+                  </Modal>
+                );
+              })()}
+
+              {/* Also render driver detail modal here (triggered from View Driver button) */}
+              {selectedDriverDetail && (() => {
+                const d = selectedDriverDetail;
+                const dId = d.uid || d.id;
+                const driverVehiclesVM = allVehiclesList.filter((vv) => {
+                  const owner = vv.driverUid || vv.driverId || vv.ownerDriverId || vv.userId;
+                  return owner === dId;
+                });
+                const driverOrdersVM = (ordersList || []).filter((o) =>
+                  o.driverId === dId && !['DELIVERED', 'COMPLETED', 'CANCELLED'].includes(o.status)
+                );
+                const districtDisplay = typeof d.district === 'string'
+                  ? d.district : d.district?.nameEn || 'N/A';
+                const initials3 = (d.fullName || 'D').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+
+                return (
+                  <Modal
+                    visible={!!selectedDriverDetail}
+                    transparent
+                    animationType="slide"
+                    onRequestClose={() => setSelectedDriverDetail(null)}
+                  >
+                    <View style={styles.modalOverlay}>
+                      <View style={[styles.modalCard, { maxHeight: '90%' }]}>
+                        <View style={styles.modalHeaderRow}>
+                          <View style={styles.driverDetailAvatarWrap}>
+                            {d.photoURL ? (
+                              <Image source={{ uri: d.photoURL }} style={styles.driverDetailAvatar} />
+                            ) : (
+                              <View style={styles.driverDetailAvatarFallback}>
+                                <Text style={styles.driverDetailAvatarInitials}>{initials3}</Text>
+                              </View>
+                            )}
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.modalTitleText}>{d.fullName || 'Driver'}</Text>
+                            <Text style={styles.modalMsgText}>{d.email || 'No email'}</Text>
+                          </View>
+                          <TouchableOpacity onPress={() => setSelectedDriverDetail(null)}>
+                            <Ionicons name="close" size={22} color="#64748B" />
+                          </TouchableOpacity>
+                        </View>
+
+                        <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: '80%' }}>
+                          <View style={[
+                            styles.driverDetailBanner,
+                            { backgroundColor: d.isAvailable ? C.mint : C.amberBg,
+                              borderColor: d.isAvailable ? '#C5E2D0' : '#FCD34D' }
+                          ]}>
+                            <View style={[styles.driverStatusDot, { backgroundColor: d.isAvailable ? C.green : C.amber }]} />
+                            <Text style={[styles.driverDetailBannerText, { color: d.isAvailable ? C.greenDark : C.amber }]}>
+                              {d.isAvailable ? 'Available for Assignment' : d.busyReason || 'Currently On Route'}
+                            </Text>
+                          </View>
+
+                          <View style={styles.driverDetailSection}>
+                            <Text style={styles.driverDetailSectionTitle}>Contact Information</Text>
+                            <View style={styles.driverDetailRow}>
+                              <Ionicons name="call-outline" size={16} color={C.muted} />
+                              <View style={{ flex: 1, marginLeft: 10 }}>
+                                <Text style={styles.driverDetailRowLabel}>Phone</Text>
+                                <Text style={styles.driverDetailRowValue}>{d.phoneNumber || 'N/A'}</Text>
+                              </View>
+                            </View>
+                            <View style={styles.driverDetailRow}>
+                              <Ionicons name="mail-outline" size={16} color={C.muted} />
+                              <View style={{ flex: 1, marginLeft: 10 }}>
+                                <Text style={styles.driverDetailRowLabel}>Email</Text>
+                                <Text style={styles.driverDetailRowValue}>{d.email || 'N/A'}</Text>
+                              </View>
+                            </View>
+                            <View style={styles.driverDetailRow}>
+                              <Ionicons name="location-outline" size={16} color={C.muted} />
+                              <View style={{ flex: 1, marginLeft: 10 }}>
+                                <Text style={styles.driverDetailRowLabel}>Base District</Text>
+                                <Text style={styles.driverDetailRowValue}>{districtDisplay}</Text>
+                              </View>
+                            </View>
+                            <View style={styles.driverDetailRow}>
+                              <Ionicons name="id-card-outline" size={16} color={C.muted} />
+                              <View style={{ flex: 1, marginLeft: 10 }}>
+                                <Text style={styles.driverDetailRowLabel}>Driver ID</Text>
+                                <Text style={[styles.driverDetailRowValue, { fontFamily: 'monospace', fontSize: 11 }]}>{dId}</Text>
+                              </View>
+                            </View>
+                          </View>
+
+                          <View style={styles.driverDetailSection}>
+                            <Text style={styles.driverDetailSectionTitle}>Active Deliveries ({driverOrdersVM.length})</Text>
+                            {driverOrdersVM.length === 0 ? (
+                              <Text style={styles.driverDetailEmptyText}>No active deliveries assigned.</Text>
+                            ) : (
+                              driverOrdersVM.map((o) => (
+                                <View key={o.id} style={styles.driverDetailDeliveryRow}>
+                                  <Ionicons name="navigate-outline" size={14} color={C.green} />
+                                  <View style={{ flex: 1, marginLeft: 8 }}>
+                                    <Text style={styles.driverDetailDeliveryTitle} numberOfLines={1}>
+                                      {o.produceName || 'Produce'} — #{String(o.id).slice(-6).toUpperCase()}
+                                    </Text>
+                                    <Text style={styles.driverDetailDeliverySub} numberOfLines={1}>
+                                      {o.pickupLocation || 'Origin'} → {o.deliveryAddress || 'Destination'}
+                                    </Text>
+                                  </View>
+                                  {renderStatusBadge(o.status)}
+                                </View>
+                              ))
+                            )}
+                          </View>
+
+                          <View style={styles.driverDetailSection}>
+                            <Text style={styles.driverDetailSectionTitle}>Registered Vehicles ({driverVehiclesVM.length})</Text>
+                            {driverVehiclesVM.length === 0 ? (
+                              <Text style={styles.driverDetailEmptyText}>No vehicles registered to this driver.</Text>
+                            ) : (
+                              driverVehiclesVM.map((vv) => {
+                                const vs = String(vv.status || 'AVAILABLE').toUpperCase();
+                                const vsColor = vs === 'AVAILABLE' ? C.green : vs === 'MAINTENANCE' ? C.red : C.amber;
+                                const vsBg = vs === 'AVAILABLE' ? C.mint : vs === 'MAINTENANCE' ? C.redBg : C.amberBg;
+                                return (
+                                  <View key={vv.id} style={styles.driverDetailVehicleRow}>
+                                    <View style={[styles.driverDetailVehicleIconBox, { backgroundColor: C.mint }]}>
+                                      <MaterialCommunityIcons name="truck-outline" size={18} color={C.greenDark} />
+                                    </View>
+                                    <View style={{ flex: 1, marginLeft: 10 }}>
+                                      <Text style={styles.driverDetailVehiclePlate}>{vv.plateNumber || vv.vehicleNumber || 'N/A'}</Text>
+                                      <Text style={styles.driverDetailVehicleSub} numberOfLines={1}>
+                                        {vv.makeModel || vv.vehicleTypeLabel || vv.vehicleType || 'Vehicle'}{vv.capacity ? ` • ${vv.capacity} kg` : ''}
+                                      </Text>
+                                    </View>
+                                    <View style={[styles.driverStatusBadge, { backgroundColor: vsBg }]}>
+                                      <Text style={[styles.driverStatusText, { color: vsColor, fontSize: 9 }]}>{vs}</Text>
+                                    </View>
+                                  </View>
+                                );
+                              })
+                            )}
+                          </View>
+                        </ScrollView>
+
+                        <View style={[styles.modalButtonsRow, { marginTop: 14 }]}>
+                          <TouchableOpacity
+                            style={styles.modalCancelBtn}
+                            onPress={() => setSelectedDriverDetail(null)}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={styles.modalCancelBtnText}>Close</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[styles.modalConfirmBtn, { backgroundColor: C.greenDark }]}
+                            onPress={() => {
+                              setSelectedDriverDetail(null);
+                              setVehicleDriverFilter(d);
+                              setSelectedVehicleCategory('all');
+                              setVehicleSearchQuery('');
+                              setVehicleStatusFilter('all');
+                            }}
+                            activeOpacity={0.8}
+                          >
+                            <MaterialCommunityIcons name="truck-outline" size={15} color="#FFFFFF" style={{ marginRight: 6 }} />
+                            <Text style={styles.modalConfirmBtnText}>View Vehicles</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    </View>
+                  </Modal>
+                );
+              })()}
+            </View>
+          );
+        })()}
 
         {/* DELIVERIES MANAGEMENT TAB (GOVI-143 -> GOVI-151) */}
         {activeTab === 'deliveries' && (
@@ -2862,6 +3761,366 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 2,
+  },
+
+  /* ============================================================
+     DRIVER CARD STYLES
+  ============================================================ */
+  driverCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: C.border,
+    shadowColor: '#16352D',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  driverCardTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  driverAvatarWrap: {
+    position: 'relative',
+    marginRight: 12,
+  },
+  driverAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: C.mint,
+  },
+  driverAvatarFallback: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: C.mint,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  driverAvatarInitials: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: C.greenDark,
+  },
+  driverAvatarDot: {
+    position: 'absolute',
+    bottom: 1,
+    right: 1,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  driverCardInfo: {
+    flex: 1,
+  },
+  driverCardName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: C.ink,
+    marginBottom: 2,
+  },
+  driverCardPhone: {
+    fontSize: 12,
+    color: C.muted,
+    marginBottom: 1,
+  },
+  driverCardEmail: {
+    fontSize: 11,
+    color: C.muted,
+  },
+  driverStatusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 8,
+    gap: 4,
+  },
+  driverStatusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  driverStatusText: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+  },
+  driverCardStatsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: C.canvas,
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 12,
+  },
+  driverStatItem: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  driverStatValue: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: C.ink,
+  },
+  driverStatLabel: {
+    fontSize: 11,
+    color: C.muted,
+    marginLeft: 2,
+  },
+  driverStatDivider: {
+    width: 1,
+    height: 20,
+    backgroundColor: C.border,
+    marginHorizontal: 8,
+  },
+  driverCardActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  driverActionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: C.border,
+    backgroundColor: '#FFFFFF',
+  },
+  driverActionBtnPrimary: {
+    backgroundColor: C.greenDark,
+    borderColor: C.greenDark,
+  },
+  driverActionBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: C.greenDark,
+  },
+
+  /* ============================================================
+     DRIVER DETAIL MODAL STYLES
+  ============================================================ */
+  driverDetailAvatarWrap: {
+    marginRight: 12,
+  },
+  driverDetailAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: C.mint,
+  },
+  driverDetailAvatarFallback: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: C.mint,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  driverDetailAvatarInitials: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: C.greenDark,
+  },
+  driverDetailBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 14,
+    gap: 8,
+  },
+  driverDetailBannerText: {
+    fontSize: 12,
+    fontWeight: '700',
+    flex: 1,
+  },
+  driverDetailSection: {
+    marginBottom: 16,
+  },
+  driverDetailSectionTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: C.muted,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    marginBottom: 10,
+  },
+  driverDetailRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
+  },
+  driverDetailRowLabel: {
+    fontSize: 11,
+    color: C.muted,
+    fontWeight: '500',
+    marginBottom: 1,
+  },
+  driverDetailRowValue: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: C.ink,
+  },
+  driverDetailEmptyText: {
+    fontSize: 12,
+    color: C.muted,
+    fontStyle: 'italic',
+    paddingVertical: 4,
+  },
+  driverDetailDeliveryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
+    gap: 4,
+  },
+  driverDetailDeliveryTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: C.ink,
+  },
+  driverDetailDeliverySub: {
+    fontSize: 11,
+    color: C.muted,
+    marginTop: 1,
+  },
+  driverDetailVehicleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
+  },
+  driverDetailVehicleIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  driverDetailVehiclePlate: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: C.ink,
+  },
+  driverDetailVehicleSub: {
+    fontSize: 11,
+    color: C.muted,
+    marginTop: 1,
+  },
+
+  /* ============================================================
+     VEHICLE DETAIL CARD & MODAL STYLES
+  ============================================================ */
+  vehicleDetailCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderLeftWidth: 4,
+    borderColor: C.border,
+    shadowColor: '#16352D',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  vehicleStatusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 7,
+  },
+  vehicleStatusBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+  },
+  vehicleTagChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: C.canvas,
+    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  vehicleTagChipText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: C.muted,
+  },
+  vehicleOwnerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: 10,
+    paddingBottom: 12,
+    borderTopWidth: 1,
+    borderTopColor: C.border,
+    marginTop: 10,
+  },
+  vehicleOwnerText: {
+    fontSize: 12,
+    color: C.ink,
+    fontWeight: '600',
+    flex: 1,
+  },
+  vehicleDetailModalImage: {
+    width: '100%',
+    height: 160,
+    borderRadius: 14,
+    marginBottom: 12,
+    backgroundColor: C.mint,
+  },
+  vehicleDetailDriverCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: C.canvas,
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+
+  /* ============================================================
+     CLEAR FILTER PILL
+  ============================================================ */
+  clearFilterPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: C.mint,
+    borderWidth: 1,
+    borderColor: '#C5E2D0',
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    gap: 4,
+    marginLeft: 8,
+  },
+  clearFilterPillText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: C.greenDark,
   },
 
   /* DELIVERY MANAGEMENT & OPERATIONS STYLES */
