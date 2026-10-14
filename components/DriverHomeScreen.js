@@ -6,14 +6,11 @@ import {
   ScrollView,
   TouchableOpacity,
   Image,
-  Alert,
-  ActivityIndicator,
   StatusBar,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import {
-  updateOrderStatus,
   subscribeToDriverVehicles,
   rejectDriverDelivery,
 } from '../services/firebaseDatabase';
@@ -174,6 +171,12 @@ const TRANSLATIONS = {
   },
 };
 
+const DASHBOARD_COPY = {
+  en: { greeting: 'Hello', driver: 'Driver', subtitle: 'Your deliveries and vehicles, in one place.', deliveries: 'My deliveries', overview: 'Overview', active: 'Active', completed: 'Completed', newJobs: 'Awaiting acceptance', onRoute: 'On the road', ready: 'Ready for pickup', accepted: 'Accepted', assigned: 'New assignment', transit: 'In transit', preparing: 'Preparing', needsAction: 'Your next step', review: 'Review your new delivery and accept or reject it.', continue: 'Open your route to review details and update delivery progress.', all: 'View all', pickup: 'Pickup', destination: 'Drop-off', details: 'View route & tracking details', reviewDelivery: 'Review delivery', empty: 'No active deliveries', emptySub: 'New assignments will appear here. You can manage your vehicles in My Fleet.', emptyCompleted: 'No completed deliveries yet', emptyCompletedSub: 'Completed trips will appear here after you confirm delivery.', fleetSub: 'Select vehicles for dispatch or add a vehicle.', countLabel: 'Selected for dispatch' },
+  si: { greeting: 'ආයුබෝවන්', driver: 'රියදුරු', subtitle: 'ඔබගේ බෙදාහැරීම් සහ වාහන එකම තැනක.', deliveries: 'මගේ බෙදාහැරීම්', overview: 'සාරාංශය', active: 'සක්‍රිය', completed: 'සම්පූර්ණයි', newJobs: 'පිළිගැනීමට බලාපොරොත්තුවෙන්', onRoute: 'මාර්ගයේ', ready: 'අස්වනු ගැනීමට සූදානම්', accepted: 'පිළිගෙන ඇත', assigned: 'නව පැවරුම', transit: 'ප්‍රවාහනයේ', preparing: 'සූදානම් කරමින්', needsAction: 'ඔබගේ ඊළඟ පියවර', review: 'නව බෙදාහැරීම පරීක්ෂා කර පිළිගන්න හෝ ප්‍රතික්ෂේප කරන්න.', continue: 'මාර්ග විස්තර බලන්න සහ බෙදාහැරීම යාවත්කාලීන කරන්න.', all: 'සියල්ල බලන්න', pickup: 'අස්වනු ලබාගැනීම', destination: 'භාරදීම', details: 'මාර්ගය සහ බෙදාහැරීම බලන්න', reviewDelivery: 'බෙදාහැරීම බලන්න', empty: 'සක්‍රිය බෙදාහැරීම් නොමැත', emptySub: 'නව පැවරුම් මෙහි පෙන්වනු ඇත. මගේ වාහන තුළ වාහන කළමනාකරණය කරන්න.', emptyCompleted: 'සම්පූර්ණ බෙදාහැරීම් නොමැත', emptyCompletedSub: 'භාරදීම තහවුරු කළ පසු සම්පූර්ණ ගමන් මෙහි පෙන්වනු ඇත.', fleetSub: 'ප්‍රවාහනය සඳහා වාහන තෝරන්න හෝ එක් කරන්න.', countLabel: 'ප්‍රවාහනයට තෝරා ඇත' },
+  ta: { greeting: 'வணக்கம்', driver: 'ஓட்டுநர்', subtitle: 'உங்கள் விநியோகங்களும் வாகனங்களும் ஒரே இடத்தில்.', deliveries: 'எனது விநியோகங்கள்', overview: 'சுருக்கம்', active: 'செயலில்', completed: 'முடிந்தவை', newJobs: 'ஏற்பதற்காகக் காத்திருக்கிறது', onRoute: 'பயணத்தில்', ready: 'எடுக்கத் தயார்', accepted: 'ஏற்கப்பட்டது', assigned: 'புதிய ஒதுக்கீடு', transit: 'பயணத்தில்', preparing: 'தயாராகிறது', needsAction: 'உங்கள் அடுத்த படி', review: 'புதிய விநியோகத்தைப் பார்த்து ஏற்கவும் அல்லது நிராகரிக்கவும்.', continue: 'பாதை விவரங்களைப் பார்த்து விநியோக முன்னேற்றத்தை மாற்றவும்.', all: 'அனைத்தையும் பார்', pickup: 'எடுக்கும் இடம்', destination: 'சேருமிடம்', details: 'பாதை மற்றும் விநியோக விவரங்கள்', reviewDelivery: 'விநியோகத்தைப் பார்', empty: 'செயலில் விநியோகங்கள் இல்லை', emptySub: 'புதிய ஒதுக்கீடுகள் இங்கே தோன்றும். எனது வாகனங்களில் உங்கள் வாகனங்களை நிர்வகிக்கவும்.', emptyCompleted: 'முடிந்த விநியோகங்கள் இல்லை', emptyCompletedSub: 'விநியோகத்தை உறுதிசெய்த பிறகு முடிந்த பயணங்கள் இங்கே தோன்றும்.', fleetSub: 'விநியோகத்திற்கு வாகனங்களைத் தேர்ந்தெடுக்கவும் அல்லது சேர்க்கவும்.', countLabel: 'விநியோகத்திற்கு தேர்ந்தெடுக்கப்பட்டது' },
+};
+
 export default function DriverHomeScreen({
   userProfile,
   lang = 'en',
@@ -183,8 +186,7 @@ export default function DriverHomeScreen({
   onProfileUpdated,
 }) {
   const [workspaceTab, setWorkspaceTab] = useState('home');
-  const [isOnDuty, setIsOnDuty] = useState(true);
-  const [updatingTripId, setUpdatingTripId] = useState(null);
+  const [deliveryFilter, setDeliveryFilter] = useState('active');
   const [currentScreen, setCurrentScreen] = useState('dashboard'); // 'dashboard' | 'vehiclesList' | 'addVehicle'
   const [editingVehicle, setEditingVehicle] = useState(null);
   const [vehiclesList, setVehiclesList] = useState([]);
@@ -192,6 +194,7 @@ export default function DriverHomeScreen({
   const [selectedTripForTracking, setSelectedTripForTracking] = useState(null);
 
   const t = TRANSLATIONS[lang] || TRANSLATIONS.en;
+  const ui = DASHBOARD_COPY[lang] || DASHBOARD_COPY.en;
 
   // Real-time vehicles subscription
   useEffect(() => {
@@ -237,60 +240,19 @@ export default function DriverHomeScreen({
 
   const allDriverTrips = realOrdersForDriver;
 
-  const activeDeliveries = allDriverTrips.filter(
-    (trip) =>
-      trip.status === 'READY_FOR_PICKUP' ||
-      trip.status === 'IN_TRANSIT' ||
-      trip.status === 'ACCEPTED' ||
-      trip.status === 'ASSIGNED'
+  const activeDeliveries = allDriverTrips.filter((trip) =>
+    ['ASSIGNED', 'ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP', 'IN_TRANSIT', 'PICKED_UP', 'PENDING_DELIVERY'].includes(trip.status)
   );
   const completedDeliveries = allDriverTrips.filter((trip) => trip.status === 'DELIVERED');
-
-  const handleTripProgression = async (trip) => {
-    let nextStatus = '';
-    if (
-      trip.status === 'READY_FOR_PICKUP' ||
-      trip.status === 'ACCEPTED' ||
-      trip.status === 'PENDING' ||
-      trip.status === 'ASSIGNED'
-    ) {
-      nextStatus = 'IN_TRANSIT';
-    } else if (trip.status === 'IN_TRANSIT') {
-      nextStatus = 'DELIVERED';
-    }
-
-    if (!nextStatus) return;
-
-    setUpdatingTripId(trip.id);
-    if (trip.id) {
-      const res = await updateOrderStatus(trip.id, nextStatus, {
-        driverName: userProfile?.fullName || 'Assigned Driver',
-        driverPhone: userProfile?.phoneNumber || '',
-        changedBy: userProfile?.fullName || 'Assigned Driver',
-        actorRole: 'driver',
-      });
-      setUpdatingTripId(null);
-
-      if (!res.success) {
-        Alert.alert('Status Error', res.error || 'Failed to update order status');
-        return;
-      }
-    } else {
-      setUpdatingTripId(null);
-    }
-
-    if (nextStatus === 'IN_TRANSIT') {
-      Alert.alert(
-        'Cargo Picked Up! 🚛',
-        `You have confirmed pickup at "${trip.pickupLocation}". The buyer and farmer have been notified that cargo is in transit.`
-      );
-    } else if (nextStatus === 'DELIVERED') {
-      Alert.alert(
-        'Delivery Complete! 🎉',
-        `Successfully delivered to "${trip.deliveryAddress}". Logistics payment credited to your driver account!`
-      );
-    }
-  };
+  const newDeliveries = activeDeliveries.filter((trip) => trip.status === 'ASSIGNED');
+  const inTransitDeliveries = activeDeliveries.filter((trip) => ['IN_TRANSIT', 'PICKED_UP', 'PENDING_DELIVERY'].includes(trip.status));
+  const sortedDeliveries = [...activeDeliveries].sort((a, b) => {
+    const priority = (trip) => ['IN_TRANSIT', 'PICKED_UP', 'PENDING_DELIVERY'].includes(trip.status) ? 0 : trip.status === 'ASSIGNED' ? 1 : 2;
+    return priority(a) - priority(b);
+  });
+  const visibleDeliveries = workspaceTab === 'home' ? sortedDeliveries.slice(0, 2)
+    : deliveryFilter === 'completed' ? completedDeliveries : sortedDeliveries;
+  const selectedVehicleCount = vehiclesList.filter((vehicle) => vehicle.isActive).length;
 
   // Screen Switching
   if (currentScreen === 'vehiclesList') {
@@ -320,11 +282,13 @@ export default function DriverHomeScreen({
         initialVehicle={editingVehicle}
         onBack={() => {
           setEditingVehicle(null);
-          setCurrentScreen(vehiclesList.length > 0 ? 'vehiclesList' : 'dashboard');
+          setCurrentScreen('dashboard');
+          setWorkspaceTab('fleet');
         }}
         onVehicleSaved={() => {
           setEditingVehicle(null);
           setCurrentScreen('dashboard');
+          setWorkspaceTab('fleet');
         }}
       />
     );
@@ -376,196 +340,89 @@ export default function DriverHomeScreen({
           onEditVehicle={(vehicle) => { setEditingVehicle(vehicle); setCurrentScreen('addVehicle'); }} />
       ) : (
       <ScrollView key={workspaceTab} style={{ flex: 1 }} contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
-        <FarmerHeading eyebrow={workspaceTab === 'home' ? 'YOUR ROUTES, AT A GLANCE' : 'FARM PICKUP & DELIVERY'}
-          title={workspaceTab === 'home' ? `Hello, ${userProfile?.fullName?.split(' ')[0] || 'Driver'}.` : t.tabs.assigned} subtitle={t.tagline} />
-        {workspaceTab === 'home' && <>
+        <FarmerHeading
+          eyebrow={workspaceTab === 'home' ? 'YOUR DELIVERIES, AT A GLANCE' : 'DRIVER WORKSPACE'}
+          title={workspaceTab === 'home' ? `${ui.greeting}, ${userProfile?.fullName?.split(' ')[0] || ui.driver}.` : ui.deliveries}
+          subtitle={workspaceTab === 'home' ? ui.subtitle : t.tagline}
+        />
+        {workspaceTab === 'home' ? <>
           <View style={styles.hero}>
-            <View style={styles.heroTop}><View style={styles.heroPill}><Ionicons name="location-outline" size={13} color="#D1E9D9" /><Text style={styles.heroEyebrow}>{driverLocationLabel(userProfile?.district, lang, 'Sri Lanka')}</Text></View><Ionicons name="car-outline" size={36} color="#82AE92" /></View>
-            <Text style={styles.heroTitle}>Connecting farms,{'\n'}delivering fresh harvests.</Text>
-            <Text style={styles.heroSub}>Plan your pickups, manage your fleet, and keep every delivery moving.</Text>
-            <FarmerButton label={cleanLabel(t.tabs.assigned)} icon="navigate-outline" onPress={() => setWorkspaceTab('deliveries')} style={styles.heroButton} />
-          </View>
-        {/* SHIFT & DUTY STATUS CARD */}
-        <View style={styles.dutyCard}>
-          <View style={styles.dutyInfo}>
-            <Text style={styles.dutyTitle}>Logistics availability</Text>
-            <Text style={styles.dutySub}>
-              {isOnDuty ? 'Ready for farm pickup & dropoff dispatches' : 'Offline • No new trip requests'}
-            </Text>
-          </View>
-
-          <TouchableOpacity
-            style={[styles.dutyToggleBtn, isOnDuty ? styles.dutyBtnOn : styles.dutyBtnOff]}
-            onPress={() => setIsOnDuty(!isOnDuty)}
-            activeOpacity={0.8}
-          >
-            <Text style={[styles.dutyToggleText, isOnDuty ? { color: C.green } : { color: C.red }]}>
-              {cleanLabel(isOnDuty ? t.shift.onDuty : t.shift.offDuty)}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* COMPACT FLEET ENTRY */}
-        <TouchableOpacity
-          accessibilityRole="button"
-          accessibilityLabel={cleanLabel(t.vehicle.viewAllBtn)}
-          style={styles.fleetShortcut}
-          onPress={() => setWorkspaceTab('fleet')}
-          activeOpacity={0.75}
-        >
-          <IconTile name="car-outline" />
-          <View style={styles.fleetShortcutContent}>
-            <Text style={styles.fleetShortcutTitle}>{t.vehicle.fleetLabel} ({vehiclesList.length})</Text>
-            <Text style={styles.fleetShortcutSubtitle}>{cleanLabel(t.vehicle.viewAllBtn)} · {cleanLabel(t.vehicle.addNewBtn)}</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={20} color={C.green} />
-        </TouchableOpacity>
-
-        {/* DRIVER METRICS GRID */}
-        <View style={styles.statsGrid}>
-          <View style={styles.kpiCard}>
-            <IconTile name="navigate-outline" /><Text style={styles.kpiLabel}>{t.stats.activeTrips}</Text>
-            <Text style={styles.kpiValue}>{activeDeliveries.length}</Text>
-          </View>
-
-          <View style={styles.kpiCard}>
-            <IconTile name="checkmark-circle-outline" /><Text style={styles.kpiLabel}>{t.stats.completedToday}</Text>
-            <Text style={styles.kpiValue}>{completedDeliveries.length}</Text>
-          </View>
-
-          <View style={styles.kpiCard}>
-            <IconTile name="star-outline" /><Text style={styles.kpiLabel}>{t.stats.rating}</Text>
-            <Text style={styles.kpiValue}>5.0 ★</Text>
-          </View>
-        </View>
-
-        </>}
-        <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>{cleanLabel(t.tabs.assigned)}</Text><Text style={styles.sectionMeta}>{activeDeliveries.length}</Text></View>
-
-        {/* ASSIGNED DELIVERIES ROUTE CARDS */}
-        <View>
-          {activeDeliveries.length === 0 ? (
-            <View style={styles.emptyCard}>
-              <Ionicons name="checkmark-circle-outline" size={48} color={C.green} />
-              <Text style={styles.emptyTitle}>All deliveries completed!</Text>
-              <Text style={styles.emptySubtitle}>You have no pending pickup routes right now.</Text>
+            <View style={styles.heroTop}>
+              <View style={styles.heroPill}>
+                <Ionicons name="location-outline" size={13} color="#D1E9D9" />
+                <Text style={styles.heroEyebrow}>{driverLocationLabel(userProfile?.district, lang, 'Sri Lanka')}</Text>
+              </View>
+              <Ionicons name="car-outline" size={36} color="#82AE92" />
             </View>
-          ) : (
-            activeDeliveries.map((trip) => {
-              const isInTransit = trip.status === 'IN_TRANSIT';
-              const isAssigned = trip.status === 'ASSIGNED';
-              const isReady = trip.status === 'READY_FOR_PICKUP' || trip.status === 'ACCEPTED' || trip.status === 'PENDING' || isAssigned;
-
-              return (
-                <View key={trip.id} style={styles.deliveryCard}>
-                  {/* CARD HEADER ROW */}
-                  <View style={styles.tripHeaderRow}>
-                    <Text style={styles.cargoTitle}>{trip.produceName}</Text>
-                    <View style={[
-                      styles.tripBadge,
-                      isInTransit ? styles.badgeInTransit : isAssigned ? { backgroundColor: '#EFF6FF', borderColor: '#BFDBFE', borderWidth: 1 } : styles.badgePending,
-                    ]}>
-                      <Text style={[
-                        styles.tripBadgeText,
-                        isInTransit ? { color: C.green } : isAssigned ? { color: '#2563EB' } : { color: C.muted },
-                      ]}>
-                        {isInTransit ? 'IN TRANSIT' : isAssigned ? 'ASSIGNED' : 'READY FOR PICKUP'}
-                      </Text>
-                    </View>
-                  </View>
-
-                  {/* FARMER SUBHEADER ROW */}
-                  <View style={styles.farmerRow}>
-                    <Ionicons name="person-outline" size={14} color={C.muted} style={{ marginRight: 6 }} />
-                    <Text style={styles.farmerNameText}>
-                      {trip.farmerName} • 📞 {trip.farmerPhone || 'N/A'}
-                    </Text>
-                  </View>
-
-                  {/* DIVIDER LINE */}
-                  <View style={styles.cardDivider} />
-
-                  {/* ROUTE TIMELINE VISUALIZER (MATCHES REQUEST SCREEN) */}
-                  <View style={styles.routeContainer}>
-                    {/* PICKUP NODE */}
-                    <View style={styles.routeNodeRow}>
-                      <View style={styles.pickupCircleOuter}>
-                        <View style={styles.pickupCircleInner} />
-                      </View>
-                      <View style={styles.routeTextCol}>
-                        <Text style={styles.routeLabelPickup}>PICKUP</Text>
-                        <Text style={styles.locationTitle}>{trip.pickupLocation}</Text>
-                      </View>
-                    </View>
-
-                    {/* CONNECTING LINE */}
-                    <View style={styles.routeConnectingLine} />
-
-                    {/* DESTINATION NODE */}
-                    <View style={styles.routeNodeRow}>
-                      <View style={styles.destCircleOuter} />
-                      <View style={styles.routeTextCol}>
-                        <Text style={styles.routeLabelDest}>DESTINATION</Text>
-                        <Text style={styles.locationTitle}>{trip.deliveryAddress}</Text>
-                        <Text style={styles.buyerContactSub}>Buyer: {trip.buyerName} • 📞 {trip.buyerPhone || 'N/A'}</Text>
-                      </View>
-                    </View>
-                  </View>
-
-                  {/* HANDLING NOTES BANNER */}
-                  {trip.specialNotes ? (
-                    <View style={styles.specialNotesCard}>
-                      <Ionicons name="information-circle-outline" size={16} color={C.blue} style={{ marginRight: 8 }} />
-                      <Text style={styles.specialNotesText}>{trip.specialNotes}</Text>
-                    </View>
-                  ) : null}
-
-                  {/* ACTION BUTTON */}
-                  <TouchableOpacity
-                    style={[
-                      styles.actionBtn,
-                      isInTransit ? styles.actionBtnDelivered : styles.actionBtnTransit,
-                    ]}
-                    disabled={updatingTripId === trip.id}
-                    onPress={() => handleTripProgression(trip)}
-                    activeOpacity={0.85}
-                  >
-                    {updatingTripId === trip.id ? (
-                      <ActivityIndicator size="small" color="#FFFFFF" />
-                    ) : (
-                      <>
-                        <Ionicons name={isInTransit ? 'checkmark-circle-outline' : 'car-outline'}
-                          size={18}
-                          color="#FFFFFF"
-                          style={{ marginRight: 8 }}
-                        />
-                        <Text style={styles.actionBtnText}>
-                          {cleanLabel(isInTransit ? t.actions.markDelivered : t.actions.startTransit)}
-                        </Text>
-                      </>
-                    )}
-                  </TouchableOpacity>
-
-                  {/* VIEW LIVE TRACKING BUTTON */}
-                  <TouchableOpacity
-                    style={styles.viewTrackingBtn}
-                    onPress={() => setSelectedTripForTracking(trip)}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={styles.viewTrackingBtnText}>
-                      View route & tracking details
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              );
-            })
-          )}
+            <Text style={styles.heroTitle}>Connecting farms,{'\n'}delivering fresh harvests.</Text>
+            <Text style={styles.heroSub}>Review your assigned deliveries.{'\n'}Keep every pickup and drop-off on track.</Text>
+            <FarmerButton label={ui.deliveries} icon="cube-outline" onPress={() => { setDeliveryFilter('active'); setWorkspaceTab('deliveries'); }} style={styles.heroButton} />
+          </View>
+          <View style={styles.statsGrid}>
+            {[
+              [ui.newJobs, newDeliveries.length, 'mail-unread-outline', 'deliveries', 'active'],
+              [ui.onRoute, inTransitDeliveries.length, 'navigate-outline', 'deliveries', 'active'],
+              [ui.completed, completedDeliveries.length, 'checkmark-circle-outline', 'deliveries', 'completed'],
+              [cleanLabel(t.vehicle.fleetLabel), vehiclesList.length, 'car-outline', 'fleet', 'active'],
+            ].map(([label, value, icon, tab, filter]) => <TouchableOpacity key={label} accessibilityRole="button" accessibilityLabel={`${label}: ${value}`}
+              onPress={() => { setDeliveryFilter(filter); setWorkspaceTab(tab); }} style={styles.statCard}>
+              <Ionicons name={icon} size={20} color={C.green} />
+              <Text style={styles.statValue}>{value}</Text>
+              <Text style={styles.statLabel}>{label}</Text>
+            </TouchableOpacity>)}
+          </View>
+          <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>Your next steps</Text></View>
+          <View style={styles.quickCard}>
+            {[
+              ['cube-outline', ui.reviewDelivery, ui.review, 'deliveries'],
+              ['car-outline', cleanLabel(t.vehicle.fleetLabel), `${ui.countLabel}: ${selectedVehicleCount}`, 'fleet'],
+              ['person-outline', 'Update your profile', 'Keep your photo and contact information up to date', 'profile'],
+            ].map(([icon, title, subtitle, tab], index) => <TouchableOpacity key={tab} accessibilityRole="button" accessibilityLabel={title}
+              onPress={() => { if (tab === 'profile') setShowProfileScreen(true); else { setDeliveryFilter('active'); setWorkspaceTab(tab); } }}
+              style={[styles.quickRow, index > 0 && styles.quickBorder]}>
+              <IconTile name={icon} />
+              <View style={{ flex: 1, minWidth: 0 }}><Text style={styles.quickTitle}>{title}</Text><Text style={styles.smallText}>{subtitle}</Text></View>
+              <Ionicons name="chevron-forward" size={18} color={C.muted} />
+            </TouchableOpacity>)}
+          </View>
+        </> : <View style={styles.filterRow}>
+          {['active', 'completed'].map((key) => <TouchableOpacity key={key} accessibilityRole="button" accessibilityState={{ selected: deliveryFilter === key }}
+            onPress={() => setDeliveryFilter(key)} style={[styles.filterChip, deliveryFilter === key && styles.filterChipSelected]}>
+            <Text style={[styles.filterText, deliveryFilter === key && { color: C.white }]}>{ui[key]} ({key === 'active' ? activeDeliveries.length : completedDeliveries.length})</Text>
+          </TouchableOpacity>)}
+        </View>}
+        <View style={styles.sectionHeading}>
+          <Text style={styles.sectionTitle}>{workspaceTab === 'deliveries' && deliveryFilter === 'completed' ? ui.completed : ui.deliveries}</Text>
+          {workspaceTab === 'home' && activeDeliveries.length > 0 && <TouchableOpacity accessibilityRole="button" style={styles.viewAllAction} onPress={() => { setDeliveryFilter('active'); setWorkspaceTab('deliveries'); }}>
+            <Text style={styles.sectionMeta}>{ui.all} ({activeDeliveries.length})</Text><Ionicons name="chevron-forward" size={16} color={C.green} />
+          </TouchableOpacity>}
         </View>
+        {visibleDeliveries.length === 0 ? <View style={styles.emptyCard}>
+          <IconTile name="cube-outline" />
+          <Text style={styles.emptyTitle}>{workspaceTab === 'deliveries' && deliveryFilter === 'completed' ? ui.emptyCompleted : ui.empty}</Text>
+          <Text style={styles.emptySubtitle}>{workspaceTab === 'deliveries' && deliveryFilter === 'completed' ? ui.emptyCompletedSub : ui.emptySub}</Text>
+          {workspaceTab === 'home' && <FarmerButton label={cleanLabel(t.vehicle.fleetLabel)} secondary onPress={() => setWorkspaceTab('fleet')} style={{ marginTop: 12 }} />}
+        </View> : visibleDeliveries.map((trip) => {
+          const statusLabel = trip.status === 'ASSIGNED' ? ui.assigned : trip.status === 'ACCEPTED' ? ui.accepted
+            : trip.status === 'PREPARING' ? ui.preparing : trip.status === 'DELIVERED' ? ui.completed
+            : trip.status === 'READY_FOR_PICKUP' ? ui.ready : ui.transit;
+          return <View key={trip.id} style={styles.deliveryCard}>
+            <View style={styles.tripHeaderRow}>
+              <Text style={styles.cargoTitle}>{trip.produceName}</Text>
+              <View style={[styles.tripBadge, { backgroundColor: trip.status === 'ASSIGNED' ? C.amberBg : C.mint }]}>
+                <Text style={[styles.tripBadgeText, { color: trip.status === 'ASSIGNED' ? C.amber : C.greenDark }]}>{statusLabel}</Text>
+              </View>
+            </View>
+            <View style={styles.routeSummaryRow}><Ionicons name="ellipse-outline" size={16} color={C.green} /><View style={{ flex: 1 }}><Text style={styles.routeSummaryLabel}>{ui.pickup}</Text><Text style={styles.locationTitle}>{trip.pickupLocation}</Text></View></View>
+            <View style={styles.routeSummaryRow}><Ionicons name="location-outline" size={18} color={C.green} /><View style={{ flex: 1 }}><Text style={styles.routeSummaryLabel}>{ui.destination}</Text><Text style={styles.locationTitle}>{trip.deliveryAddress}</Text></View></View>
+            <FarmerButton label={trip.status === 'ASSIGNED' ? ui.reviewDelivery : ui.details} icon="arrow-forward-outline" onPress={() => setSelectedTripForTracking(trip)} style={{ marginTop: 16 }} />
+          </View>;
+        })}
       </ScrollView>)}
       <SafeAreaView edges={['bottom']} style={styles.navSafe}><View role="tablist" style={styles.nav}>
         {[
-          ['home', lang === 'si' ? 'සාරාංශය' : lang === 'ta' ? 'சுருக்கம்' : 'Overview', 'grid-outline'],
-          ['deliveries', lang === 'si' ? 'බෙදාහැරීම්' : lang === 'ta' ? 'விநியோகங்கள்' : 'Deliveries', 'cube-outline'],
+          ['home', lang === 'si' ? 'සාරාංශය' : lang === 'ta' ? 'சுருக்கம்' : ui.overview, 'grid-outline'],
+          ['deliveries', lang === 'si' ? 'බෙදාහැරීම්' : lang === 'ta' ? 'விநியோகங்கள்' : ui.deliveries, 'cube-outline'],
           ['fleet', cleanLabel(t.vehicle.fleetLabel), 'car-outline'],
           ['profile', lang === 'si' ? 'ගිණුම' : lang === 'ta' ? 'சுயவிவரம்' : 'Profile', 'person-outline'],
         ].map(([key, label, icon]) => {
@@ -582,18 +439,6 @@ export default function DriverHomeScreen({
 }
 
 const styles = StyleSheet.create({
-  fleetShortcut: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: C.white, borderWidth: 1, borderColor: C.border, borderRadius: 22, padding: 18, marginBottom: 20 },
-  fleetShortcutContent: { flex: 1, minWidth: 0 },
-  fleetShortcutTitle: { fontSize: 16, fontWeight: '700', color: C.ink },
-  fleetShortcutSubtitle: { fontSize: 12, lineHeight: 18, color: C.muted, marginTop: 4 },
-  brandCaption: {
-    fontSize: 8,
-    fontWeight: '700',
-    color: C.muted,
-    letterSpacing: 1.3,
-    marginTop: 2,
-  },
-  avatarInitial: { fontSize: 17, fontWeight: '700', color: C.greenDark },
   hero: {
     backgroundColor: C.greenDark,
     borderRadius: 24,
@@ -636,6 +481,51 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     minWidth: 180,
   },
+  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 26 },
+  statCard: {
+    flexBasis: '46%',
+    flexGrow: 1,
+    padding: 18,
+    borderRadius: 20,
+    backgroundColor: C.white,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  statValue: {
+    fontSize: 22,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+    color: C.ink,
+    marginTop: 14,
+  },
+  statLabel: { fontSize: 12, color: C.muted, marginTop: 5 },
+  quickCard: {
+    backgroundColor: C.white,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 22,
+    paddingHorizontal: 16,
+    marginBottom: 24,
+  },
+  quickRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 17, gap: 12 },
+  quickBorder: { borderTopWidth: 1, borderTopColor: C.border },
+  quickTitle: { fontSize: 14, fontWeight: '600', color: C.ink, marginBottom: 4 },
+  smallText: { fontSize: 12, lineHeight: 18, color: C.muted, flexShrink: 1 },
+  filterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 20 },
+  filterChip: { minHeight: 44, paddingHorizontal: 18, paddingVertical: 12, borderRadius: 22, backgroundColor: C.white, borderWidth: 1, borderColor: C.border },
+  filterChipSelected: { backgroundColor: C.greenDark, borderColor: C.greenDark },
+  filterText: { fontSize: 13, fontWeight: '600', color: C.muted },
+  viewAllAction: { flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 44 },
+  routeSummaryRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginTop: 14 },
+  routeSummaryLabel: { fontSize: 11, color: C.muted, marginBottom: 3 },
+  brandCaption: {
+    fontSize: 8,
+    fontWeight: '700',
+    color: C.muted,
+    letterSpacing: 1.3,
+    marginTop: 2,
+  },
+  avatarInitial: { fontSize: 17, fontWeight: '700', color: C.greenDark },
   navSafe: { backgroundColor: '#FFFFFF', borderTopWidth: 1, borderTopColor: C.border },
   nav: {
     flexDirection: 'row',
@@ -705,55 +595,6 @@ const styles = StyleSheet.create({
     paddingTop: 26,
     paddingBottom: 28,
   },
-  dutyCard: { backgroundColor: C.white, borderRadius: 22, padding: 18, marginBottom: 20, borderWidth: 1, borderColor: C.border, flexDirection: 'row', flexWrap: 'wrap', gap: 12, alignItems: 'center' },
-  dutyInfo: { flexGrow: 1, flexBasis: 180 },
-  dutyTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: C.ink,
-  },
-  dutySub: {
-    fontSize: 11,
-    color: C.muted,
-    marginTop: 2,
-  },
-  dutyToggleBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  dutyBtnOn: {
-    backgroundColor: C.mint,
-    borderColor: C.border,
-  },
-  dutyBtnOff: {
-    backgroundColor: C.redBg,
-    borderColor: C.redBg,
-  },
-  dutyToggleText: {
-    fontSize: 11,
-    fontWeight: '800',
-  },
-  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 26 },
-  kpiCard: {
-    flexBasis: '46%',
-    flexGrow: 1,
-    padding: 18,
-    borderRadius: 20,
-    backgroundColor: C.white,
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  kpiValue: {
-    fontSize: 22,
-    fontWeight: '800',
-    letterSpacing: -0.5,
-    color: C.ink,
-    marginTop: 14,
-  },
-  kpiLabel: { fontSize: 12, color: C.muted, marginTop: 5 },
   deliveryCard: { backgroundColor: C.white, borderRadius: 22, padding: 18, marginBottom: 16, borderWidth: 1, borderColor: C.border },
   tripHeaderRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center', justifyContent: 'space-between' },
   cargoTitle: {
@@ -768,135 +609,16 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 6,
   },
-  badgePending: {
-    backgroundColor: C.mint,
-  },
-  badgeInTransit: {
-    backgroundColor: C.mint,
-  },
   tripBadgeText: {
     fontSize: 10,
     fontWeight: '800',
     letterSpacing: 0.5,
-  },
-  farmerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  farmerNameText: {
-    fontSize: 13,
-    color: C.muted,
-    fontWeight: '500',
-  },
-  cardDivider: {
-    height: 1,
-    backgroundColor: C.mint,
-    marginVertical: 14,
-  },
-  routeContainer: {
-    paddingLeft: 2,
-  },
-  routeNodeRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-  },
-  pickupCircleOuter: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    borderWidth: 2,
-    borderColor: C.green,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 10,
-    marginTop: 2,
-  },
-  pickupCircleInner: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: C.green,
-  },
-  destCircleOuter: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    borderWidth: 2,
-    borderColor: C.muted,
-    marginRight: 10,
-    marginTop: 2,
-  },
-  routeConnectingLine: {
-    width: 2,
-    height: 22,
-    backgroundColor: C.border,
-    marginLeft: 8,
-    marginVertical: 2,
-  },
-  routeTextCol: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-  routeLabelPickup: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: C.green,
-    letterSpacing: 0.8,
-  },
-  routeLabelDest: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: C.muted,
-    letterSpacing: 0.8,
   },
   locationTitle: {
     fontSize: 14,
     fontWeight: '700',
     color: C.ink,
     marginTop: 1,
-  },
-  buyerContactSub: {
-    fontSize: 11,
-    color: C.muted,
-    marginTop: 2,
-  },
-  specialNotesCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: C.mint,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginTop: 14,
-    marginBottom: 14,
-  },
-  specialNotesText: {
-    fontSize: 12,
-    color: C.ink,
-    fontWeight: '500',
-    flex: 1,
-  },
-  actionBtn: { borderRadius: 14, minHeight: 48, paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
-  actionBtnTransit: {
-    backgroundColor: C.green,
-  },
-  actionBtnDelivered: {
-    backgroundColor: C.green,
-  },
-  actionBtnText: { color: C.white, fontSize: 14, fontWeight: '700', flexShrink: 1, textAlign: 'center' },
-  viewTrackingBtn: {
-    marginTop: 8,
-    paddingVertical: 10,
-    backgroundColor: C.mint,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  viewTrackingBtnText: {
-    color: C.greenDark,
-    fontSize: 12,
-    fontWeight: '700',
   },
   emptyCard: { backgroundColor: C.white, borderRadius: 22, padding: 28, alignItems: 'center', borderWidth: 1, borderColor: C.border, gap: 6 },
   emptyTitle: {
