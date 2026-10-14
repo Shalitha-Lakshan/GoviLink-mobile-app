@@ -27,6 +27,8 @@ import { AuthProvider } from './context/AuthContext';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from './firebaseConfig';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { TourProvider } from './context/TourContext';
+import GuidedTourOverlay from './components/GuidedTour/GuidedTourOverlay';
 
 const STORAGE_KEY_FIRST_INSTALL_DONE = '@govilink_first_install_done';
 const STORAGE_KEY_LANG = '@govilink_app_lang';
@@ -308,61 +310,64 @@ function AppInner() {
   };
 
   // ----------------------------------------------------
-  // ROLE-BASED HOMEPAGE ROUTING
+  // ROLE-BASED HOMEPAGE ROUTING WITH TOUR OVERLAY
   // ----------------------------------------------------
-  if (currentRole === 'farmer') {
-    return (
-      <FarmerHomeScreen
-        userProfile={userProfile}
-        lang={lang}
-        produceListings={activeProduce}
-        ordersList={ordersList}
-        onChangeLanguage={setLang}
-        onLogout={handleLogout}
-        onProfileUpdated={handleProfileUpdated}
-      />
-    );
-  }
-
-  if (currentRole === 'driver') {
-    return (
-      <DriverHomeScreen
-        userProfile={userProfile}
-        lang={lang}
-        ordersList={ordersList}
-        onChangeLanguage={setLang}
-        onLogout={handleLogout}
-        onProfileUpdated={handleProfileUpdated}
-      />
-    );
-  }
-
-  if (currentRole === 'admin') {
-    return (
-      <AdminHomeScreen
-        userProfile={userProfile}
-        lang={lang}
-        produceListings={activeProduce}
-        ordersList={ordersList}
-        vehiclesList={vehiclesList}
-        onChangeLanguage={setLang}
-        onLogout={handleLogout}
-        onProfileUpdated={handleProfileUpdated}
-      />
-    );
-  }
-
-  // Default: Buyer Homepage
   return (
-    <BuyerHomeScreen
+    <TourProvider
       userProfile={userProfile}
+      currentRole={currentRole}
       lang={lang}
-      produceListings={activeProduce}
-      ordersList={ordersList}
-      onChangeLanguage={setLang}
-      onLogout={handleLogout}
       onProfileUpdated={handleProfileUpdated}
-    />
+      isAuthenticated={authScreen === 'authenticated'}
+    >
+      <View style={{ flex: 1 }}>
+        {currentRole === 'farmer' && (
+          <FarmerHomeScreen
+            userProfile={userProfile}
+            lang={lang}
+            produceListings={activeProduce}
+            ordersList={ordersList}
+            onChangeLanguage={setLang}
+            onLogout={handleLogout}
+            onProfileUpdated={handleProfileUpdated}
+          />
+        )}
+        {currentRole === 'driver' && (
+          <DriverHomeScreen
+            userProfile={userProfile}
+            lang={lang}
+            ordersList={ordersList}
+            onChangeLanguage={setLang}
+            onLogout={handleLogout}
+            onProfileUpdated={handleProfileUpdated}
+          />
+        )}
+        {currentRole === 'admin' && (
+          <AdminHomeScreen
+            userProfile={userProfile}
+            lang={lang}
+            produceListings={activeProduce}
+            ordersList={ordersList}
+            vehiclesList={vehiclesList}
+            onChangeLanguage={setLang}
+            onLogout={handleLogout}
+            onProfileUpdated={handleProfileUpdated}
+          />
+        )}
+        {currentRole !== 'farmer' && currentRole !== 'driver' && currentRole !== 'admin' && (
+          <BuyerHomeScreen
+            userProfile={userProfile}
+            lang={lang}
+            produceListings={activeProduce}
+            ordersList={ordersList}
+            onChangeLanguage={setLang}
+            onLogout={handleLogout}
+            onProfileUpdated={handleProfileUpdated}
+          />
+        )}
+        <GuidedTourOverlay />
+      </View>
+    </TourProvider>
   );
 }
 
