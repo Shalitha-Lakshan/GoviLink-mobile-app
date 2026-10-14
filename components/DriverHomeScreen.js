@@ -23,6 +23,8 @@ import DriverVehiclesListScreen from './DriverVehiclesListScreen';
 import UserProfileScreen from './UserProfileScreen';
 import DeliveryTrackingScreen from './DeliveryTrackingScreen';
 import { driverLocationLabel } from './DriverDesign';
+import TourTarget from './GuidedTour/TourTarget';
+import { useTour } from '../context/TourContext';
 
 // ----------------------------------------------------
 // LOCALIZATION
@@ -191,6 +193,27 @@ export default function DriverHomeScreen({
   const [showProfileScreen, setShowProfileScreen] = useState(false);
   const [selectedTripForTracking, setSelectedTripForTracking] = useState(null);
 
+  const { replayTour, setTabChangeHandler } = useTour();
+
+  useEffect(() => {
+    if (setTabChangeHandler) {
+      setTabChangeHandler((tab) => {
+        if (tab === 'profile') {
+          setShowProfileScreen(true);
+        } else {
+          setShowProfileScreen(false);
+          setWorkspaceTab(tab);
+        }
+      });
+    }
+  }, [setTabChangeHandler]);
+
+  const handleReplayTour = () => {
+    setShowProfileScreen(false);
+    setWorkspaceTab('home');
+    replayTour('driver');
+  };
+
   const t = TRANSLATIONS[lang] || TRANSLATIONS.en;
 
   // Real-time vehicles subscription
@@ -358,10 +381,12 @@ export default function DriverHomeScreen({
       <StatusBar barStyle="dark-content" backgroundColor={C.canvas} />
 
       <View style={styles.topHeader}>
-        <View style={styles.brandTitleRow}>
-          <Image source={require('../assets/logo.png')} style={{ width: 88, height: 44 }} resizeMode="contain" />
-          <Text style={styles.brandCaption}>DRIVER WORKSPACE</Text>
-        </View>
+        <TourTarget id="driver-brand">
+          <View style={styles.brandTitleRow}>
+            <Image source={require('../assets/logo.png')} style={{ width: 88, height: 44 }} resizeMode="contain" />
+            <Text style={styles.brandCaption}>DRIVER WORKSPACE</Text>
+          </View>
+        </TourTarget>
         <View style={styles.headerRightActions}>
           {onChangeLanguage && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Change language" style={styles.langPill}
             onPress={() => onChangeLanguage(lang === 'en' ? 'si' : lang === 'si' ? 'ta' : 'en')}>
@@ -374,7 +399,7 @@ export default function DriverHomeScreen({
         </View>
       </View>
       {showProfileScreen ? <UserProfileScreen embedded farmerDesign userProfile={userProfile} lang={lang}
-        onBack={() => setShowProfileScreen(false)} onLogout={onLogout} onChangeLanguage={onChangeLanguage} onProfileUpdated={onProfileUpdated} /> : workspaceTab === 'fleet' ? (
+        onBack={() => setShowProfileScreen(false)} onLogout={onLogout} onChangeLanguage={onChangeLanguage} onProfileUpdated={onProfileUpdated} onReplayTour={handleReplayTour} /> : workspaceTab === 'fleet' ? (
         <DriverVehiclesListScreen embedded userProfile={userProfile} lang={lang} vehicles={vehiclesList}
           onBack={() => setWorkspaceTab('home')}
           onAddNewVehicle={() => { setEditingVehicle(null); setCurrentScreen('addVehicle'); }}
@@ -385,46 +410,57 @@ export default function DriverHomeScreen({
           title={workspaceTab === 'home' ? `Hello, ${userProfile?.fullName?.split(' ')[0] || 'Driver'}.` : t.tabs.assigned} subtitle={t.tagline} />
         {workspaceTab === 'home' && <>
           <View style={styles.hero}>
-            <View style={styles.heroTop}><View style={styles.heroPill}><Ionicons name="location-outline" size={13} color="#D1E9D9" /><Text style={styles.heroEyebrow}>{driverLocationLabel(userProfile?.district, lang, 'Sri Lanka')}</Text></View><Ionicons name="car-outline" size={36} color="#82AE92" /></View>
+            <View style={styles.heroTop}>
+              <TourTarget id="driver-tracking-feature">
+                <View style={styles.heroPill}><Ionicons name="location-outline" size={13} color="#D1E9D9" /><Text style={styles.heroEyebrow}>{driverLocationLabel(userProfile?.district, lang, 'Sri Lanka')}</Text></View>
+              </TourTarget>
+              <Ionicons name="car-outline" size={36} color="#82AE92" />
+            </View>
             <Text style={styles.heroTitle}>Connecting farms,{'\n'}delivering fresh harvests.</Text>
             <Text style={styles.heroSub}>Plan your pickups, manage your fleet, and keep every delivery moving.</Text>
-            <FarmerButton label={cleanLabel(t.tabs.assigned)} icon="navigate-outline" onPress={() => setWorkspaceTab('deliveries')} style={styles.heroButton} />
+            <TourTarget id="driver-tab-deliveries">
+              <FarmerButton label={cleanLabel(t.tabs.assigned)} icon="navigate-outline" onPress={() => setWorkspaceTab('deliveries')} style={styles.heroButton} />
+            </TourTarget>
           </View>
         {/* SHIFT & DUTY STATUS CARD */}
-        <View style={styles.dutyCard}>
-          <View style={styles.dutyInfo}>
-            <Text style={styles.dutyTitle}>Logistics availability</Text>
-            <Text style={styles.dutySub}>
-              {isOnDuty ? 'Ready for farm pickup & dropoff dispatches' : 'Offline • No new trip requests'}
-            </Text>
-          </View>
+        <TourTarget id="driver-duty-card">
+          <View style={styles.dutyCard}>
+            <View style={styles.dutyInfo}>
+              <Text style={styles.dutyTitle}>Logistics availability</Text>
+              <Text style={styles.dutySub}>
+                {isOnDuty ? 'Ready for farm pickup & dropoff dispatches' : 'Offline • No new trip requests'}
+              </Text>
+            </View>
 
-          <TouchableOpacity
-            style={[styles.dutyToggleBtn, isOnDuty ? styles.dutyBtnOn : styles.dutyBtnOff]}
-            onPress={() => setIsOnDuty(!isOnDuty)}
-            activeOpacity={0.8}
-          >
-            <Text style={[styles.dutyToggleText, isOnDuty ? { color: C.green } : { color: C.red }]}>
-              {cleanLabel(isOnDuty ? t.shift.onDuty : t.shift.offDuty)}
-            </Text>
-          </TouchableOpacity>
-        </View>
+            <TouchableOpacity
+              style={[styles.dutyToggleBtn, isOnDuty ? styles.dutyBtnOn : styles.dutyBtnOff]}
+              onPress={() => setIsOnDuty(!isOnDuty)}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.dutyToggleText, isOnDuty ? { color: C.green } : { color: C.red }]}>
+                {cleanLabel(isOnDuty ? t.shift.onDuty : t.shift.offDuty)}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </TourTarget>
 
         {/* COMPACT FLEET ENTRY */}
-        <TouchableOpacity
-          accessibilityRole="button"
-          accessibilityLabel={cleanLabel(t.vehicle.viewAllBtn)}
-          style={styles.fleetShortcut}
-          onPress={() => setWorkspaceTab('fleet')}
-          activeOpacity={0.75}
-        >
-          <IconTile name="car-outline" />
-          <View style={styles.fleetShortcutContent}>
-            <Text style={styles.fleetShortcutTitle}>{t.vehicle.fleetLabel} ({vehiclesList.length})</Text>
-            <Text style={styles.fleetShortcutSubtitle}>{cleanLabel(t.vehicle.viewAllBtn)} · {cleanLabel(t.vehicle.addNewBtn)}</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={20} color={C.green} />
-        </TouchableOpacity>
+        <TourTarget id="driver-fleet-management">
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel={cleanLabel(t.vehicle.viewAllBtn)}
+            style={styles.fleetShortcut}
+            onPress={() => setWorkspaceTab('fleet')}
+            activeOpacity={0.75}
+          >
+            <IconTile name="car-outline" />
+            <View style={styles.fleetShortcutContent}>
+              <Text style={styles.fleetShortcutTitle}>{t.vehicle.fleetLabel} ({vehiclesList.length})</Text>
+              <Text style={styles.fleetShortcutSubtitle}>{cleanLabel(t.vehicle.viewAllBtn)} · {cleanLabel(t.vehicle.addNewBtn)}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={C.green} />
+          </TouchableOpacity>
+        </TourTarget>
 
         {/* DRIVER METRICS GRID */}
         <View style={styles.statsGrid}>
@@ -580,11 +616,13 @@ export default function DriverHomeScreen({
           ['profile', lang === 'si' ? 'ගිණුම' : lang === 'ta' ? 'சுயவிவரம்' : 'Profile', 'person-outline'],
         ].map(([key, label, icon]) => {
           const selected = showProfileScreen ? key === 'profile' : workspaceTab === key;
-          return <TouchableOpacity key={key} accessibilityRole="tab" accessibilityLabel={label} accessibilityState={{ selected }} style={styles.navItem}
-            onPress={() => { setShowProfileScreen(key === 'profile'); if (key !== 'profile') setWorkspaceTab(key); }}>
-            <View style={[styles.navIcon, selected && styles.navIconActive]}><Ionicons name={icon} size={22} color={selected ? C.greenDark : C.muted} /></View>
-            <Text style={[styles.navLabel, selected && styles.navLabelActive]}>{label}</Text>
-          </TouchableOpacity>;
+          return <TourTarget key={key} id={"driver-tab-" + key} style={{ flex: 1 }}>
+            <TouchableOpacity accessibilityRole="tab" accessibilityLabel={label} accessibilityState={{ selected }} style={styles.navItem}
+              onPress={() => { setShowProfileScreen(key === 'profile'); if (key !== 'profile') setWorkspaceTab(key); }}>
+              <View style={[styles.navIcon, selected && styles.navIconActive]}><Ionicons name={icon} size={22} color={selected ? C.greenDark : C.muted} /></View>
+              <Text style={[styles.navLabel, selected && styles.navLabelActive]}>{label}</Text>
+            </TouchableOpacity>
+          </TourTarget>;
         })}
       </View></SafeAreaView>
     </SafeAreaView>
