@@ -159,10 +159,12 @@ export default function LoginScreen({ lang = 'en', onBackToLang, onNavigateToReg
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
+  const [authError, setAuthError] = useState(null);
 
   const handleAutoFill = (role) => {
     setSelectedRole(role);
     setErrors({});
+    setAuthError(null);
     if (role === 'farmer') {
       setEmail('farmer.demo@govilink.lk');
       setPassword('Farmer@123');
@@ -420,6 +422,11 @@ export default function LoginScreen({ lang = 'en', onBackToLang, onNavigateToReg
             </TouchableOpacity>
 
             {/* LOGIN BUTTON WITH LOADING SPINNER */}
+            {authError && (
+              <Text accessibilityRole="alert" style={[styles.errorText, { marginBottom: 12 }]}>
+                {authError}
+              </Text>
+            )}
             <TouchableOpacity
               activeOpacity={0.85}
               disabled={isSubmitting}

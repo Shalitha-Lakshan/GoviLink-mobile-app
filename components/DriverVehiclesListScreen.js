@@ -15,7 +15,8 @@ import {
   deleteDriverVehicle,
   setActiveDriverVehicle,
 } from '../services/firebaseDatabase';
-import { FARMER_COLORS as C } from './FarmerDesign';
+import { FARMER_COLORS as C, FarmerHeading, FarmerButton, cleanLabel } from './FarmerDesign';
+import { driverLocationLabel } from './DriverDesign';
 
 // ----------------------------------------------------
 // THEME & COLOR PALETTE
@@ -123,9 +124,11 @@ export default function DriverVehiclesListScreen({
   lang = 'en',
   vehicles = [],
   onBack,
+  embedded = false,
   onAddNewVehicle,
   onEditVehicle,
 }) {
+  const Container = embedded ? View : SafeAreaView;
   const t = TRANSLATIONS[lang] || TRANSLATIONS.en;
   const [processingId, setProcessingId] = useState(null);
 
@@ -174,11 +177,11 @@ export default function DriverVehiclesListScreen({
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <Container style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
       {/* HEADER */}
-      <View style={styles.headerBar}>
+      {!embedded && <View style={styles.headerBar}>
         <TouchableOpacity style={styles.backBtn} onPress={onBack} activeOpacity={0.7}>
           <Text style={styles.backBtnText}>‹ Back</Text>
         </TouchableOpacity>
@@ -193,9 +196,13 @@ export default function DriverVehiclesListScreen({
         >
           <Text style={styles.headerAddBtnText}>+ Add</Text>
         </TouchableOpacity>
-      </View>
+      </View>}
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        {embedded && <>
+          <FarmerHeading eyebrow="YOUR TRANSPORT FLEET" title={t.title} subtitle={t.subtitle} />
+          <FarmerButton label={cleanLabel(t.addVehicleBtn)} icon="add-outline" onPress={onAddNewVehicle} style={{ marginBottom: 20 }} />
+        </>}
         {/* FLEET KPI SUMMARY CARD */}
         {totalVehiclesCount > 0 && (
           <View style={styles.summaryCard}>
@@ -283,7 +290,7 @@ export default function DriverVehiclesListScreen({
                     </View>
 
                     <Text style={styles.typeLabelText}>
-                      {veh.vehicleTypeLabel || 'Logistics Vehicle'} • 📍 {veh.district || 'Western'}
+                      {veh.vehicleTypeLabel || 'Logistics Vehicle'} • 📍 {driverLocationLabel(veh.district, lang, 'Western')}
                     </Text>
 
                     {/* Badges Row */}
@@ -373,7 +380,7 @@ export default function DriverVehiclesListScreen({
           </TouchableOpacity>
         )}
       </ScrollView>
-    </SafeAreaView>
+    </Container>
   );
 }
 
@@ -382,19 +389,10 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: THEME.bg,
   },
-  headerBar: {
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: THEME.border,
-  },
+  headerBar: { backgroundColor: C.canvas, paddingHorizontal: 20, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: C.border },
   backBtn: {
     backgroundColor: THEME.emeraldLight,
-    borderRadius: 12,
+    borderRadius: 14,
     paddingHorizontal: 12,
     paddingVertical: 8,
     marginRight: 10,
@@ -420,7 +418,7 @@ const styles = StyleSheet.create({
   },
   headerAddBtn: {
     backgroundColor: THEME.emerald,
-    borderRadius: 12,
+    borderRadius: 14,
     paddingHorizontal: 14,
     paddingVertical: 8,
   },
@@ -429,17 +427,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
-  scrollContent: {
-    backgroundColor: THEME.bg,
-    padding: 16,
-    paddingBottom: 40,
-    minHeight: '100%',
-  },
+  scrollContent: { backgroundColor: C.canvas, width: '100%', maxWidth: 760, alignSelf: 'center', paddingHorizontal: 20, paddingTop: 26, paddingBottom: 28 },
 
   // Summary Card
   summaryCard: {
     backgroundColor: THEME.cardBg,
-    borderRadius: 20,
+    borderRadius: 22,
     padding: 16,
     marginBottom: 16,
     flexDirection: 'row',
@@ -447,11 +440,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderColor: THEME.border,
-    elevation: 2,
-    shadowColor: '#16352D',
-    shadowOpacity: 0.04,
-    shadowOffset: { width: 0, height: 4 },
-    shadowRadius: 10,
   },
   summaryCol: {
     flex: 1,
@@ -484,16 +472,11 @@ const styles = StyleSheet.create({
   // Vehicle Card
   vehicleCard: {
     backgroundColor: THEME.cardBg,
-    borderRadius: 20,
+    borderRadius: 22,
     padding: 16,
     marginBottom: 16,
     borderWidth: 1,
     borderColor: THEME.border,
-    elevation: 2,
-    shadowColor: '#16352D',
-    shadowOpacity: 0.04,
-    shadowOffset: { width: 0, height: 4 },
-    shadowRadius: 10,
   },
   vehicleCardActive: {
     borderColor: THEME.emerald,
@@ -626,7 +609,7 @@ const styles = StyleSheet.create({
     backgroundColor: THEME.emeraldLight,
     paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 8,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: THEME.emerald,
   },
@@ -651,7 +634,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F1F5F9',
     paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 8,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: THEME.border,
   },
@@ -664,7 +647,7 @@ const styles = StyleSheet.create({
     backgroundColor: THEME.errorLight,
     paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 8,
+    borderRadius: 14,
   },
   deleteBtnText: {
     fontSize: 11,
@@ -714,16 +697,11 @@ const styles = StyleSheet.create({
   // Bottom Add Button
   bottomAddBtn: {
     backgroundColor: THEME.emerald,
-    borderRadius: 16,
+    borderRadius: 14,
     paddingVertical: 14,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 8,
-    shadowColor: THEME.emerald,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    elevation: 3,
   },
   bottomAddBtnText: {
     color: '#FFFFFF',

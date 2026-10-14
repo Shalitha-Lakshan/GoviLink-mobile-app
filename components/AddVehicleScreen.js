@@ -23,6 +23,7 @@ import {
   saveDriverVehicle,
 } from '../services/firebaseDatabase';
 import { FARMER_COLORS as C } from './FarmerDesign';
+import { driverLocationLabel } from './DriverDesign';
 
 // ----------------------------------------------------
 // THEME & COLOR PALETTE
@@ -195,7 +196,7 @@ export default function AddVehicleScreen({
   const [makeModel, setMakeModel] = useState(() => initialVehicle?.makeModel || '');
   const [capacity, setCapacity] = useState(() => (initialVehicle?.capacity ? String(initialVehicle.capacity) : '3500'));
   const [hasColdChain, setHasColdChain] = useState(() => Boolean(initialVehicle?.hasColdChain));
-  const [district, setDistrict] = useState(() => initialVehicle?.district || userProfile?.district?.nameEn || 'Western Province');
+  const [district, setDistrict] = useState(() => driverLocationLabel(initialVehicle?.district || userProfile?.district, 'en', 'Western Province'));
   const [selectedImage, setSelectedImage] = useState(() => initialVehicle?.image || null);
 
   const [districtModalVisible, setDistrictModalVisible] = useState(false);
@@ -281,14 +282,16 @@ export default function AddVehicleScreen({
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [4, 3],
         quality: 0.7,
+        base64: true,
       });
 
       if (!result.canceled && result.assets && result.assets[0]) {
-        setSelectedImage(result.assets[0].uri);
+        const asset = result.assets[0];
+        setSelectedImage(asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : asset.uri);
       }
     } catch (e) {
       console.error('Gallery pick error:', e);
@@ -314,10 +317,12 @@ export default function AddVehicleScreen({
         allowsEditing: true,
         aspect: [4, 3],
         quality: 0.7,
+        base64: true,
       });
 
       if (!result.canceled && result.assets && result.assets[0]) {
-        setSelectedImage(result.assets[0].uri);
+        const asset = result.assets[0];
+        setSelectedImage(asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : asset.uri);
       }
     } catch (e) {
       console.error('Camera capture error:', e);
@@ -653,19 +658,10 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: C.canvas,
   },
-  headerBar: {
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 20,
-    paddingTop: 14,
-    paddingBottom: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: C.border,
-  },
+  headerBar: { backgroundColor: C.canvas, paddingHorizontal: 20, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: C.border },
   backBtn: {
     backgroundColor: C.mint,
-    borderRadius: 12,
+    borderRadius: 14,
     paddingHorizontal: 12,
     paddingVertical: 8,
     marginRight: 12,
@@ -688,14 +684,7 @@ const styles = StyleSheet.create({
     color: C.muted,
     marginTop: 2,
   },
-  scrollContent: {
-    backgroundColor: C.canvas,
-    padding: 18,
-    paddingBottom: 50,
-    width: '100%',
-    maxWidth: 760,
-    alignSelf: 'center',
-  },
+  scrollContent: { backgroundColor: C.canvas, width: '100%', maxWidth: 760, alignSelf: 'center', paddingHorizontal: 20, paddingTop: 26, paddingBottom: 28 },
   sectionCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 22,
@@ -720,7 +709,7 @@ const styles = StyleSheet.create({
   typeCard: {
     width: '48%',
     backgroundColor: '#F8FAFC',
-    borderRadius: 10,
+    borderRadius: 22,
     padding: 12,
     borderWidth: 1.5,
     borderColor: THEME.border,
@@ -929,16 +918,10 @@ const styles = StyleSheet.create({
   // Submit Button
   submitButton: {
     backgroundColor: THEME.emerald,
-    borderRadius: 12,
+    borderRadius: 14,
     paddingVertical: 15,
     alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: THEME.emerald,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 6,
-    elevation: 4,
-    marginTop: 8,
+    justifyContent: 'center',    marginTop: 8,
   },
   submitButtonDisabled: {
     opacity: 0.6,
@@ -1035,7 +1018,7 @@ const styles = StyleSheet.create({
   cancelModalBtn: {
     marginTop: 12,
     backgroundColor: '#F1F5F9',
-    borderRadius: 10,
+    borderRadius: 14,
     paddingVertical: 12,
     alignItems: 'center',
   },

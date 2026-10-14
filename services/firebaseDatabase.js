@@ -17,14 +17,9 @@ import {
   createUserWithEmailAndPassword,
   signOut as firebaseSignOut,
 } from 'firebase/auth';
-import {
-  ref,
-  uploadBytes,
-  uploadString,
-  getDownloadURL,
-} from 'firebase/storage';
 import { Platform } from 'react-native';
 import { db, auth, storage } from '../firebaseConfig';
+import { uploadNativeImage } from './nativeImageUpload';
 
 // -------------------------------------------------------
 // PRODUCE LISTINGS & IMAGE UPLOADS
@@ -85,7 +80,22 @@ const readImageDataUrl = async (uri) => {
   const blob = await response.blob();
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
+    reader.onload = () => {
+      // Local file responses can omit the image MIME type on native.
+      // Recover it from the encoded file signature rather than assuming JPEG.
+      const value = reader.result;
+      if (typeof value === 'string' && !value.startsWith('data:image/')) {
+        const base64 = value.split(';base64,')[1];
+        const mimeType = base64?.startsWith('/9j/') ? 'image/jpeg'
+          : base64?.startsWith('iVBORw0KGgo') ? 'image/png'
+          : base64?.startsWith('R0lGOD') ? 'image/gif' : null;
+        if (mimeType) {
+          resolve(`data:${mimeType};base64,${base64}`);
+          return;
+        }
+      }
+      resolve(value);
+    };
     reader.onerror = () => reject(new Error('Could not read the selected photo.'));
     reader.readAsDataURL(blob);
   });
@@ -116,22 +126,14 @@ export const uploadProduceImage = async (imageUri, produceId) => {
   // A new object for each replacement avoids stale cached images after editing.
   const uniqueId = `${produceId || 'produce'}_${Date.now()}_${Math.random().toString(36).substring(7)}`;
   const storagePath = `produce_images/${uniqueId}.jpg`;
-  const storageRef = ref(storage, storagePath);
+  const dataUrl = await readImageDataUrl(imageUri);
 
   try {
-    if (imageUri.startsWith('data:')) {
-      await uploadString(storageRef, imageUri, 'data_url');
-      return await getDownloadURL(storageRef);
-    } else {
-      const response = await fetch(imageUri);
-      const blob = await response.blob();
-      await uploadBytes(storageRef, blob, { contentType: 'image/jpeg' });
-      return await getDownloadURL(storageRef);
-    }
+    return await uploadNativeImage(storage, auth, dataUrl, storagePath);
   } catch (storageError) {
     console.warn('Native Firebase Storage upload error, falling back:', storageError);
     try {
-      return validateInlineImage(await readImageDataUrl(imageUri));
+      return validateInlineImage(dataUrl);
     } catch (fallbackError) {
       throw new Error(fallbackError.message || 'Photo upload failed. Please select the photo again and retry.');
     }
