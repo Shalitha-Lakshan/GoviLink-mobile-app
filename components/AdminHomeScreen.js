@@ -20,7 +20,6 @@ import {
   assignDriverToOrder,
   reassignDriverForOrder,
   checkDriverAvailability,
-  DEFAULT_COOP_DRIVERS,
 } from '../services/firebaseDatabase';
 import DriverAssignmentDropdown from './DriverAssignmentDropdown';
 import RequestDetailsScreen from './RequestDetailsScreen';
@@ -89,24 +88,31 @@ export default function AdminHomeScreen({
   onChangeLanguage,
   onProfileUpdated,
 }) {
-  const [driversList, setDriversList] = useState(DEFAULT_COOP_DRIVERS || []);
+  const [driversList, setDriversList] = useState([]);
   const [selectedDriversByOrder, setSelectedDriversByOrder] = useState({});
   const [assigningOrderId, setAssigningOrderId] = useState(null);
   const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard' | 'requests' | 'drivers' | 'vehicles' | 'deliveries'
   const [searchQuery, setSearchQuery] = useState('');
   const [driverModalOrderId, setDriverModalOrderId] = useState(null);
   const [selectedOrderForDetails, setSelectedOrderForDetails] = useState(null);
+  const [selectedDriverForDetails, setSelectedDriverForDetails] = useState(null);
+  const [selectedVehicleForDetails, setSelectedVehicleForDetails] = useState(null);
+  const [driverSearchQuery, setDriverSearchQuery] = useState('');
+  const [driverStatusFilter, setDriverStatusFilter] = useState('all'); // 'all' | 'available' | 'busy' | 'on_delivery' | 'inactive'
   const [vehicleSearchQuery, setVehicleSearchQuery] = useState('');
   const [selectedVehicleCategory, setSelectedVehicleCategory] = useState('all');
   const [deliveryFilter, setDeliveryFilter] = useState('all'); // 'all' | 'in_transit' | 'pending' | 'delivered'
   const [deliverySearchQuery, setDeliverySearchQuery] = useState('');
+
   const [assignModalOrder, setAssignModalOrder] = useState(null);
   const [selectedAssignDriver, setSelectedAssignDriver] = useState(null);
+  const [selectedAssignVehicle, setSelectedAssignVehicle] = useState(null);
   const [isAssigningFromModal, setIsAssigningFromModal] = useState(false);
   const [assignDriverSearch, setAssignDriverSearch] = useState('');
 
   const [reassignModalOrder, setReassignModalOrder] = useState(null);
   const [selectedReassignDriver, setSelectedReassignDriver] = useState(null);
+  const [selectedReassignVehicle, setSelectedReassignVehicle] = useState(null);
   const [reassignReason, setReassignReason] = useState('');
   const [isReassigningFromModal, setIsReassigningFromModal] = useState(false);
   const [reassignDriverSearch, setReassignDriverSearch] = useState('');
@@ -121,6 +127,14 @@ export default function AdminHomeScreen({
         setShowProfileScreen(false);
         return true;
       }
+      if (selectedDriverForDetails) {
+        setSelectedDriverForDetails(null);
+        return true;
+      }
+      if (selectedVehicleForDetails) {
+        setSelectedVehicleForDetails(null);
+        return true;
+      }
       if (selectedOrderForDetails) {
         setSelectedOrderForDetails(null);
         return true;
@@ -131,10 +145,14 @@ export default function AdminHomeScreen({
       }
       if (assignModalOrder) {
         setAssignModalOrder(null);
+        setSelectedAssignDriver(null);
+        setSelectedAssignVehicle(null);
         return true;
       }
       if (reassignModalOrder) {
         setReassignModalOrder(null);
+        setSelectedReassignDriver(null);
+        setSelectedReassignVehicle(null);
         return true;
       }
       if (activeTab !== 'dashboard') {

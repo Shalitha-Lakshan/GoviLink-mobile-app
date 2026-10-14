@@ -436,6 +436,29 @@ export const updateOrderStatus = async (orderId, newStatus, extraData = {}) => {
 
     await updateDoc(orderDocRef, updatePayload);
 
+    // 3b. Sync assigned vehicle status in fleet
+    const assignedVehId = currentOrder.vehicleId || currentOrder.driverVehicleId || updatePayload.vehicleId;
+    if (assignedVehId) {
+      try {
+        const vehDocRef = doc(db, 'vehicles', assignedVehId);
+        if (normalizedNewStatus === 'DELIVERED' || normalizedNewStatus === 'CANCELLED') {
+          await updateDoc(vehDocRef, {
+            status: 'AVAILABLE',
+            currentOrderId: null,
+            updatedAt: serverTimestamp(),
+          });
+        } else if (normalizedNewStatus === 'IN_TRANSIT') {
+          await updateDoc(vehDocRef, {
+            status: 'IN_USE',
+            currentOrderId: orderId,
+            updatedAt: serverTimestamp(),
+          });
+        }
+      } catch (_vehErr) {
+        console.warn('Vehicle status sync warning (non-fatal):', _vehErr);
+      }
+    }
+
     // 4. Trigger Notifications (GOVI-114)
     if (normalizedNewStatus === 'IN_TRANSIT' || normalizedNewStatus === 'DELIVERED') {
       await triggerDeliveryNotification(orderId, currentOrder, normalizedNewStatus, extraData);
@@ -724,61 +747,6 @@ export const saveUserToFirestore = async (userData) => {
 // FLEET & DRIVERS MANAGEMENT
 // -------------------------------------------------------
 
-export const DEFAULT_COOP_DRIVERS = [
-  {
-    id: 'driver_default_1',
-    uid: 'driver_default_1',
-    fullName: 'Sunil Perera',
-    phoneNumber: '077 123 4567',
-    vehicleNumber: 'WP-CAB-4521',
-    vehicleType: 'lorry_heavy',
-    vehicleTypeLabel: 'Heavy Duty Truck (10T)',
-    capacity: 3500,
-    rating: '4.9',
-    district: { id: 'colombo', nameEn: 'Colombo', nameSi: 'කොළඹ', nameTa: 'கொழும்பு' },
-    isAvailable: true,
-  },
-  {
-    id: 'driver_default_2',
-    uid: 'driver_default_2',
-    fullName: 'Kasun Bandara',
-    phoneNumber: '071 987 6543',
-    vehicleNumber: 'CP-ND-8890',
-    vehicleType: 'refrigerated',
-    vehicleTypeLabel: 'Refrigerated Cold Chain Truck',
-    capacity: 2000,
-    rating: '5.0',
-    district: { id: 'kandy', nameEn: 'Kandy', nameSi: 'මහනුවර', nameTa: 'கண்டி' },
-    isAvailable: true,
-  },
-  {
-    id: 'driver_default_3',
-    uid: 'driver_default_3',
-    fullName: 'Nuwan Jayasinghe',
-    phoneNumber: '076 555 1234',
-    vehicleNumber: 'WP-LH-2311',
-    vehicleType: 'lorry_light',
-    vehicleTypeLabel: 'Light Truck (3.5T)',
-    capacity: 1500,
-    rating: '4.8',
-    district: { id: 'kurunegala', nameEn: 'Kurunegala', nameSi: 'කුරුණෑගල', nameTa: 'குருணாகல்' },
-    isAvailable: true,
-  },
-  {
-    id: 'driver_default_4',
-    uid: 'driver_default_4',
-    fullName: 'Kamal Fernando',
-    phoneNumber: '070 222 3344',
-    vehicleNumber: 'SP-DA-1092',
-    vehicleType: 'dimo_batta',
-    vehicleTypeLabel: 'Dimo Batta / Small Truck',
-    capacity: 800,
-    rating: '4.7',
-    district: { id: 'nuwara_eliya', nameEn: 'Nuwara Eliya', nameSi: 'නුවරඑළිය', nameTa: 'நுவரெலியா' },
-    isAvailable: true,
-  },
-];
-
 /**
  * Check if a driver is currently busy with an active shipment
  */
@@ -808,11 +776,11 @@ export const checkDriverAvailability = (driver, ordersList = []) => {
     };
   }
 
-  if (Array.isArray(driver.dispatchVehicleIds) && driver.dispatchVehicleIds.length === 0) {
+  if (driver.status === 'INACTIVE' || driver.status === 'OFF_DUTY' || driver.isOnDuty === false) {
     return {
       isAvailable: false,
       activeOrder: null,
-      reason: 'No vehicles are selected for dispatch.',
+      reason: 'Driver is currently off duty / inactive.',
     };
   }
 
@@ -824,7 +792,7 @@ export const checkDriverAvailability = (driver, ordersList = []) => {
 };
 
 /**
- * Real-time listener for Cooperative Fleet Drivers
+ * Real-time listener for Cooperative Fleet Drivers (Real Firestore data only)
  */
 export const subscribeToDrivers = (onUpdate) => {
   const usersRef = collection(db, 'users');
@@ -839,15 +807,11 @@ export const subscribeToDrivers = (onUpdate) => {
         ...docSnap.data(),
       }));
 
-      if (realDrivers.length > 0) {
-        onUpdate(realDrivers);
-      } else {
-        onUpdate(DEFAULT_COOP_DRIVERS);
-      }
+      onUpdate(realDrivers);
     },
     (error) => {
-      console.warn('Firestore drivers subscription warning, using defaults:', error);
-      onUpdate(DEFAULT_COOP_DRIVERS);
+      console.warn('Firestore drivers subscription warning:', error);
+      onUpdate([]);
     }
   );
 };
@@ -883,7 +847,13 @@ export const getAvailableFleetDrivers = (driversList = [], ordersList = []) => {
  * @param {object} [adminProfile] - Authenticated admin user profile
  * @param {object} [options] - Optional configurations { targetStatus, skipAvailabilityCheck }
  */
-export const assignDriverToOrder = async (orderOrId, driver, adminProfile = null, options = {}) => {
+export const assignDriverToOrder = async (
+  orderOrId,
+  driver,
+  vehicleOrAdmin = null,
+  adminProfileOrOptions = null,
+  options = {}
+) => {
   try {
     const orderId = typeof orderOrId === 'object' ? (orderOrId.id || orderOrId.orderNo) : orderOrId;
     const orderObj = typeof orderOrId === 'object' ? orderOrId : {};
@@ -895,6 +865,24 @@ export const assignDriverToOrder = async (orderOrId, driver, adminProfile = null
       return { success: false, error: 'A valid driver must be selected for assignment.' };
     }
 
+    let vehicle = null;
+    let adminProfile = null;
+    let opts = options;
+
+    if (
+      vehicleOrAdmin &&
+      (vehicleOrAdmin.plateNumber ||
+        vehicleOrAdmin.vehicleType ||
+        vehicleOrAdmin.capacity !== undefined ||
+        (vehicleOrAdmin.id && vehicleOrAdmin.driverUid))
+    ) {
+      vehicle = vehicleOrAdmin;
+      adminProfile = adminProfileOrOptions;
+    } else {
+      adminProfile = vehicleOrAdmin;
+      opts = adminProfileOrOptions || {};
+    }
+
     // 1. Admin Authorization Guard (GOVI-146)
     if (adminProfile) {
       const role = adminProfile.role;
@@ -903,6 +891,11 @@ export const assignDriverToOrder = async (orderOrId, driver, adminProfile = null
       if (!isAdmin) {
         return { success: false, error: 'Unauthorized: Only cooperative administrators can assign drivers.' };
       }
+    }
+
+    // Validate Driver role
+    if (driver.role && driver.role !== 'driver') {
+      return { success: false, error: 'Selected user is not registered as a delivery driver.' };
     }
 
     const orderDocRef = doc(db, 'orders', orderId);
@@ -927,8 +920,31 @@ export const assignDriverToOrder = async (orderOrId, driver, adminProfile = null
       return { success: false, error: 'Cannot assign a driver to a cancelled delivery.' };
     }
 
+    // Vehicle validation if provided
+    if (vehicle) {
+      const driverUid = driver.uid || driver.id;
+      if (vehicle.driverUid && vehicle.driverUid !== driverUid) {
+        return { success: false, error: 'Selected vehicle does not belong to the selected driver.' };
+      }
+      if (vehicle.status === 'IN_USE') {
+        return { success: false, error: `Vehicle ${vehicle.plateNumber || ''} is currently in use on another delivery.` };
+      }
+      if (vehicle.status === 'MAINTENANCE') {
+        return { success: false, error: `Vehicle ${vehicle.plateNumber || ''} is currently under maintenance.` };
+      }
+      if (vehicle.status === 'INACTIVE') {
+        return { success: false, error: `Vehicle ${vehicle.plateNumber || ''} is currently inactive.` };
+      }
+    }
+
     const nowIso = new Date().toISOString();
-    const targetStatus = options.targetStatus || (currentStatus === 'IN_TRANSIT' ? 'IN_TRANSIT' : 'ASSIGNED');
+    const targetStatus = opts.targetStatus || (currentStatus === 'IN_TRANSIT' ? 'IN_TRANSIT' : 'ASSIGNED');
+
+    const vehiclePlate = vehicle?.plateNumber || driver.vehicleNumber || driver.plateNumber || 'Transport Vehicle';
+    const vehicleType = vehicle?.vehicleType || driver.vehicleType || 'lorry';
+    const vehicleLabel = vehicle
+      ? `${vehicle.plateNumber} (${vehicle.makeModel || vehicle.vehicleTypeLabel || vehicle.vehicleType || 'Fleet'})`
+      : driver.vehicleNumber || driver.plateNumber || driver.makeModel || 'Transport Vehicle';
 
     // 3. Driver assignment payload
     const driverPayload = {
@@ -944,14 +960,22 @@ export const assignDriverToOrder = async (orderOrId, driver, adminProfile = null
       driverId: driver.uid || driver.id,
       driverName: driver.fullName || driver.name || 'Cooperative Driver',
       driverPhone: driver.phoneNumber || driver.phone || '',
-      driverVehicle: driver.vehicleNumber || driver.plateNumber || driver.makeModel || 'Transport Vehicle',
-      driverVehicleType: driver.vehicleType || 'lorry',
+      driverVehicle: vehicleLabel,
+      driverVehicleType: vehicleType,
       driverRating: driver.rating || '4.9',
       status: targetStatus,
       assignedAt: serverTimestamp(),
       assignedAtIso: nowIso,
       updatedAt: serverTimestamp(),
     };
+
+    if (vehicle) {
+      driverPayload.vehicleId = vehicle.id;
+      driverPayload.driverVehicleId = vehicle.id;
+      driverPayload.vehiclePlateNumber = vehicle.plateNumber || '';
+      driverPayload.vehicleCapacity = vehicle.capacity || null;
+      driverPayload.vehicleMakeModel = vehicle.makeModel || '';
+    }
 
     // Append to statusHistory cleanly (GOVI-150)
     const existingHistory = Array.isArray(existingOrderData.statusHistory) ? existingOrderData.statusHistory : [];
@@ -960,7 +984,7 @@ export const assignDriverToOrder = async (orderOrId, driver, adminProfile = null
       timestamp: nowIso,
       changedBy: adminProfile?.fullName || 'Cooperative Administrator',
       actorRole: 'admin',
-      notes: `Driver ${driver.fullName || 'Driver'} assigned to delivery`,
+      notes: `Driver ${driver.fullName || 'Driver'} assigned to delivery with vehicle ${vehiclePlate}`,
     };
     driverPayload.statusHistory = [...existingHistory, statusEntry];
 
@@ -970,7 +994,9 @@ export const assignDriverToOrder = async (orderOrId, driver, adminProfile = null
       driverId: driver.uid || driver.id,
       driverName: driver.fullName || driver.name,
       driverPhone: driver.phoneNumber || driver.phone || '',
-      driverVehicle: driver.vehicleNumber || driver.plateNumber || 'Transport Vehicle',
+      driverVehicle: vehicleLabel,
+      vehicleId: vehicle?.id || null,
+      vehiclePlateNumber: vehiclePlate,
       assignedAt: nowIso,
       assignedBy: adminProfile?.fullName || 'Administrator',
       action: 'INITIAL_ASSIGNMENT',
@@ -978,6 +1004,19 @@ export const assignDriverToOrder = async (orderOrId, driver, adminProfile = null
     driverPayload.assignmentHistory = [...existingAssignments, assignmentEntry];
 
     await setDoc(orderDocRef, driverPayload, { merge: true });
+
+    // Update vehicle status to ASSIGNED in Firestore
+    if (vehicle && vehicle.id) {
+      try {
+        await updateDoc(doc(db, 'vehicles', vehicle.id), {
+          status: 'ASSIGNED',
+          currentOrderId: orderId,
+          updatedAt: serverTimestamp(),
+        });
+      } catch (_vehErr) {
+        console.warn('Vehicle status update warning (non-fatal):', _vehErr);
+      }
+    }
 
     // 4. Trigger Notifications (GOVI-114, GOVI-146)
     try {
@@ -1006,7 +1045,7 @@ export const assignDriverToOrder = async (orderOrId, driver, adminProfile = null
           recipientUid: existingOrderData.buyerUid || existingOrderData.buyerId,
           recipientRole: 'buyer',
           title: 'Driver Dispatched 🚛',
-          message: `Driver ${driver.fullName || 'Kamal'} (${driver.vehicleNumber || 'Vehicle'}) has been assigned to your order of ${produceTitle}.`,
+          message: `Driver ${driver.fullName || 'Kamal'} (${vehiclePlate}) has been assigned to your order of ${produceTitle}.`,
           status: targetStatus,
           createdAt: serverTimestamp(),
           createdIso: nowIso,
@@ -1021,7 +1060,7 @@ export const assignDriverToOrder = async (orderOrId, driver, adminProfile = null
           recipientUid: existingOrderData.farmerUid || existingOrderData.farmerId,
           recipientRole: 'farmer',
           title: 'Pickup Driver Assigned 🚛',
-          message: `Driver ${driver.fullName || 'Kamal'} has been scheduled to collect ${produceTitle} from your farm.`,
+          message: `Driver ${driver.fullName || 'Kamal'} (${vehiclePlate}) has been scheduled to collect ${produceTitle} from your farm.`,
           status: targetStatus,
           createdAt: serverTimestamp(),
           createdIso: nowIso,
@@ -1036,6 +1075,7 @@ export const assignDriverToOrder = async (orderOrId, driver, adminProfile = null
       success: true,
       orderId,
       driver,
+      vehicle,
       status: targetStatus,
       assignedAtIso: nowIso,
     };
@@ -1047,17 +1087,19 @@ export const assignDriverToOrder = async (orderOrId, driver, adminProfile = null
 
 /**
  * Reassign driver to an existing delivery order (GOVI-151)
- * Safely updates driver assignment while preventing reassignment on terminal states.
+ * Safely updates driver and vehicle assignment while preventing reassignment on terminal states.
  *
  * @param {object|string} orderOrId - Order object or orderId string
  * @param {object} newDriver - The newly selected replacement driver
- * @param {object} [adminProfile] - Authenticated admin user profile
+ * @param {object} [vehicleOrAdmin] - Selected vehicle or adminProfile
+ * @param {object|string} [adminProfileOrReason] - Authenticated admin user profile or reason
  * @param {string} [reason] - Reason for reassignment
  */
 export const reassignDriverForOrder = async (
   orderOrId,
   newDriver,
-  adminProfile = null,
+  vehicleOrAdmin = null,
+  adminProfileOrReason = null,
   reason = 'Driver reassigned by cooperative administrator'
 ) => {
   try {
@@ -1069,6 +1111,26 @@ export const reassignDriverForOrder = async (
     }
     if (!newDriver || (!newDriver.uid && !newDriver.id)) {
       return { success: false, error: 'A valid replacement driver must be selected.' };
+    }
+
+    let vehicle = null;
+    let adminProfile = null;
+    let reassignReason = reason;
+
+    if (
+      vehicleOrAdmin &&
+      (vehicleOrAdmin.plateNumber ||
+        vehicleOrAdmin.vehicleType ||
+        vehicleOrAdmin.capacity !== undefined ||
+        (vehicleOrAdmin.id && vehicleOrAdmin.driverUid))
+    ) {
+      vehicle = vehicleOrAdmin;
+      adminProfile = adminProfileOrReason;
+    } else {
+      adminProfile = vehicleOrAdmin;
+      if (typeof adminProfileOrReason === 'string') {
+        reassignReason = adminProfileOrReason;
+      }
     }
 
     // 1. Admin Authorization Guard (GOVI-151)
@@ -1110,14 +1172,18 @@ export const reassignDriverForOrder = async (
       };
     }
 
-    // 3. Prevent duplicate assignment to same driver
-    const currentDriverId = existingOrderData.driverId;
-    const newDriverId = newDriver.uid || newDriver.id;
-    if (currentDriverId && currentDriverId === newDriverId) {
-      return {
-        success: false,
-        error: `"${newDriver.fullName}" is already the assigned driver for this delivery.`,
-      };
+    // Validate replacement driver vehicle if provided
+    if (vehicle) {
+      const newDriverUid = newDriver.uid || newDriver.id;
+      if (vehicle.driverUid && vehicle.driverUid !== newDriverUid) {
+        return { success: false, error: 'Selected vehicle does not belong to the selected replacement driver.' };
+      }
+      if (vehicle.status === 'IN_USE') {
+        return { success: false, error: `Vehicle ${vehicle.plateNumber || ''} is currently in use on another delivery.` };
+      }
+      if (vehicle.status === 'MAINTENANCE') {
+        return { success: false, error: `Vehicle ${vehicle.plateNumber || ''} is currently under maintenance.` };
+      }
     }
 
     const nowIso = new Date().toISOString();
@@ -1126,33 +1192,61 @@ export const reassignDriverForOrder = async (
       driverName: existingOrderData.driverName || 'Previous Driver',
       driverPhone: existingOrderData.driverPhone || '',
       driverVehicle: existingOrderData.driverVehicle || '',
+      vehicleId: existingOrderData.vehicleId || existingOrderData.driverVehicleId || null,
     };
+
+    // 3. Prevent duplicate assignment to same driver AND same vehicle
+    const currentDriverId = existingOrderData.driverId;
+    const newDriverId = newDriver.uid || newDriver.id;
+    if (currentDriverId && currentDriverId === newDriverId && (!vehicle || vehicle.id === previousDriverInfo.vehicleId)) {
+      return {
+        success: false,
+        error: `"${newDriver.fullName}" is already the assigned driver for this delivery.`,
+      };
+    }
+
+    const vehiclePlate = vehicle?.plateNumber || newDriver.vehicleNumber || newDriver.plateNumber || 'Transport Vehicle';
+    const vehicleType = vehicle?.vehicleType || newDriver.vehicleType || 'lorry';
+    const vehicleLabel = vehicle
+      ? `${vehicle.plateNumber} (${vehicle.makeModel || vehicle.vehicleTypeLabel || vehicle.vehicleType || 'Fleet'})`
+      : newDriver.vehicleNumber || newDriver.plateNumber || newDriver.makeModel || 'Transport Vehicle';
 
     // 4. Build update payload
     const updatePayload = {
       driverId: newDriverId,
       driverName: newDriver.fullName || newDriver.name || 'Cooperative Driver',
       driverPhone: newDriver.phoneNumber || newDriver.phone || '',
-      driverVehicle: newDriver.vehicleNumber || newDriver.plateNumber || newDriver.makeModel || 'Transport Vehicle',
-      driverVehicleType: newDriver.vehicleType || 'lorry',
+      driverVehicle: vehicleLabel,
+      driverVehicleType: vehicleType,
       driverRating: newDriver.rating || '4.9',
       reassignedAt: serverTimestamp(),
       reassignedAtIso: nowIso,
       updatedAt: serverTimestamp(),
     };
 
+    if (vehicle) {
+      updatePayload.vehicleId = vehicle.id;
+      updatePayload.driverVehicleId = vehicle.id;
+      updatePayload.vehiclePlateNumber = vehicle.plateNumber || '';
+      updatePayload.vehicleCapacity = vehicle.capacity || null;
+      updatePayload.vehicleMakeModel = vehicle.makeModel || '';
+    }
+
     // Record in assignmentHistory (GOVI-151)
     const existingAssignments = Array.isArray(existingOrderData.assignmentHistory) ? existingOrderData.assignmentHistory : [];
     const reassignmentEntry = {
       previousDriverId: previousDriverInfo.driverId,
       previousDriverName: previousDriverInfo.driverName,
+      previousVehicleId: previousDriverInfo.vehicleId,
       driverId: newDriverId,
       driverName: newDriver.fullName || newDriver.name,
       driverPhone: newDriver.phoneNumber || newDriver.phone || '',
-      driverVehicle: newDriver.vehicleNumber || newDriver.plateNumber || 'Transport Vehicle',
+      driverVehicle: vehicleLabel,
+      vehicleId: vehicle?.id || null,
+      vehiclePlateNumber: vehiclePlate,
       reassignedAt: nowIso,
       reassignedBy: adminProfile?.fullName || 'Administrator',
-      reason,
+      reason: reassignReason,
       action: 'REASSIGNMENT',
     };
     updatePayload.assignmentHistory = [...existingAssignments, reassignmentEntry];
@@ -1164,11 +1258,37 @@ export const reassignDriverForOrder = async (
       timestamp: nowIso,
       changedBy: adminProfile?.fullName || 'Cooperative Administrator',
       actorRole: 'admin',
-      notes: `Driver reassigned from ${previousDriverInfo.driverName} to ${newDriver.fullName}: ${reason}`,
+      notes: `Driver reassigned from ${previousDriverInfo.driverName} to ${newDriver.fullName} (${vehiclePlate}): ${reassignReason}`,
     };
     updatePayload.statusHistory = [...existingHistory, statusEntry];
 
     await updateDoc(orderDocRef, updatePayload);
+
+    // Release previous vehicle in Firestore
+    if (previousDriverInfo.vehicleId && (!vehicle || vehicle.id !== previousDriverInfo.vehicleId)) {
+      try {
+        await updateDoc(doc(db, 'vehicles', previousDriverInfo.vehicleId), {
+          status: 'AVAILABLE',
+          currentOrderId: null,
+          updatedAt: serverTimestamp(),
+        });
+      } catch (_vehRelErr) {
+        console.warn('Previous vehicle release warning (non-fatal):', _vehRelErr);
+      }
+    }
+
+    // Assign new vehicle in Firestore
+    if (vehicle && vehicle.id) {
+      try {
+        await updateDoc(doc(db, 'vehicles', vehicle.id), {
+          status: 'ASSIGNED',
+          currentOrderId: orderId,
+          updatedAt: serverTimestamp(),
+        });
+      } catch (_vehSetErr) {
+        console.warn('New vehicle assignment warning (non-fatal):', _vehSetErr);
+      }
+    }
 
     // 5. Trigger Reassignment Notifications (GOVI-151)
     try {

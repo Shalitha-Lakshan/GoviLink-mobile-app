@@ -23,7 +23,6 @@ import {
   VALID_DELIVERY_TRANSITIONS,
   reassignDriverForOrder,
   checkDriverAvailability,
-  DEFAULT_COOP_DRIVERS,
 } from '../services/firebaseDatabase';
 import { FARMER_COLORS as C } from './FarmerDesign';
 
@@ -292,7 +291,7 @@ export default function DeliveryTrackingScreen({
   };
 
   // Available replacement drivers evaluation (GOVI-145, GOVI-151)
-  const allDriversToConsider = driversList.length > 0 ? driversList : DEFAULT_COOP_DRIVERS;
+  const allDriversToConsider = Array.isArray(driversList) ? driversList : [];
   const currentDriverId = currentDelivery?.driverId;
   const evaluatedFleetDrivers = allDriversToConsider
     .filter((d) => (d.uid || d.id) !== currentDriverId)

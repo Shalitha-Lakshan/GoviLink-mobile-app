@@ -56,6 +56,7 @@ export default function RequestDetailsScreen({
   order = {},
   userProfile,
   driversList = [],
+  vehiclesList = [],
   ordersList = [],
   lang = 'en',
   onBack,
@@ -63,6 +64,7 @@ export default function RequestDetailsScreen({
   onDriverAssignedSuccess,
 }) {
   const [selectedDriver, setSelectedDriver] = useState(null);
+  const [selectedVehicle, setSelectedVehicle] = useState(null);
   const [isAssigning, setIsAssigning] = useState(false);
   const [showDriverPickerModal, setShowDriverPickerModal] = useState(false);
 
@@ -108,10 +110,16 @@ export default function RequestDetailsScreen({
     }
   };
 
-  const handleConfirmAssignment = async (driverToAssign) => {
+  const handleConfirmAssignment = async (driverToAssign, vehicleToAssign) => {
     const driver = driverToAssign || selectedDriver;
+    const vehicle = vehicleToAssign || selectedVehicle;
+
     if (!driver) {
       setShowDriverPickerModal(true);
+      return;
+    }
+    if (!vehicle) {
+      Alert.alert('Select Vehicle', 'Please select an available vehicle for this driver before confirming assignment.');
       return;
     }
 
@@ -125,19 +133,23 @@ export default function RequestDetailsScreen({
     }
 
     setIsAssigning(true);
-    const res = await assignDriverToOrder(order.id || 'order_demo', driver);
+    const res = await assignDriverToOrder(order.id || 'order_demo', driver, vehicle, userProfile);
     setIsAssigning(false);
 
-    Alert.alert(
-      'Driver Assigned Successfully! 🚛',
-      `"${driver.fullName}" has been assigned to transport ${produceName} from ${pickupLocation} to ${deliveryAddress}.`
-    );
+    if (res.success) {
+      Alert.alert(
+        'Driver & Vehicle Assigned! 🚛',
+        `"${driver.fullName}" with vehicle ${vehicle.plateNumber} has been assigned to transport ${produceName} from ${pickupLocation} to ${deliveryAddress}.`
+      );
 
-    if (onDriverAssignedSuccess) {
-      onDriverAssignedSuccess(order.id, driver);
-    }
-    if (onBack) {
-      onBack();
+      if (onDriverAssignedSuccess) {
+        onDriverAssignedSuccess(order.id, driver, vehicle);
+      }
+      if (onBack) {
+        onBack();
+      }
+    } else {
+      Alert.alert('Assignment Error', res.error || 'Failed to complete assignment.');
     }
   };
 
@@ -349,14 +361,19 @@ export default function RequestDetailsScreen({
         {/* DRIVER ASSIGNMENT SELECTOR WHEN ACTION CLICKED */}
         {showDriverPickerModal && (
           <View style={styles.driverSelectionContainer}>
-            <Text style={styles.driverPickerHeading}>Choose Fleet Driver to Dispatch:</Text>
+            <Text style={styles.driverPickerHeading}>Dispatch Logistics Assignment:</Text>
             <DriverAssignmentDropdown
               drivers={driversList}
+              vehiclesList={vehiclesList}
               ordersList={ordersList}
               selectedDriver={selectedDriver}
+              selectedVehicle={selectedVehicle}
               onSelectDriver={(d) => {
                 setSelectedDriver(d);
-                setShowDriverPickerModal(false);
+                setSelectedVehicle(null);
+              }}
+              onSelectVehicle={(v) => {
+                setSelectedVehicle(v);
               }}
               placeholder="Select driver..."
               lang={lang}
@@ -377,11 +394,17 @@ export default function RequestDetailsScreen({
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={styles.assignPrimaryBtn}
+          style={[
+            styles.assignPrimaryBtn,
+            (selectedDriver && !selectedVehicle) && { opacity: 0.7 },
+          ]}
           onPress={() => {
-            if (selectedDriver) {
-              handleConfirmAssignment(selectedDriver);
+            if (selectedDriver && selectedVehicle) {
+              handleConfirmAssignment(selectedDriver, selectedVehicle);
+            } else if (!selectedDriver) {
+              setShowDriverPickerModal(true);
             } else {
+              Alert.alert('Select Vehicle', 'Please select an available vehicle for this driver.');
               setShowDriverPickerModal(true);
             }
           }}
@@ -390,7 +413,11 @@ export default function RequestDetailsScreen({
         >
           <MaterialCommunityIcons name="truck-fast" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
           <Text style={styles.assignPrimaryBtnText}>
-            {selectedDriver ? `Dispatch ${selectedDriver.fullName.split(' ')[0]}` : 'Assign Driver & Vehicle'}
+            {selectedDriver && selectedVehicle
+              ? `Dispatch (${selectedVehicle.plateNumber})`
+              : selectedDriver
+              ? 'Select Driver Vehicle'
+              : 'Assign Driver & Vehicle'}
           </Text>
         </TouchableOpacity>
       </View>
