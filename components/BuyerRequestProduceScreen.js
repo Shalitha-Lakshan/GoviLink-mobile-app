@@ -6,40 +6,22 @@ import {
   TextInput,
   TouchableOpacity,
   ScrollView,
-  SafeAreaView,
   StatusBar,
   Modal,
   Alert,
-  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import {
+  FARMER_COLORS as C,
+  FarmerButton,
+  FilterChip,
+  IconTile,
+  cleanLabel,
+} from './FarmerDesign';
 import { createBuyerCustomRequest } from '../services/firebaseDatabase';
-
-// ----------------------------------------------------
-// THEME COLORS (GOVILINK PREMIUM PALETTE)
-// ----------------------------------------------------
-const THEME = {
-  navy: '#0B2545',
-  navyLight: '#1B3B6F',
-  emerald: '#16A34A',
-  emeraldDark: '#15803D',
-  emeraldLight: '#E8F5E9',
-  accentLeaf: '#2ECC71',
-  bg: '#F8FAFC',
-  cardBg: '#FFFFFF',
-  textDark: '#0F172A',
-  textMuted: '#64748B',
-  placeholder: '#94A3B8',
-  border: '#E2E8F0',
-  borderActive: '#16A34A',
-  warning: '#F59E0B',
-  warningLight: '#FEF3C7',
-  danger: '#EF4444',
-  info: '#3B82F6',
-  infoLight: '#DBEAFE',
-  inputBg: '#FFFFFF',
-};
 
 // ----------------------------------------------------
 // SRI LANKAN DISTRICTS
@@ -106,11 +88,11 @@ const QUALITY_GRADES = [
 
 // Quick date window presets
 const DATE_PRESETS = [
-  { id: 'urgent', labelEn: 'Immediate (Next 48 Hours)', daysOffset: 2 },
-  { id: 'week', labelEn: 'This Week (Within 7 Days)', daysOffset: 7 },
-  { id: 'two_weeks', labelEn: 'Next 2 Weeks (14 Days)', daysOffset: 14 },
-  { id: 'month', labelEn: 'Next Month (Forward Contract)', daysOffset: 30 },
-  { id: 'custom', labelEn: 'Custom Date Period', daysOffset: 0 },
+  { id: 'urgent', labelEn: 'Immediate (48h)', daysOffset: 2 },
+  { id: 'week', labelEn: 'Within 7 Days', daysOffset: 7 },
+  { id: 'two_weeks', labelEn: 'Next 14 Days', daysOffset: 14 },
+  { id: 'month', labelEn: 'Next 30 Days', daysOffset: 30 },
+  { id: 'custom', labelEn: 'Custom Period', daysOffset: 0 },
 ];
 
 // ----------------------------------------------------
@@ -141,14 +123,14 @@ const TRANSLATIONS = {
     selectGrade: 'Select Preferred Quality',
     deliveryCheckboxLabel: 'Require Co-op Transport & Doorstep Delivery',
     deliveryCheckboxSub: 'Check if you want GoviLink registered drivers to deliver to your address. Uncheck for farm self-pickup.',
-    selfPickupNotice: '🚜 Self-Pickup selected: You will arrange your own logistics from the farm or regional aggregation hub.',
+    selfPickupNotice: '🚜 Self-Pickup selected: You will arrange your own logistics from the farm or aggregation hub.',
     deliveryAddressLabel: 'Delivery Destination Address',
     deliveryAddressPlaceholder: 'e.g. Colombo Pettah Central Market, Store #14',
     notesLabel: 'Special Instructions / Packaging Requirements',
     notesPlaceholder: 'e.g. Must be washed, packed in 25kg wooden crates, call 2 days prior to dispatch',
-    submitBtn: 'Broadcast Request to Farmers 📢',
-    submitting: 'Submitting Request...',
-    backBtn: 'Cancel / Back',
+    submitBtn: 'Broadcast Request to Farmers',
+    submitting: 'Broadcasting Request...',
+    backBtn: 'Cancel',
     requiredAlert: 'Missing Information',
     successTitle: 'Produce Request Broadcasted! 🌾',
     successMsg: 'Your custom harvest request has been posted. Local farmers and cooperatives matching your district & date period will be alerted.',
@@ -176,15 +158,15 @@ const TRANSLATIONS = {
     gradeLabel: 'තත්ත්ව / ශ්‍රේණි අවශ්‍යතාව',
     selectGrade: 'තත්ත්ව ශ්‍රේණිය තෝරන්න',
     deliveryCheckboxLabel: 'ප්‍රවාහන පහසුකම් සහ භාරදීම අවශ්‍යයි',
-    deliveryCheckboxSub: 'GoviLink රියදුරන් මගින් ඔබේ ලිපිනයට ප්‍රවාහනය අවශ්‍ය නම් මෙය තෝරන්න. ඔබම ප්‍රවාහනය කරගන්නේ නම් අක්‍රිය කරන්න.',
-    selfPickupNotice: '🚜 ස්වයං ප්‍රවාහනය තෝරා ඇත: ඔබ විසින්ම අදාළ ගොවිපලෙන් හෝ මධ්‍යස්ථානයෙන් අස්වැන්න ලබාගත යුතුය.',
+    deliveryCheckboxSub: 'GoviLink රියදුරන් මගින් ඔබේ ලිපිනයට ප්‍රවාහනය අවශ්‍ය නම් මෙය තෝරන්න.',
+    selfPickupNotice: '🚜 ස්වයං ප්‍රවාහනය: ඔබ විසින්ම අදාළ ගොවිපලෙන් අස්වැන්න ලබාගත යුතුය.',
     deliveryAddressLabel: 'භාරගත යුතු ලිපිනය',
     deliveryAddressPlaceholder: 'උදා: පිටකොටුව තොග වෙළඳපොළ, අංක 14',
     notesLabel: 'විශේෂ උපදෙස් සහ ඇසුරුම් අවශ්‍යතා',
     notesPlaceholder: 'උදා: සෝදා පිරිසිදු කර 25kg ලී පෙට්ටිවල අසුරා තිබිය යුතුය',
-    submitBtn: 'ගොවීන් වෙත ඉල්ලුම යොමු කරන්න 📢',
+    submitBtn: 'ගොවීන් වෙත ඉල්ලුම යොමු කරන්න',
     submitting: 'ඉල්ලුම යොමු කරමින්...',
-    backBtn: 'ආපසු',
+    backBtn: 'අවලංගු කරන්න',
     requiredAlert: 'අවශ්‍ය තොරතුරු අසම්පූර්ණයි',
     successTitle: 'අස්වනු ඉල්ලුම සාර්ථකව යොමු කළා! 🌾',
     successMsg: 'ඔබගේ විශේෂ අස්වනු ඉල්ලුම පද්ධතියට එක් කරන ලදී.',
@@ -218,9 +200,9 @@ const TRANSLATIONS = {
     deliveryAddressPlaceholder: 'e.g. Colombo Pettah Central Market',
     notesLabel: 'குறிப்புகள் மற்றும் பொதி தேவைகள்',
     notesPlaceholder: 'e.g. 25kg மரப் பெட்டிகளில் பொதி செய்யப்பட வேண்டும்',
-    submitBtn: 'கோரிக்கையை அனுப்பவும் 📢',
+    submitBtn: 'கோரிக்கையை அனுப்பவும்',
     submitting: 'அனுப்பப்படுகிறது...',
-    backBtn: 'பின்செல்க',
+    backBtn: 'ரத்து செய்',
     requiredAlert: 'முழுமையான தகவலை உள்ளிடவும்',
     successTitle: 'கோரிக்கை வெற்றிகரமாக அனுப்பப்பட்டது! 🌾',
     successMsg: 'உங்கள் பயிர் கோரிக்கை பதிவு செய்யப்பட்டுள்ளது.',
@@ -247,7 +229,7 @@ export default function BuyerRequestProduceScreen({
   const [category, setCategory] = useState('Vegetables');
   const [quantity, setQuantity] = useState('100');
   const [unit, setUnit] = useState('kg');
-  
+
   // Origin District / Area
   const [selectedDistrict, setSelectedDistrict] = useState(
     DISTRICTS.find((d) => d.id === 'nuwara_eliya') || DISTRICTS[1]
@@ -299,7 +281,6 @@ export default function BuyerRequestProduceScreen({
     const name = lang === 'si' ? crop.nameSi : lang === 'ta' ? crop.nameTa : crop.nameEn;
     setCropName(name);
     setCategory(crop.category || 'Vegetables');
-    // If carrots/leeks/potatoes, smartly pre-suggest Nuwara Eliya or Badulla
     if (crop.id === 'carrot' || crop.id === 'leeks' || crop.id === 'potato') {
       const nDistrict = DISTRICTS.find((d) => d.id === 'nuwara_eliya');
       if (nDistrict) setSelectedDistrict(nDistrict);
@@ -368,15 +349,19 @@ export default function BuyerRequestProduceScreen({
     setIsSubmitting(false);
 
     if (result.success) {
-      Alert.alert(t.successTitle, `${t.successMsg}\n\n📦 ${numQty} ${unit} of ${cropName.trim()}\n📍 ${districtLabel}${specificTown ? ` (${specificTown})` : ''}\n📅 ${startDate} to ${endDate}\n🚚 ${deliveryNeeded ? `Delivery to: ${deliveryAddress.trim() || 'Central Destination'}` : 'Self-Pickup by Buyer'}`, [
-        {
-          text: 'OK',
-          onPress: () => {
-            if (onRequestSubmitted) onRequestSubmitted(result.id);
-            else if (onBack) onBack();
+      Alert.alert(
+        t.successTitle,
+        `${t.successMsg}\n\n📦 ${numQty} ${unit} of ${cropName.trim()}\n📍 ${districtLabel}${specificTown ? ` (${specificTown})` : ''}\n📅 ${startDate} to ${endDate}\n🚚 ${deliveryNeeded ? `Delivery to: ${deliveryAddress.trim() || 'Central Destination'}` : 'Self-Pickup by Buyer'}`,
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              if (onRequestSubmitted) onRequestSubmitted(result.id);
+              else if (onBack) onBack();
+            },
           },
-        },
-      ]);
+        ]
+      );
     } else {
       Alert.alert('Error', `Failed to broadcast request: ${result.error}`);
     }
@@ -393,17 +378,28 @@ export default function BuyerRequestProduceScreen({
   });
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="light-content" backgroundColor={THEME.navy} />
+    <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
+      <StatusBar barStyle="dark-content" backgroundColor={C.canvas} />
 
       {/* HEADER BAR */}
       <View style={styles.headerBar}>
-        <TouchableOpacity style={styles.headerBackBtn} onPress={onBack} activeOpacity={0.8}>
-          <Text style={styles.headerBackBtnText}>← {t.backBtn}</Text>
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+          style={styles.headerBackBtn}
+          onPress={onBack}
+          activeOpacity={0.75}
+        >
+          <Ionicons name="arrow-back" size={22} color={C.ink} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle} numberOfLines={1}>
-          {t.headerTitle}
-        </Text>
+        <View style={styles.headerTitleWrap}>
+          <Text accessibilityRole="header" style={styles.headerTitle} numberOfLines={1}>
+            {cleanLabel(t.headerTitle)}
+          </Text>
+          <Text style={styles.headerSubtitle} numberOfLines={1}>
+            {t.headerSub}
+          </Text>
+        </View>
       </View>
 
       <KeyboardAvoidingView
@@ -413,13 +409,16 @@ export default function BuyerRequestProduceScreen({
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
-          {/* HERO BANNER */}
+          {/* HERO BANNER MATCHING FARMER WORKSPACE */}
           <View style={styles.heroBanner}>
-            <View style={styles.heroBadgeRow}>
-              <View style={styles.heroBadge}>
-                <Text style={styles.heroBadgeText}>🎯 DIRECT FARM SOURCING</Text>
+            <View style={styles.heroTopRow}>
+              <View style={styles.heroPill}>
+                <Ionicons name="megaphone-outline" size={13} color="#D1E9D9" />
+                <Text style={styles.heroEyebrow}>DIRECT SOURCING</Text>
               </View>
+              <Ionicons name="leaf-outline" size={32} color="#82AE92" />
             </View>
             <Text style={styles.heroTitle}>{t.headerTitle}</Text>
             <Text style={styles.heroSub}>{t.headerSub}</Text>
@@ -427,29 +426,27 @@ export default function BuyerRequestProduceScreen({
 
           {/* 1. QUICK PICK POPULAR CROPS */}
           <View style={styles.cardSection}>
-            <Text style={styles.sectionTitle}>⚡ {t.quickPickTitle}</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.quickCropRow}>
+            <View style={styles.sectionHeader}>
+              <IconTile name="leaf-outline" />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.sectionNumber}>01</Text>
+                <Text style={styles.sectionTitle}>Crop & Category</Text>
+                <Text style={styles.sectionSub}>{t.quickPickTitle}</Text>
+              </View>
+            </View>
+
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
               {POPULAR_CROPS.map((crop) => {
                 const displayName =
                   lang === 'si' ? crop.nameSi : lang === 'ta' ? crop.nameTa : crop.nameEn;
                 const isSelected = cropName.toLowerCase() === displayName.toLowerCase();
                 return (
-                  <TouchableOpacity
+                  <FilterChip
                     key={crop.id}
-                    style={[styles.quickCropChip, isSelected && styles.quickCropChipSelected]}
+                    label={displayName}
+                    selected={isSelected}
                     onPress={() => handleQuickSelectCrop(crop)}
-                    activeOpacity={0.7}
-                  >
-                    <Text
-                      style={[
-                        styles.quickCropChipText,
-                        isSelected && styles.quickCropChipTextSelected,
-                      ]}
-                    >
-                      {crop.id === 'carrot' ? '🥕 ' : crop.id === 'potato' ? '🥔 ' : crop.id === 'tomato' ? '🍅 ' : crop.id === 'cabbage' ? '🥬 ' : crop.id === 'banana' ? '🍌 ' : crop.id === 'rice_samba' ? '🌾 ' : crop.id === 'cinnamon' ? '🌿 ' : '🌱 '}
-                      {displayName}
-                    </Text>
-                  </TouchableOpacity>
+                  />
                 );
               })}
             </ScrollView>
@@ -462,7 +459,7 @@ export default function BuyerRequestProduceScreen({
               <TextInput
                 style={styles.textInput}
                 placeholder={t.cropNamePlaceholder}
-                placeholderTextColor={THEME.placeholder}
+                placeholderTextColor={C.muted}
                 value={cropName}
                 onChangeText={setCropName}
               />
@@ -472,20 +469,29 @@ export default function BuyerRequestProduceScreen({
             <View style={styles.formGroup}>
               <Text style={styles.label}>{t.categoryLabel}</Text>
               <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="Select category"
                 style={styles.selectBox}
                 onPress={() => setCategoryModalVisible(true)}
                 activeOpacity={0.8}
               >
-                <Text style={styles.selectBoxText}>🏷️ {category}</Text>
-                <Text style={styles.selectBoxArrow}>▼</Text>
+                <Text style={styles.selectBoxText}>{category}</Text>
+                <Ionicons name="chevron-down" size={18} color={C.muted} />
               </TouchableOpacity>
             </View>
           </View>
 
           {/* 2. QUANTITY & UNIT */}
           <View style={styles.cardSection}>
-            <Text style={styles.sectionTitle}>⚖️ {t.quantityLabel}</Text>
-            
+            <View style={styles.sectionHeader}>
+              <IconTile name="scale-outline" />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.sectionNumber}>02</Text>
+                <Text style={styles.sectionTitle}>Required Volume</Text>
+                <Text style={styles.sectionSub}>Set the quantity and packaging unit</Text>
+              </View>
+            </View>
+
             <View style={styles.rowTwoCols}>
               <View style={[styles.formGroup, { flex: 1.4, marginRight: 10 }]}>
                 <Text style={styles.label}>
@@ -494,7 +500,7 @@ export default function BuyerRequestProduceScreen({
                 <TextInput
                   style={styles.textInput}
                   placeholder={t.quantityPlaceholder}
-                  placeholderTextColor={THEME.placeholder}
+                  placeholderTextColor={C.muted}
                   value={quantity}
                   onChangeText={setQuantity}
                   keyboardType="numeric"
@@ -504,12 +510,14 @@ export default function BuyerRequestProduceScreen({
               <View style={[styles.formGroup, { flex: 1 }]}>
                 <Text style={styles.label}>{t.unitLabel}</Text>
                 <TouchableOpacity
+                  accessibilityRole="button"
+                  accessibilityLabel="Select unit"
                   style={styles.selectBox}
                   onPress={() => setUnitModalVisible(true)}
                   activeOpacity={0.8}
                 >
                   <Text style={styles.selectBoxText}>{unit}</Text>
-                  <Text style={styles.selectBoxArrow}>▼</Text>
+                  <Ionicons name="chevron-down" size={18} color={C.muted} />
                 </TouchableOpacity>
               </View>
             </View>
@@ -531,26 +539,34 @@ export default function BuyerRequestProduceScreen({
 
           {/* 3. TARGET SOURCING DISTRICT & SPECIFIC AREA */}
           <View style={styles.cardSection}>
-            <Text style={styles.sectionTitle}>📍 {t.originAreaLabel}</Text>
+            <View style={styles.sectionHeader}>
+              <IconTile name="location-outline" />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.sectionNumber}>03</Text>
+                <Text style={styles.sectionTitle}>Target Sourcing District</Text>
+                <Text style={styles.sectionSub}>Connect with farmers in specific agricultural zones</Text>
+              </View>
+            </View>
 
             <View style={styles.formGroup}>
               <Text style={styles.label}>
                 {t.selectDistrict} <Text style={styles.requiredAsterisk}>*</Text>
               </Text>
               <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="Select target district"
                 style={styles.selectBox}
                 onPress={() => setDistrictModalVisible(true)}
                 activeOpacity={0.8}
               >
                 <Text style={styles.selectBoxText}>
-                  📍{' '}
                   {lang === 'si'
                     ? selectedDistrict.nameSi
                     : lang === 'ta'
                     ? selectedDistrict.nameTa
                     : selectedDistrict.nameEn}
                 </Text>
-                <Text style={styles.selectBoxArrow}>▼</Text>
+                <Ionicons name="chevron-down" size={18} color={C.muted} />
               </TouchableOpacity>
             </View>
 
@@ -559,7 +575,7 @@ export default function BuyerRequestProduceScreen({
               <TextInput
                 style={styles.textInput}
                 placeholder={t.specificTownPlaceholder}
-                placeholderTextColor={THEME.placeholder}
+                placeholderTextColor={C.muted}
                 value={specificTown}
                 onChangeText={setSpecificTown}
               />
@@ -568,32 +584,29 @@ export default function BuyerRequestProduceScreen({
 
           {/* 4. REQUIRED DATE PERIOD / DELIVERY WINDOW */}
           <View style={styles.cardSection}>
-            <Text style={styles.sectionTitle}>📅 {t.datePeriodLabel}</Text>
+            <View style={styles.sectionHeader}>
+              <IconTile name="calendar-outline" />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.sectionNumber}>04</Text>
+                <Text style={styles.sectionTitle}>Harvest Period</Text>
+                <Text style={styles.sectionSub}>{t.datePresetLabel}</Text>
+              </View>
+            </View>
 
             {/* Quick Presets */}
-            <Text style={styles.subLabel}>{t.datePresetLabel}:</Text>
-            <View style={styles.presetWrap}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
               {DATE_PRESETS.map((preset) => {
                 const isSelected = selectedDatePreset === preset.id;
                 return (
-                  <TouchableOpacity
+                  <FilterChip
                     key={preset.id}
-                    style={[styles.presetChip, isSelected && styles.presetChipSelected]}
+                    label={preset.labelEn}
+                    selected={isSelected}
                     onPress={() => handleSelectDatePreset(preset)}
-                    activeOpacity={0.7}
-                  >
-                    <Text
-                      style={[
-                        styles.presetChipText,
-                        isSelected && styles.presetChipTextSelected,
-                      ]}
-                    >
-                      {preset.labelEn}
-                    </Text>
-                  </TouchableOpacity>
+                  />
                 );
               })}
-            </View>
+            </ScrollView>
 
             {/* Start & End Dates */}
             <View style={styles.rowTwoCols}>
@@ -604,7 +617,7 @@ export default function BuyerRequestProduceScreen({
                 <TextInput
                   style={styles.textInput}
                   placeholder="YYYY-MM-DD"
-                  placeholderTextColor={THEME.placeholder}
+                  placeholderTextColor={C.muted}
                   value={startDate}
                   onChangeText={setStartDate}
                 />
@@ -617,7 +630,7 @@ export default function BuyerRequestProduceScreen({
                 <TextInput
                   style={styles.textInput}
                   placeholder="YYYY-MM-DD"
-                  placeholderTextColor={THEME.placeholder}
+                  placeholderTextColor={C.muted}
                   value={endDate}
                   onChangeText={setEndDate}
                 />
@@ -627,24 +640,32 @@ export default function BuyerRequestProduceScreen({
 
           {/* 5. QUALITY GRADE & TARGET PRICE */}
           <View style={styles.cardSection}>
-            <Text style={styles.sectionTitle}>💎 Quality & Target Budget</Text>
+            <View style={styles.sectionHeader}>
+              <IconTile name="ribbon-outline" />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.sectionNumber}>05</Text>
+                <Text style={styles.sectionTitle}>Quality & Budget</Text>
+                <Text style={styles.sectionSub}>Specify quality standards and pricing</Text>
+              </View>
+            </View>
 
             <View style={styles.formGroup}>
               <Text style={styles.label}>{t.gradeLabel}</Text>
               <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="Select quality grade"
                 style={styles.selectBox}
                 onPress={() => setGradeModalVisible(true)}
                 activeOpacity={0.8}
               >
                 <Text style={styles.selectBoxText}>
-                  ✨{' '}
                   {lang === 'si'
                     ? selectedGrade.labelSi
                     : lang === 'ta'
                     ? selectedGrade.labelTa
                     : selectedGrade.labelEn}
                 </Text>
-                <Text style={styles.selectBoxArrow}>▼</Text>
+                <Ionicons name="chevron-down" size={18} color={C.muted} />
               </TouchableOpacity>
             </View>
 
@@ -653,7 +674,7 @@ export default function BuyerRequestProduceScreen({
               <TextInput
                 style={styles.textInput}
                 placeholder={t.targetPricePlaceholder}
-                placeholderTextColor={THEME.placeholder}
+                placeholderTextColor={C.muted}
                 value={targetPrice}
                 onChangeText={setTargetPrice}
                 keyboardType="numeric"
@@ -663,7 +684,14 @@ export default function BuyerRequestProduceScreen({
 
           {/* 6. DESTINATION & SPECIAL NOTES */}
           <View style={styles.cardSection}>
-            <Text style={styles.sectionTitle}>🚛 Logistics & Delivery Mode</Text>
+            <View style={styles.sectionHeader}>
+              <IconTile name="car-outline" />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.sectionNumber}>06</Text>
+                <Text style={styles.sectionTitle}>Logistics & Notes</Text>
+                <Text style={styles.sectionSub}>Choose delivery method and instructions</Text>
+              </View>
+            </View>
 
             {/* DELIVERY NEEDED CHECKBOX */}
             <TouchableOpacity
@@ -675,7 +703,7 @@ export default function BuyerRequestProduceScreen({
               activeOpacity={0.8}
             >
               <View style={[styles.checkboxBox, deliveryNeeded && styles.checkboxBoxActive]}>
-                {deliveryNeeded && <Text style={styles.checkboxCheckmark}>✓</Text>}
+                {deliveryNeeded && <Ionicons name="checkmark" size={16} color="#FFFFFF" />}
               </View>
               <View style={{ flex: 1, marginLeft: 12 }}>
                 <Text style={styles.checkboxTitle}>{t.deliveryCheckboxLabel}</Text>
@@ -689,7 +717,7 @@ export default function BuyerRequestProduceScreen({
                 <TextInput
                   style={styles.textInput}
                   placeholder={t.deliveryAddressPlaceholder}
-                  placeholderTextColor={THEME.placeholder}
+                  placeholderTextColor={C.muted}
                   value={deliveryAddress}
                   onChangeText={setDeliveryAddress}
                 />
@@ -705,7 +733,7 @@ export default function BuyerRequestProduceScreen({
               <TextInput
                 style={[styles.textInput, styles.textArea]}
                 placeholder={t.notesPlaceholder}
-                placeholderTextColor={THEME.placeholder}
+                placeholderTextColor={C.muted}
                 value={notes}
                 onChangeText={setNotes}
                 multiline
@@ -714,19 +742,22 @@ export default function BuyerRequestProduceScreen({
             </View>
           </View>
 
-          {/* SUBMIT BUTTON */}
-          <TouchableOpacity
-            style={[styles.submitButton, isSubmitting && styles.submitButtonDisabled]}
-            onPress={handleSubmitRequest}
-            disabled={isSubmitting}
-            activeOpacity={0.85}
-          >
-            {isSubmitting ? (
-              <ActivityIndicator color="#FFFFFF" size="small" />
-            ) : (
-              <Text style={styles.submitButtonText}>{t.submitBtn}</Text>
-            )}
-          </TouchableOpacity>
+          {/* ACTION BUTTONS ROW */}
+          <View style={styles.actionsRow}>
+            <FarmerButton
+              label={t.backBtn}
+              secondary
+              onPress={onBack}
+              style={{ flex: 1 }}
+            />
+            <FarmerButton
+              label={cleanLabel(t.submitBtn)}
+              icon="paper-plane-outline"
+              loading={isSubmitting}
+              onPress={handleSubmitRequest}
+              style={{ flex: 1.4 }}
+            />
+          </View>
 
           <View style={{ height: 40 }} />
         </ScrollView>
@@ -735,23 +766,31 @@ export default function BuyerRequestProduceScreen({
       {/* ============================================== */}
       {/* MODAL: DISTRICT PICKER                         */}
       {/* ============================================== */}
-      <Modal visible={districtModalVisible} transparent animationType="slide">
+      <Modal visible={districtModalVisible} transparent animationType="fade" onRequestClose={() => setDistrictModalVisible(false)}>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>{t.selectDistrict}</Text>
               <TouchableOpacity onPress={() => setDistrictModalVisible(false)} style={styles.modalCloseBtn}>
-                <Text style={styles.modalCloseBtnText}>✕</Text>
+                <Ionicons name="close" size={22} color={C.ink} />
               </TouchableOpacity>
             </View>
 
-            <TextInput
-              style={styles.modalSearchInput}
-              placeholder="Search district name..."
-              placeholderTextColor={THEME.placeholder}
-              value={districtSearch}
-              onChangeText={setDistrictSearch}
-            />
+            <View style={styles.modalSearchBox}>
+              <Ionicons name="search-outline" size={18} color={C.muted} />
+              <TextInput
+                style={styles.modalSearchInput}
+                placeholder="Search district name..."
+                placeholderTextColor={C.muted}
+                value={districtSearch}
+                onChangeText={setDistrictSearch}
+              />
+              {!!districtSearch && (
+                <TouchableOpacity onPress={() => setDistrictSearch('')}>
+                  <Ionicons name="close-circle" size={18} color={C.muted} />
+                </TouchableOpacity>
+              )}
+            </View>
 
             <ScrollView style={{ maxHeight: 350 }}>
               {filteredDistricts.map((item) => {
@@ -768,10 +807,16 @@ export default function BuyerRequestProduceScreen({
                       setDistrictSearch('');
                     }}
                   >
+                    <Ionicons
+                      name="location-outline"
+                      size={18}
+                      color={isSelected ? C.greenDark : C.muted}
+                      style={{ marginRight: 10 }}
+                    />
                     <Text style={[styles.modalItemText, isSelected && styles.modalItemTextSelected]}>
-                      📍 {name}
+                      {name}
                     </Text>
-                    {isSelected && <Text style={styles.checkmark}>✓</Text>}
+                    {isSelected && <Ionicons name="checkmark-circle" size={18} color={C.green} />}
                   </TouchableOpacity>
                 );
               })}
@@ -783,13 +828,13 @@ export default function BuyerRequestProduceScreen({
       {/* ============================================== */}
       {/* MODAL: CATEGORY PICKER                         */}
       {/* ============================================== */}
-      <Modal visible={categoryModalVisible} transparent animationType="fade">
+      <Modal visible={categoryModalVisible} transparent animationType="fade" onRequestClose={() => setCategoryModalVisible(false)}>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>{t.categoryLabel}</Text>
               <TouchableOpacity onPress={() => setCategoryModalVisible(false)} style={styles.modalCloseBtn}>
-                <Text style={styles.modalCloseBtnText}>✕</Text>
+                <Ionicons name="close" size={22} color={C.ink} />
               </TouchableOpacity>
             </View>
 
@@ -805,10 +850,16 @@ export default function BuyerRequestProduceScreen({
                       setCategoryModalVisible(false);
                     }}
                   >
+                    <Ionicons
+                      name="pricetag-outline"
+                      size={18}
+                      color={isSelected ? C.greenDark : C.muted}
+                      style={{ marginRight: 10 }}
+                    />
                     <Text style={[styles.modalItemText, isSelected && styles.modalItemTextSelected]}>
-                      🏷️ {cat}
+                      {cat}
                     </Text>
-                    {isSelected && <Text style={styles.checkmark}>✓</Text>}
+                    {isSelected && <Ionicons name="checkmark-circle" size={18} color={C.green} />}
                   </TouchableOpacity>
                 );
               })}
@@ -820,13 +871,13 @@ export default function BuyerRequestProduceScreen({
       {/* ============================================== */}
       {/* MODAL: UNIT PICKER                             */}
       {/* ============================================== */}
-      <Modal visible={unitModalVisible} transparent animationType="fade">
+      <Modal visible={unitModalVisible} transparent animationType="fade" onRequestClose={() => setUnitModalVisible(false)}>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>{t.unitLabel}</Text>
               <TouchableOpacity onPress={() => setUnitModalVisible(false)} style={styles.modalCloseBtn}>
-                <Text style={styles.modalCloseBtnText}>✕</Text>
+                <Ionicons name="close" size={22} color={C.ink} />
               </TouchableOpacity>
             </View>
 
@@ -842,10 +893,16 @@ export default function BuyerRequestProduceScreen({
                       setUnitModalVisible(false);
                     }}
                   >
+                    <Ionicons
+                      name="cube-outline"
+                      size={18}
+                      color={isSelected ? C.greenDark : C.muted}
+                      style={{ marginRight: 10 }}
+                    />
                     <Text style={[styles.modalItemText, isSelected && styles.modalItemTextSelected]}>
-                      ⚖️ {u}
+                      {u}
                     </Text>
-                    {isSelected && <Text style={styles.checkmark}>✓</Text>}
+                    {isSelected && <Ionicons name="checkmark-circle" size={18} color={C.green} />}
                   </TouchableOpacity>
                 );
               })}
@@ -857,13 +914,13 @@ export default function BuyerRequestProduceScreen({
       {/* ============================================== */}
       {/* MODAL: GRADE PICKER                            */}
       {/* ============================================== */}
-      <Modal visible={gradeModalVisible} transparent animationType="fade">
+      <Modal visible={gradeModalVisible} transparent animationType="fade" onRequestClose={() => setGradeModalVisible(false)}>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>{t.gradeLabel}</Text>
               <TouchableOpacity onPress={() => setGradeModalVisible(false)} style={styles.modalCloseBtn}>
-                <Text style={styles.modalCloseBtnText}>✕</Text>
+                <Ionicons name="close" size={22} color={C.ink} />
               </TouchableOpacity>
             </View>
 
@@ -881,10 +938,16 @@ export default function BuyerRequestProduceScreen({
                       setGradeModalVisible(false);
                     }}
                   >
+                    <Ionicons
+                      name="ribbon-outline"
+                      size={18}
+                      color={isSelected ? C.greenDark : C.muted}
+                      style={{ marginRight: 10 }}
+                    />
                     <Text style={[styles.modalItemText, isSelected && styles.modalItemTextSelected]}>
-                      ✨ {label}
+                      {label}
                     </Text>
-                    {isSelected && <Text style={styles.checkmark}>✓</Text>}
+                    {isSelected && <Ionicons name="checkmark-circle" size={18} color={C.green} />}
                   </TouchableOpacity>
                 );
               })}
@@ -899,175 +962,170 @@ export default function BuyerRequestProduceScreen({
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: THEME.navy,
+    backgroundColor: C.canvas,
   },
   headerBar: {
-    backgroundColor: THEME.navy,
-    paddingHorizontal: 16,
+    backgroundColor: C.canvas,
+    paddingHorizontal: 20,
     paddingVertical: 14,
     flexDirection: 'row',
     alignItems: 'center',
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.1)',
+    borderBottomColor: C.border,
+    gap: 12,
   },
   headerBackBtn: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    borderRadius: 8,
-    marginRight: 12,
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: C.border,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  headerBackBtnText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  headerTitle: {
-    color: '#FFFFFF',
-    fontSize: 17,
-    fontWeight: '800',
+  headerTitleWrap: {
     flex: 1,
   },
+  headerTitle: {
+    color: C.ink,
+    fontSize: 18,
+    fontWeight: '800',
+    letterSpacing: -0.4,
+  },
+  headerSubtitle: {
+    color: C.muted,
+    fontSize: 12,
+    marginTop: 2,
+  },
   scrollContent: {
-    backgroundColor: THEME.bg,
-    padding: 16,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 28,
+    maxWidth: 760,
+    width: '100%',
+    alignSelf: 'center',
   },
   heroBanner: {
-    backgroundColor: THEME.navy,
-    borderRadius: 16,
-    padding: 18,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 3,
+    backgroundColor: C.greenDark,
+    borderRadius: 24,
+    padding: 24,
+    marginBottom: 20,
   },
-  heroBadgeRow: {
-    flexDirection: 'row',
-    marginBottom: 8,
-  },
-  heroBadge: {
-    backgroundColor: THEME.emerald,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  heroBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: '900',
-    letterSpacing: 0.5,
-  },
-  heroTitle: {
-    color: '#FFFFFF',
-    fontSize: 20,
-    fontWeight: '900',
-    marginBottom: 4,
-  },
-  heroSub: {
-    color: '#94A3B8',
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  cardSection: {
-    backgroundColor: THEME.cardBg,
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: THEME.border,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: THEME.navy,
-    marginBottom: 12,
-  },
-  subLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: THEME.textMuted,
-    marginBottom: 8,
-  },
-  quickCropRow: {
-    marginBottom: 14,
-  },
-  quickCropChip: {
-    backgroundColor: '#F1F5F9',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    marginRight: 8,
-    borderWidth: 1,
-    borderColor: THEME.border,
-  },
-  quickCropChipSelected: {
-    backgroundColor: THEME.emeraldLight,
-    borderColor: THEME.emerald,
-  },
-  quickCropChipText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: THEME.textDark,
-  },
-  quickCropChipTextSelected: {
-    color: THEME.emeraldDark,
-    fontWeight: '800',
-  },
-  formGroup: {
-    marginBottom: 14,
-  },
-  label: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: THEME.textDark,
-    marginBottom: 6,
-  },
-  requiredAsterisk: {
-    color: THEME.danger,
-    fontWeight: '900',
-  },
-  textInput: {
-    backgroundColor: THEME.inputBg,
-    borderWidth: 1.5,
-    borderColor: THEME.border,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-    fontSize: 14,
-    color: THEME.textDark,
-  },
-  textArea: {
-    height: 75,
-    textAlignVertical: 'top',
-  },
-  selectBox: {
-    backgroundColor: THEME.inputBg,
-    borderWidth: 1.5,
-    borderColor: THEME.border,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+  heroTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 14,
+  },
+  heroPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderWidth: 1,
+    borderColor: '#487B65',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 20,
+  },
+  heroEyebrow: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#D1E9D9',
+    letterSpacing: 1.2,
+  },
+  heroTitle: {
+    fontSize: 24,
+    lineHeight: 30,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: -0.5,
+  },
+  heroSub: {
+    fontSize: 13,
+    lineHeight: 20,
+    color: '#C1D9CC',
+    marginTop: 8,
+  },
+  cardSection: {
+    backgroundColor: C.white,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: C.border,
+    padding: 18,
+    marginBottom: 16,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 16,
+  },
+  sectionNumber: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: C.green,
+    letterSpacing: 1.5,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: C.ink,
+  },
+  sectionSub: {
+    fontSize: 12,
+    color: C.muted,
+    marginTop: 2,
+  },
+  chipRow: {
+    gap: 8,
+    paddingBottom: 12,
+    paddingTop: 4,
+  },
+  formGroup: {
+    marginTop: 12,
+  },
+  label: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: C.ink,
+    marginBottom: 6,
+  },
+  requiredAsterisk: {
+    color: C.red,
+    fontWeight: 'bold',
+  },
+  textInput: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 14,
+    color: C.ink,
+    minHeight: 48,
+  },
+  textArea: {
+    minHeight: 80,
+    textAlignVertical: 'top',
+  },
+  selectBox: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: 48,
   },
   selectBoxText: {
     fontSize: 14,
     fontWeight: '600',
-    color: THEME.textDark,
-    flex: 1,
-  },
-  selectBoxArrow: {
-    fontSize: 12,
-    color: THEME.textMuted,
-    marginLeft: 8,
+    color: C.ink,
   },
   rowTwoCols: {
     flexDirection: 'row',
@@ -1075,201 +1133,151 @@ const styles = StyleSheet.create({
   },
   stepperRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginTop: 4,
+    gap: 8,
+    marginTop: 12,
   },
   stepperChip: {
-    backgroundColor: '#F1F5F9',
     paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    marginRight: 8,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: THEME.border,
+    paddingVertical: 7,
+    borderRadius: 12,
+    backgroundColor: C.mint,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   stepperChipText: {
     fontSize: 12,
     fontWeight: '700',
-    color: THEME.navy,
+    color: C.greenDark,
   },
-  presetWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginBottom: 12,
-  },
-  presetChip: {
-    backgroundColor: '#F1F5F9',
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 8,
-    marginRight: 8,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: THEME.border,
-  },
-  presetChipSelected: {
-    backgroundColor: THEME.emeraldLight,
-    borderColor: THEME.emerald,
-  },
-  presetChipText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: THEME.textDark,
-  },
-  presetChipTextSelected: {
-    color: THEME.emeraldDark,
-    fontWeight: '800',
-  },
-  submitButton: {
-    backgroundColor: THEME.emerald,
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: THEME.emerald,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 4,
-    marginTop: 8,
-  },
-  submitButtonDisabled: {
-    opacity: 0.6,
-  },
-  submitButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '900',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 20,
-    maxHeight: '80%',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 14,
-  },
-  modalTitle: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: THEME.navy,
-  },
-  modalCloseBtn: {
-    padding: 6,
-    borderRadius: 15,
-    backgroundColor: '#F1F5F9',
-  },
-  modalCloseBtnText: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: THEME.textMuted,
-  },
-  modalSearchInput: {
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: THEME.border,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    fontSize: 14,
-    marginBottom: 12,
-    color: THEME.textDark,
-  },
-  modalItem: {
-    paddingVertical: 13,
-    paddingHorizontal: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  modalItemSelected: {
-    backgroundColor: THEME.emeraldLight,
-    borderRadius: 8,
-  },
-  modalItemText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: THEME.textDark,
-  },
-  modalItemTextSelected: {
-    color: THEME.emeraldDark,
-    fontWeight: '800',
-  },
-  checkmark: {
-    color: THEME.emerald,
-    fontWeight: '900',
-    fontSize: 16,
-  },
-  // Checkbox styles
   checkboxCard: {
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1.5,
-    borderColor: THEME.border,
-    borderRadius: 12,
-    padding: 14,
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 14,
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: C.border,
+    backgroundColor: C.canvas,
+    marginTop: 6,
+    marginBottom: 12,
   },
   checkboxCardActive: {
-    backgroundColor: THEME.emeraldLight,
-    borderColor: THEME.emerald,
+    borderColor: C.green,
+    backgroundColor: C.mint,
   },
   checkboxBox: {
-    width: 24,
-    height: 24,
+    width: 22,
+    height: 22,
     borderRadius: 6,
-    borderWidth: 2,
-    borderColor: THEME.textMuted,
-    backgroundColor: '#FFFFFF',
-    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: C.muted,
     alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
   },
   checkboxBoxActive: {
-    backgroundColor: THEME.emerald,
-    borderColor: THEME.emerald,
-  },
-  checkboxCheckmark: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '900',
+    backgroundColor: C.green,
+    borderColor: C.green,
   },
   checkboxTitle: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
-    color: THEME.textDark,
+    color: C.ink,
   },
   checkboxSub: {
     fontSize: 11,
-    color: THEME.textMuted,
+    color: C.muted,
     marginTop: 2,
-    lineHeight: 15,
+    lineHeight: 16,
   },
   selfPickupBanner: {
-    backgroundColor: '#FEF3C7',
-    borderWidth: 1,
-    borderColor: '#FDE68A',
-    borderRadius: 10,
+    backgroundColor: C.amberBg,
+    borderRadius: 12,
     padding: 12,
-    marginBottom: 14,
+    marginVertical: 8,
   },
   selfPickupText: {
     fontSize: 12,
-    color: '#92400E',
+    color: C.amber,
     fontWeight: '600',
-    lineHeight: 16,
+    lineHeight: 18,
+  },
+  actionsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 10,
+    marginBottom: 20,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(12,35,26,0.5)',
+    padding: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 440,
+    padding: 22,
+    borderRadius: 24,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: C.ink,
+  },
+  modalCloseBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalSearchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: C.canvas,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    minHeight: 44,
+    marginBottom: 12,
+  },
+  modalSearchInput: {
+    flex: 1,
+    fontSize: 13,
+    color: C.ink,
+    minHeight: 40,
+  },
+  modalItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    marginBottom: 4,
+  },
+  modalItemSelected: {
+    backgroundColor: C.mint,
+  },
+  modalItemText: {
+    flex: 1,
+    fontSize: 13,
+    color: C.ink,
+    fontWeight: '500',
+  },
+  modalItemTextSelected: {
+    color: C.greenDark,
+    fontWeight: '700',
   },
 });

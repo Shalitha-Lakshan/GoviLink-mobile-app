@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
   StyleSheet,
   Text,
@@ -6,8 +6,6 @@ import {
   TextInput,
   TouchableOpacity,
   ScrollView,
-  SafeAreaView,
-  StatusBar,
   Modal,
   Alert,
   ActivityIndicator,
@@ -15,7 +13,13 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  Animated,
+  PanResponder,
+  Keyboard,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import { FARMER_COLORS as C } from './FarmerDesign';
 import * as ImagePicker from 'expo-image-picker';
 import { addProduceListing, updateProduceListing } from '../services/firebaseDatabase';
 
@@ -23,20 +27,20 @@ import { addProduceListing, updateProduceListing } from '../services/firebaseDat
 // THEME & COLOR PALETTE (MATCHING THE DESIGN SPEC)
 // ----------------------------------------------------
 const THEME = {
-  headerGreen: '#006837',
-  titleGreen: '#005A2B',
-  buttonGreen: '#006837',
-  iconGreen: '#1E3A2F',
-  borderGreen: '#D1E7DD',
-  bg: '#F8FAFC',
+  headerGreen: C.green,
+  titleGreen: C.ink,
+  buttonGreen: C.green,
+  iconGreen: C.ink,
+  borderGreen: C.border,
+  bg: C.canvas,
   cardBg: '#FFFFFF',
-  textDark: '#1E293B',
-  textMuted: '#64748B',
+  textDark: C.ink,
+  textMuted: C.muted,
   placeholder: '#94A3B8',
-  border: '#CBD5E1',
-  borderActive: '#006837',
+  border: C.border,
+  borderActive: C.green,
   error: '#EF4444',
-  lightGreenBg: '#F0FDF4',
+  lightGreenBg: C.mint,
   inputBg: '#FFFFFF',
 };
 
@@ -51,6 +55,7 @@ const CATEGORIES = [
 ];
 
 const UNITS = ['Kg', 'g', 'Bundles', 'Bags', 'Boxes', 'Units'];
+const AnimatedSafeAreaView = Animated.createAnimatedComponent(SafeAreaView);
 
 const DEFAULT_IMAGES = {
   Vegetables: 'https://images.unsplash.com/photo-1598170845058-32b9d6a5da37?auto=format&fit=crop&w=600&q=80',
@@ -62,40 +67,20 @@ const DEFAULT_IMAGES = {
   'Root Crops': 'https://images.unsplash.com/photo-1518977676601-b53f82aba655?auto=format&fit=crop&w=600&q=80',
 };
 
-// SVG-like Vector Icons using React Native Views
-const BackArrowIcon = () => (
-  <View style={styles.backIconWrap}>
-    <View style={styles.backArrowHead} />
-    <View style={styles.backArrowStem} />
-  </View>
-);
-
-const UploadImageIcon = () => (
-  <View style={styles.uploadIconContainer}>
-    <View style={styles.uploadMountain} />
-    <View style={styles.uploadSun} />
-    <View style={styles.uploadCornerFolder} />
-  </View>
-);
-
-const ChevronDownIcon = () => (
-  <View style={styles.chevronWrap}>
-    <View style={styles.chevronLeft} />
-    <View style={styles.chevronRight} />
-  </View>
-);
-
-const CalendarIcon = () => (
-  <View style={styles.calendarWrap}>
-    <View style={styles.calendarBody}>
-      <View style={styles.calendarHeader} />
-      <View style={styles.calendarPinsRow}>
-        <View style={styles.calendarPin} />
-        <View style={styles.calendarPin} />
+function FormSection({ number, title, subtitle, children }) {
+  return (
+    <View style={styles.sectionCard}>
+      <View style={styles.sectionHeader}>
+        <View style={styles.sectionNumber}><Text style={styles.sectionNumberText}>{number}</Text></View>
+        <View style={styles.sectionHeading}>
+          <Text style={styles.sectionTitle}>{title}</Text>
+          <Text style={styles.sectionSubtitle}>{subtitle}</Text>
+        </View>
       </View>
+      {children}
     </View>
-  </View>
-);
+  );
+}
 
 export default function AddProduceScreen({
   userProfile,
@@ -104,6 +89,10 @@ export default function AddProduceScreen({
   onProduceAdded,
   initialProduce = null,
 }) {
+  const scrollRef = useRef(null);
+  const [focusedField, setFocusedField] = useState(null);
+  const [formError, setFormError] = useState('');
+  const showFormError = (message) => { setFormError(message); scrollRef.current?.scrollTo({ y: 0, animated: true }); };
   const isEditing = Boolean(initialProduce && initialProduce.id);
   const [productName, setProductName] = useState(() => initialProduce?.nameEn || initialProduce?.nameSi || '');
   const [category, setCategory] = useState(() => initialProduce?.category || '');
@@ -127,6 +116,66 @@ export default function AddProduceScreen({
   const [dateModalVisible, setDateModalVisible] = useState(false);
   const [imageActionModalVisible, setImageActionModalVisible] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const sheetOffset = useRef(new Animated.Value(0)).current;
+  const sheetHeight = useRef(800);
+  const isDismissing = useRef(false);
+  const sheetPanResponder = useMemo(() => {
+    const snapBack = () => Animated.spring(sheetOffset, {
+      toValue: 0, tension: 90, friction: 14, useNativeDriver: false,
+    }).start();
+    return PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gesture) => !isSubmitting && !isDismissing.current
+        && gesture.dy > 6 && gesture.dy > Math.abs(gesture.dx),
+      onPanResponderGrant: () => {
+        sheetOffset.stopAnimation();
+        Keyboard.dismiss();
+      },
+      onPanResponderMove: (_, gesture) => sheetOffset.setValue(Math.max(0, gesture.dy)),
+      onPanResponderRelease: (_, gesture) => {
+        if (!isSubmitting && (gesture.dy > 100 || (gesture.dy > 25 && gesture.vy > 0.7))) {
+          isDismissing.current = true;
+          Animated.timing(sheetOffset, {
+            toValue: sheetHeight.current, duration: 180, useNativeDriver: false,
+          }).start(({ finished }) => {
+            if (finished) onBack?.();
+          });
+        } else snapBack();
+      },
+      onPanResponderTerminate: snapBack,
+    });
+  }, [isSubmitting, onBack, sheetOffset]);
+
+  // Helper: Compress web images to keep memory and Firestore documents compact
+  const compressWebImageDataUrl = (dataUrl, maxDim = 800, quality = 0.65) => {
+    return new Promise((resolve) => {
+      if (typeof window === 'undefined' || typeof window.Image !== 'function') return resolve(dataUrl);
+      try {
+        const img = new window.Image();
+        img.onload = () => {
+          let { width, height } = img;
+          if (width > maxDim || height > maxDim) {
+            if (width > height) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', quality));
+        };
+        img.onerror = () => resolve(dataUrl);
+        img.src = dataUrl;
+      } catch (_e) {
+        resolve(dataUrl);
+      }
+    });
+  };
 
   // Pick Image from Gallery
   const pickFromGallery = async () => {
@@ -140,9 +189,10 @@ export default function AddProduceScreen({
           const file = e.target?.files?.[0];
           if (file) {
             const reader = new FileReader();
-            reader.onload = (event) => {
+            reader.onload = async (event) => {
               if (event.target?.result) {
-                setSelectedImage(event.target.result);
+                const compressed = await compressWebImageDataUrl(event.target.result);
+                setSelectedImage(compressed);
               }
             };
             reader.readAsDataURL(file);
@@ -161,11 +211,13 @@ export default function AddProduceScreen({
         mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [4, 3],
+        base64: true,
         quality: 0.8,
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
-        setSelectedImage(result.assets[0].uri);
+        const asset = result.assets[0];
+        setSelectedImage(asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : asset.uri);
       }
     } catch (error) {
       console.warn('Gallery picker primary attempt failed, trying fallback:', error);
@@ -173,10 +225,12 @@ export default function AddProduceScreen({
         const fallbackResult = await ImagePicker.launchImageLibraryAsync({
           mediaTypes: ['images'],
           allowsEditing: false,
+          base64: true,
           quality: 0.8,
         });
         if (!fallbackResult.canceled && fallbackResult.assets && fallbackResult.assets.length > 0) {
-          setSelectedImage(fallbackResult.assets[0].uri);
+          const asset = fallbackResult.assets[0];
+          setSelectedImage(asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : asset.uri);
         }
       } catch (err) {
         console.error('Fallback gallery picker failed:', err);
@@ -200,9 +254,10 @@ export default function AddProduceScreen({
           const file = e.target?.files?.[0];
           if (file) {
             const reader = new FileReader();
-            reader.onload = (event) => {
+            reader.onload = async (event) => {
               if (event.target?.result) {
-                setSelectedImage(event.target.result);
+                const compressed = await compressWebImageDataUrl(event.target.result);
+                setSelectedImage(compressed);
               }
             };
             reader.readAsDataURL(file);
@@ -230,11 +285,13 @@ export default function AddProduceScreen({
         mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [4, 3],
+        base64: true,
         quality: 0.8,
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
-        setSelectedImage(result.assets[0].uri);
+        const asset = result.assets[0];
+        setSelectedImage(asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : asset.uri);
       }
     } catch (error) {
       console.warn('Camera primary attempt failed, trying fallback:', error);
@@ -242,10 +299,12 @@ export default function AddProduceScreen({
         const fallbackResult = await ImagePicker.launchCameraAsync({
           mediaTypes: ['images'],
           allowsEditing: false,
+          base64: true,
           quality: 0.8,
         });
         if (!fallbackResult.canceled && fallbackResult.assets && fallbackResult.assets.length > 0) {
-          setSelectedImage(fallbackResult.assets[0].uri);
+          const asset = fallbackResult.assets[0];
+          setSelectedImage(asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : asset.uri);
         }
       } catch (err) {
         console.error('Fallback camera failed:', err);
@@ -258,22 +317,23 @@ export default function AddProduceScreen({
 
   const handlePublish = async () => {
     if (!productName.trim()) {
-      Alert.alert('Required Field', 'Please enter the product name.');
+      showFormError('Enter a product name so buyers can find your harvest.');
       return;
     }
     if (!category) {
-      Alert.alert('Required Field', 'Please select a produce category.');
+      showFormError('Choose a category for your harvest.');
       return;
     }
     if (!quantity || isNaN(quantity) || Number(quantity) <= 0) {
-      Alert.alert('Required Field', 'Please enter a valid quantity.');
+      showFormError('Enter an available quantity greater than zero.');
       return;
     }
     if (!price || isNaN(price) || Number(price) <= 0) {
-      Alert.alert('Required Field', 'Please enter a valid price per unit.');
+      showFormError('Enter a price per unit greater than zero.');
       return;
     }
 
+    setFormError('');
     setIsSubmitting(true);
 
     const produceImageUrl =
@@ -298,6 +358,7 @@ export default function AddProduceScreen({
       grade: initialProduce?.grade || 'Fresh Harvest',
       farmerName: userProfile?.fullName || initialProduce?.farmerName || 'Verified Farmer',
       farmerId: userProfile?.uid || initialProduce?.farmerId || 'farmer_uid',
+      farmerUid: userProfile?.uid || initialProduce?.farmerUid || initialProduce?.farmerId || 'farmer_uid',
       farmerPhone: userProfile?.phoneNumber || initialProduce?.farmerPhone || '',
       image: produceImageUrl,
     };
@@ -311,6 +372,12 @@ export default function AddProduceScreen({
     setIsSubmitting(false);
 
     if (res.success) {
+      if (Platform.OS === 'web') {
+        window.alert(isEditing ? 'Harvest updated successfully.' : 'Harvest published successfully.');
+        if (onProduceAdded) onProduceAdded();
+        else if (onBack) onBack();
+        return;
+      }
       Alert.alert(
         'Success 🌱',
         isEditing ? 'Produce listing updated successfully!' : 'Produce listing published successfully!',
@@ -325,184 +392,220 @@ export default function AddProduceScreen({
         ]
       );
     } else {
-      Alert.alert('Error', res.error || `Failed to ${isEditing ? 'update' : 'publish'} produce listing.`);
+      showFormError(res.error || `Could not ${isEditing ? 'update' : 'publish'} your harvest. Please try again.`);
     }
   };
 
+  const closeForm = () => { if (!isSubmitting) onBack?.(); };
+
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-
-      {/* TOP HEADER */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.headerIconButton}
-          onPress={onBack}
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          activeOpacity={0.7}
-        >
-          <BackArrowIcon />
-        </TouchableOpacity>
-
-        <Text style={styles.headerTitle}>GoviLink</Text>
-
-        {/* Spacer to maintain perfect center alignment */}
-        <View style={styles.headerIconButtonPlaceholder} />
-      </View>
-
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={{ flex: 1 }}
-      >
+    <Modal visible transparent animationType="slide" onRequestClose={closeForm} statusBarTranslucent>
+      <View style={styles.popupOverlay}>
+        <Pressable style={StyleSheet.absoluteFillObject} onPress={closeForm} disabled={isSubmitting}
+          accessibilityRole="button" accessibilityLabel="Close harvest form" />
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.popupPositioner} pointerEvents="box-none">
+          <AnimatedSafeAreaView edges={['bottom', 'left', 'right']}
+            onLayout={(event) => { sheetHeight.current = event.nativeEvent.layout.height; }}
+            style={[styles.popupSheet, { transform: [{ translateY: sheetOffset }] }]}
+            accessibilityViewIsModal role={Platform.OS === 'web' ? 'dialog' : undefined}
+            aria-modal={true} aria-label={isEditing ? 'Edit harvest' : 'Add new harvest'}>
+            <View {...sheetPanResponder.panHandlers} style={styles.sheetDragArea}>
+            <View style={styles.sheetHandleArea}><View style={styles.sheetHandle} /></View>
+            <View style={styles.sheetHeader}>
+              <Text accessibilityRole="header" style={styles.sheetTitle}>{isEditing ? 'Edit harvest' : 'Add new harvest'}</Text>
+              <Text style={styles.sheetSubtitle}>Share the details of your fresh produce.</Text>
+              <TouchableOpacity onPress={closeForm} disabled={isSubmitting} style={styles.sheetClose}
+                accessibilityRole="button" accessibilityLabel="Close harvest form" accessibilityState={{ disabled: isSubmitting }}>
+                <Ionicons name="close" size={22} color={C.ink} />
+              </TouchableOpacity>
+            </View>
+            </View>
         <ScrollView
+          ref={scrollRef}
           style={styles.container}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
-          {/* PAGE TITLE */}
-          <Text style={styles.pageHeading}>
-            {isEditing ? 'EDIT PRODUCE DETAILS' : 'ADD NEW PRODUCE'}
-          </Text>
+          <View style={styles.formIntro}><Ionicons name="information-circle-outline" size={17} color={C.green} /><Text style={styles.formIntroText}>Fields marked * are required. Photos and notes help your listing stand out.</Text></View>
+          {!!formError && <View accessibilityRole="alert" style={styles.errorBanner}><Ionicons name="alert-circle-outline" size={20} color={C.red} /><Text style={styles.errorText}>{formError}</Text></View>}
 
-          {/* UPLOAD IMAGE BOX */}
-          <TouchableOpacity
-            style={[
-              styles.uploadBox,
-              selectedImage && styles.uploadBoxWithImage,
-            ]}
-            onPress={() => setImageActionModalVisible(true)}
-            activeOpacity={0.8}
-          >
-            {selectedImage ? (
-              <View style={styles.previewContainer}>
-                <Image source={{ uri: selectedImage }} style={styles.imagePreview} />
-                <View style={styles.changeImageBadge}>
-                  <Text style={styles.changeImageText}>Change Image</Text>
-                </View>
-              </View>
-            ) : (
-              <View style={styles.uploadPlaceholderContent}>
-                <UploadImageIcon />
-                <Text style={styles.uploadText}>UPLOAD IMAGE</Text>
-              </View>
-            )}
-          </TouchableOpacity>
-
-          {/* PRODUCT NAME */}
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>PRODUCT NAME</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="e.g. Organic Tomatoes"
-              placeholderTextColor={THEME.placeholder}
-              value={productName}
-              onChangeText={setProductName}
-            />
-          </View>
-
-          {/* CATEGORY DROPDOWN */}
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>CATEGORY</Text>
+          <FormSection number="01" title="Produce details" subtitle="Help buyers recognize your harvest.">
+            <View style={styles.labelRow}>
+              <Text style={styles.label}>Produce photo</Text>
+              <Text style={styles.optionalLabel}>Optional</Text>
+            </View>
+            {/* UPLOAD IMAGE BOX */}
             <TouchableOpacity
-              style={styles.dropdownButton}
-              onPress={() => setCategoryModalVisible(true)}
-              activeOpacity={0.7}
+              style={[
+                styles.uploadBox,
+                selectedImage && styles.uploadBoxWithImage,
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel={selectedImage ? 'Change produce photo' : 'Add produce photo'}
+              onPress={() => setImageActionModalVisible(true)}
+              activeOpacity={0.8}
             >
-              <Text
-                style={[
-                  styles.dropdownButtonText,
-                  !category && styles.dropdownPlaceholder,
-                ]}
-              >
-                {category || 'Select Category'}
-              </Text>
-              <ChevronDownIcon />
+              {selectedImage ? (
+                <View style={styles.previewContainer}>
+                  <Image source={{ uri: selectedImage }} style={styles.imagePreview} />
+                  <View style={styles.changeImageBadge}>
+                    <Text style={styles.changeImageText}>Change photo</Text>
+                  </View>
+                </View>
+              ) : (
+                <View style={styles.uploadPlaceholderContent}>
+                  <View style={styles.photoIcon}><Ionicons name="camera-outline" size={26} color={THEME.buttonGreen} /></View>
+                  <Text style={styles.uploadText}>Add a produce photo</Text>
+                  <Text style={styles.uploadHint}>Take a photo or choose from your gallery</Text>
+                </View>
+              )}
             </TouchableOpacity>
-          </View>
 
-          {/* QUANTITY & UNIT ROW */}
-          <View style={styles.row}>
-            <View style={[styles.formGroup, { flex: 1, marginRight: 10 }]}>
-              <Text style={styles.label}>QUANTITY</Text>
+            {/* PRODUCT NAME */}
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>Product name *</Text>
               <TextInput
-                style={styles.input}
-                placeholder="0"
+                onFocus={() => setFocusedField('productName')}
+                onBlur={() => setFocusedField(null)}
+                style={[styles.input, focusedField === 'productName' && styles.inputFocused]}
+                placeholder="e.g. Organic Tomatoes"
                 placeholderTextColor={THEME.placeholder}
-                keyboardType="numeric"
-                value={quantity}
-                onChangeText={setQuantity}
+                accessibilityLabel="Product name, required"
+                value={productName}
+                onChangeText={setProductName}
               />
             </View>
 
-            <View style={[styles.formGroup, { flex: 1, marginLeft: 10 }]}>
-              <Text style={styles.label}>UNIT</Text>
+            {/* CATEGORY DROPDOWN */}
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>Category *</Text>
               <TouchableOpacity
                 style={styles.dropdownButton}
-                onPress={() => setUnitModalVisible(true)}
+                accessibilityRole="button"
+                accessibilityLabel="Category, required"
+                onPress={() => setCategoryModalVisible(true)}
                 activeOpacity={0.7}
               >
-                <Text style={styles.dropdownButtonText}>{unit}</Text>
-                <ChevronDownIcon />
+                <Text
+                  style={[
+                    styles.dropdownButtonText,
+                    !category && styles.dropdownPlaceholder,
+                  ]}
+                >
+                  {category || 'Select Category'}
+                </Text>
+                <Ionicons name="chevron-down" size={18} color={THEME.textMuted} />
               </TouchableOpacity>
             </View>
-          </View>
 
-          {/* PRICE (PER UNIT) */}
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>PRICE (PER UNIT)</Text>
-            <View style={styles.priceInputContainer}>
-              <Text style={styles.currencyPrefix}>Rs.</Text>
+          </FormSection>
+
+          <FormSection number="02" title="Quantity & pricing" subtitle="Set how much you have and the price buyers pay.">
+            {/* QUANTITY & UNIT ROW */}
+            <View style={styles.row}>
+              <View style={[styles.formGroup, styles.rowField]}>
+                <Text style={styles.label}>Quantity *</Text>
+                <TextInput
+                  onFocus={() => setFocusedField('quantity')}
+                  onBlur={() => setFocusedField(null)}
+                  style={[styles.input, focusedField === 'quantity' && styles.inputFocused]}
+                  placeholder="0"
+                  placeholderTextColor={THEME.placeholder}
+                  keyboardType="numeric"
+                  accessibilityLabel="Available quantity, required"
+                  value={quantity}
+                  onChangeText={setQuantity}
+                />
+              </View>
+
+              <View style={[styles.formGroup, styles.rowField]}>
+                <Text style={styles.label}>Selling unit</Text>
+                <TouchableOpacity
+                  style={styles.dropdownButton}
+                  accessibilityRole="button"
+                  accessibilityLabel="Selling unit"
+                  onPress={() => setUnitModalVisible(true)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.dropdownButtonText}>{unit}</Text>
+                  <Ionicons name="chevron-down" size={18} color={THEME.textMuted} />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* PRICE (PER UNIT) */}
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>Price per unit *</Text>
+              <View style={[styles.priceInputContainer, focusedField === 'price' && styles.inputFocused]}>
+                <Text style={styles.currencyPrefix}>Rs.</Text>
+                <TextInput
+                  onFocus={() => setFocusedField('price')}
+                  onBlur={() => setFocusedField(null)}
+                  style={[styles.priceInput, focusedField === 'price' && styles.inputFocused]}
+                  placeholder="0.00"
+                  placeholderTextColor={THEME.placeholder}
+                  keyboardType="numeric"
+                  accessibilityLabel="Price per unit, required"
+                  value={price}
+                  onChangeText={setPrice}
+                />
+              </View>
+            </View>
+
+            <Text style={styles.fieldHint}>Price shown to buyers in Rs. per {unit.toLowerCase()}.</Text>
+          </FormSection>
+
+          <FormSection number="03" title="Harvest information" subtitle="Let buyers know when it is ready and what to expect.">
+            {/* HARVEST DATE */}
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>Harvest date</Text>
+              <TouchableOpacity
+                style={styles.dateInputButton}
+                accessibilityRole="button"
+                accessibilityLabel="Harvest date"
+                onPress={() => setDateModalVisible(true)}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[
+                    styles.dateInputText,
+                    !harvestDate && styles.dropdownPlaceholder,
+                  ]}
+                >
+                  {harvestDate || 'mm/dd/yyyy'}
+                </Text>
+                <Ionicons name="calendar-outline" size={20} color={THEME.buttonGreen} />
+              </TouchableOpacity>
+            </View>
+
+            {/* DESCRIPTION / NOTES */}
+            <View style={styles.formGroup}>
+              <View style={styles.labelRow}><Text style={styles.label}>Description / notes</Text><Text style={styles.optionalLabel}>Optional</Text></View>
               <TextInput
-                style={styles.priceInput}
-                placeholder="0.00"
+                onFocus={() => setFocusedField('description')}
+                onBlur={() => setFocusedField(null)}
+                style={[styles.textArea, focusedField === 'description' && styles.inputFocused]}
+                placeholder="e.g. Freshly hand-picked, organic grade, pesticide-free harvest."
                 placeholderTextColor={THEME.placeholder}
-                keyboardType="numeric"
-                value={price}
-                onChangeText={setPrice}
+                multiline
+                numberOfLines={3}
+                textAlignVertical="top"
+                accessibilityLabel="Description or notes, optional"
+                value={description}
+                onChangeText={setDescription}
               />
             </View>
-          </View>
-
-          {/* HARVEST DATE */}
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>HARVEST DATE</Text>
-            <TouchableOpacity
-              style={styles.dateInputButton}
-              onPress={() => setDateModalVisible(true)}
-              activeOpacity={0.7}
-            >
-              <Text
-                style={[
-                  styles.dateInputText,
-                  !harvestDate && styles.dropdownPlaceholder,
-                ]}
-              >
-                {harvestDate || 'mm/dd/yyyy'}
-              </Text>
-              <CalendarIcon />
-            </TouchableOpacity>
-          </View>
-
-          {/* DESCRIPTION / NOTES */}
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>DESCRIPTION / NOTES</Text>
-            <TextInput
-              style={styles.textArea}
-              placeholder="e.g. Freshly hand-picked, organic grade, pesticide-free harvest."
-              placeholderTextColor={THEME.placeholder}
-              multiline
-              numberOfLines={3}
-              textAlignVertical="top"
-              value={description}
-              onChangeText={setDescription}
-            />
-          </View>
+          </FormSection>
         </ScrollView>
 
         {/* BOTTOM ACTION BAR */}
         <View style={styles.bottomBar}>
           <TouchableOpacity
-            style={styles.publishButton}
+            style={[styles.publishButton, isSubmitting && styles.publishButtonDisabled]}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: isSubmitting, busy: isSubmitting }}
             onPress={handlePublish}
             disabled={isSubmitting}
             activeOpacity={0.85}
@@ -511,12 +614,15 @@ export default function AddProduceScreen({
               <ActivityIndicator size="small" color="#FFFFFF" />
             ) : (
               <Text style={styles.publishButtonText}>
-                {isEditing ? 'SAVE CHANGES' : 'PUBLISH PRODUCT'}
+                {isEditing ? 'Save changes' : 'Publish produce'}
               </Text>
             )}
           </TouchableOpacity>
+          <TouchableOpacity style={styles.cancelButton} onPress={closeForm} disabled={isSubmitting}
+            accessibilityRole="button" accessibilityState={{ disabled: isSubmitting }}>
+            <Text style={styles.cancelButtonText}>Cancel</Text>
+          </TouchableOpacity>
         </View>
-      </KeyboardAvoidingView>
 
       {/* ======================================================== */}
       {/* MODAL: IMAGE UPLOAD OPTIONS (GALLERY vs CAMERA)          */}
@@ -728,7 +834,10 @@ export default function AddProduceScreen({
           </View>
         </TouchableOpacity>
       </Modal>
-    </SafeAreaView>
+          </AnimatedSafeAreaView>
+        </KeyboardAvoidingView>
+      </View>
+    </Modal>
   );
 }
 
@@ -736,6 +845,25 @@ export default function AddProduceScreen({
 // STYLESHEET (MATCHING THE SCREENSHOT EXACTLY)
 // ----------------------------------------------------
 const styles = StyleSheet.create({
+  popupOverlay: { flex: 1, backgroundColor: 'rgba(13, 30, 24, 0.48)' },
+  popupPositioner: { flex: 1, justifyContent: 'flex-end', alignItems: 'center' },
+  popupSheet: { width: '100%', maxWidth: 640, height: '88%', maxHeight: 800, backgroundColor: '#FFFFFF', borderTopLeftRadius: 28, borderTopRightRadius: 28, overflow: 'hidden' },
+  sheetDragArea: Platform.OS === 'web' ? { touchAction: 'none', userSelect: 'none', cursor: 'grab' } : {},
+  sheetHandleArea: { height: 28, alignItems: 'center', justifyContent: 'center' },
+  sheetHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: '#BCD3C4' },
+  sheetHeader: { paddingTop: 12, paddingBottom: 18, paddingHorizontal: 56, borderBottomWidth: 1, borderBottomColor: C.border },
+  sheetTitle: { fontSize: 21, fontWeight: '700', color: C.ink, textAlign: 'center' },
+  sheetSubtitle: { fontSize: 12, lineHeight: 18, color: C.muted, textAlign: 'center', marginTop: 5 },
+  sheetClose: { position: 'absolute', right: 10, top: 7, width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 22 },
+  cancelButton: { minHeight: 44, borderWidth: 1, borderColor: C.border, borderRadius: 26, alignItems: 'center', justifyContent: 'center', marginTop: 8 },
+  cancelButtonText: { fontSize: 13, fontWeight: '600', color: C.ink },
+  inputFocused: { borderColor: C.green, backgroundColor: '#F7FCF8' },
+  formIntro: { flexDirection: 'row', gap: 8, backgroundColor: C.mint, padding: 14, borderRadius: 13, marginBottom: 22 },
+  formIntroText: { flex: 1, fontSize: 12, lineHeight: 18, color: C.greenDark },
+  errorBanner: { flexDirection: 'row', gap: 8, backgroundColor: C.redBg, padding: 14, borderRadius: 13, marginBottom: 16 },
+  errorText: { flex: 1, fontSize: 13, lineHeight: 20, color: C.red },
+  publishSummary: { flexDirection: 'row', alignItems: 'center', gap: 8, width: '100%', maxWidth: 648, alignSelf: 'center', marginBottom: 12 },
+  publishSummaryText: { flex: 1, color: C.muted, fontSize: 12 },
   safeArea: {
     flex: 1,
     backgroundColor: '#FFFFFF',
@@ -751,11 +879,16 @@ const styles = StyleSheet.create({
     borderBottomColor: '#E2E8F0',
   },
   headerIconButton: {
-    padding: 6,
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+    backgroundColor: THEME.lightGreenBg,
   },
   headerIconButtonPlaceholder: {
-    width: 34,
-    height: 34,
+    width: 44,
+    height: 44,
   },
   headerTitle: {
     fontSize: 22,
@@ -764,69 +897,80 @@ const styles = StyleSheet.create({
     letterSpacing: -0.3,
   },
 
-  /* Vector Back Arrow */
-  backArrowWrapper: {
-    width: 22,
-    height: 22,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  backArrowStem: {
-    position: 'absolute',
-    width: 14,
-    height: 2.2,
-    backgroundColor: THEME.iconGreen,
-    borderRadius: 1,
-    left: 4,
-  },
-  backArrowHeadTop: {
-    position: 'absolute',
-    width: 8,
-    height: 2.2,
-    backgroundColor: THEME.iconGreen,
-    borderRadius: 1,
-    left: 3,
-    top: 6.5,
-    transform: [{ rotate: '-45deg' }],
-  },
-  backArrowHeadBottom: {
-    position: 'absolute',
-    width: 8,
-    height: 2.2,
-    backgroundColor: THEME.iconGreen,
-    borderRadius: 1,
-    left: 3,
-    bottom: 6.5,
-    transform: [{ rotate: '45deg' }],
-  },
-
   /* Main Container */
   container: {
     flex: 1,
-    backgroundColor: '#FAFCFB',
+    backgroundColor: C.canvas,
   },
   scrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 24,
-    paddingBottom: 40,
+    width: '100%',
+    maxWidth: 680,
+    alignSelf: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 8,
   },
   pageHeading: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: '800',
     color: THEME.titleGreen,
-    letterSpacing: 0.5,
-    marginBottom: 20,
+    letterSpacing: -0.6,
+    marginBottom: 8,
   },
+  pageSubtitle: {
+    fontSize: 14,
+    lineHeight: 21,
+    color: THEME.textMuted,
+  },
+  requiredNote: {
+    fontSize: 12,
+    color: THEME.textMuted,
+    marginTop: 12,
+    marginBottom: 22,
+  },
+  sectionCard: {
+    backgroundColor: THEME.cardBg,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 22,
+    padding: 20,
+    paddingBottom: 4,
+    marginBottom: 16,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginBottom: 22,
+  },
+  sectionNumber: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: THEME.lightGreenBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sectionNumberText: { fontSize: 12, fontWeight: '700', color: THEME.buttonGreen },
+  sectionHeading: { flex: 1 },
+  sectionTitle: { fontSize: 16, fontWeight: '700', color: THEME.textDark },
+  sectionSubtitle: { fontSize: 12, lineHeight: 18, color: THEME.textMuted, marginTop: 4 },
+  labelRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: 6 },
+  optionalLabel: { fontSize: 12, color: THEME.textMuted, marginBottom: 8 },
+  photoIcon: { padding: 12, borderRadius: 16, backgroundColor: '#E1F3E8' },
+  uploadHint: { fontSize: 12, color: THEME.textMuted, textAlign: 'center', marginTop: 5 },
+  fieldHint: { fontSize: 12, color: THEME.textMuted, lineHeight: 18, marginTop: -8, marginBottom: 18 },
+  rowField: { flex: 1, minWidth: 110 },
 
   /* Upload Box */
   uploadBox: {
     width: '100%',
-    height: 210,
+    height: 130,
     borderWidth: 1.5,
     borderStyle: 'dashed',
-    borderColor: '#CBD5E1',
+    borderColor: C.border,
     borderRadius: 16,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: C.mint,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 22,
@@ -841,11 +985,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   uploadText: {
-    marginTop: 14,
-    fontSize: 12,
+    marginTop: 10,
+    fontSize: 14,
     fontWeight: '700',
     color: THEME.iconGreen,
-    letterSpacing: 1.5,
+    letterSpacing: 0,
   },
   previewContainer: {
     width: '100%',
@@ -872,96 +1016,33 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  /* Vector Upload Icon */
-  uploadIconContainer: {
-    width: 44,
-    height: 38,
-    position: 'relative',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  uploadFrame: {
-    width: 38,
-    height: 32,
-    borderWidth: 2.2,
-    borderColor: THEME.iconGreen,
-    borderRadius: 6,
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  mountainLeft: {
-    position: 'absolute',
-    bottom: -4,
-    left: 2,
-    width: 16,
-    height: 16,
-    borderTopWidth: 2,
-    borderRightWidth: 2,
-    borderColor: THEME.iconGreen,
-    transform: [{ rotate: '45deg' }],
-  },
-  mountainRight: {
-    position: 'absolute',
-    bottom: -6,
-    right: 1,
-    width: 20,
-    height: 20,
-    borderTopWidth: 2,
-    borderLeftWidth: 2,
-    borderColor: THEME.iconGreen,
-    transform: [{ rotate: '-45deg' }],
-  },
-  uploadPlusBadge: {
-    position: 'absolute',
-    top: -4,
-    right: 0,
-    width: 14,
-    height: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  plusH: {
-    position: 'absolute',
-    width: 10,
-    height: 2.2,
-    backgroundColor: THEME.iconGreen,
-    borderRadius: 1,
-  },
-  plusV: {
-    position: 'absolute',
-    width: 2.2,
-    height: 10,
-    backgroundColor: THEME.iconGreen,
-    borderRadius: 1,
-  },
-
   /* Form Elements */
   formGroup: {
     marginBottom: 18,
   },
   label: {
-    fontSize: 11,
-    fontWeight: '700',
+    fontSize: 13,
+    fontWeight: '600',
     color: THEME.textDark,
-    letterSpacing: 1.2,
     marginBottom: 8,
   },
   input: {
-    height: 48,
+    minHeight: 50,
+    paddingVertical: 12,
     backgroundColor: '#FFFFFF',
-    borderWidth: 1.2,
+    borderWidth: 1,
     borderColor: THEME.border,
-    borderRadius: 4,
+    borderRadius: 13,
     paddingHorizontal: 14,
     fontSize: 14,
     color: THEME.textDark,
   },
   textArea: {
-    height: 76,
+    minHeight: 108,
     backgroundColor: '#FFFFFF',
-    borderWidth: 1.2,
+    borderWidth: 1,
     borderColor: THEME.border,
-    borderRadius: 4,
+    borderRadius: 10,
     paddingHorizontal: 14,
     paddingVertical: 10,
     fontSize: 14,
@@ -969,17 +1050,20 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   dropdownButton: {
-    height: 48,
+    minHeight: 50,
+    paddingVertical: 12,
     backgroundColor: '#FFFFFF',
-    borderWidth: 1.2,
+    borderWidth: 1,
     borderColor: THEME.border,
-    borderRadius: 4,
+    borderRadius: 10,
     paddingHorizontal: 14,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
   dropdownButtonText: {
+    flex: 1,
+    marginRight: 8,
     fontSize: 14,
     color: THEME.textDark,
     fontWeight: '500',
@@ -990,16 +1074,19 @@ const styles = StyleSheet.create({
   },
   row: {
     flexDirection: 'row',
-    alignItems: 'center',
+    flexWrap: 'wrap',
+    alignItems: 'flex-start',
+    gap: 12,
   },
 
   /* Price Input Container */
   priceInputContainer: {
-    height: 48,
+    minHeight: 50,
+    paddingVertical: 12,
     backgroundColor: '#FFFFFF',
-    borderWidth: 1.2,
+    borderWidth: 1,
     borderColor: THEME.border,
-    borderRadius: 4,
+    borderRadius: 10,
     paddingHorizontal: 14,
     flexDirection: 'row',
     alignItems: 'center',
@@ -1012,7 +1099,7 @@ const styles = StyleSheet.create({
   },
   priceInput: {
     flex: 1,
-    height: '100%',
+    minHeight: 24,
     fontSize: 14,
     color: THEME.textDark,
     padding: 0,
@@ -1020,11 +1107,12 @@ const styles = StyleSheet.create({
 
   /* Harvest Date Input */
   dateInputButton: {
-    height: 48,
+    minHeight: 50,
+    paddingVertical: 12,
     backgroundColor: '#FFFFFF',
-    borderWidth: 1.2,
+    borderWidth: 1,
     borderColor: THEME.border,
-    borderRadius: 4,
+    borderRadius: 10,
     paddingHorizontal: 14,
     flexDirection: 'row',
     alignItems: 'center',
@@ -1035,82 +1123,23 @@ const styles = StyleSheet.create({
     color: THEME.textDark,
   },
 
-  /* Vector Chevron Down */
-  chevronWrapper: {
-    width: 14,
-    height: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-    position: 'relative',
-  },
-  chevronLeft: {
-    position: 'absolute',
-    left: 1,
-    top: 2,
-    width: 7,
-    height: 1.8,
-    backgroundColor: THEME.textDark,
-    borderRadius: 1,
-    transform: [{ rotate: '45deg' }],
-  },
-  chevronRight: {
-    position: 'absolute',
-    right: 1,
-    top: 2,
-    width: 7,
-    height: 1.8,
-    backgroundColor: THEME.textDark,
-    borderRadius: 1,
-    transform: [{ rotate: '-45deg' }],
-  },
-
-  /* Vector Calendar Icon */
-  calendarWrapper: {
-    width: 20,
-    height: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  calendarBody: {
-    width: 16,
-    height: 15,
-    borderWidth: 1.6,
-    borderColor: THEME.iconGreen,
-    borderRadius: 3,
-    position: 'relative',
-  },
-  calendarHeader: {
-    width: '100%',
-    height: 4,
-    backgroundColor: THEME.iconGreen,
-  },
-  calendarPinsRow: {
-    position: 'absolute',
-    top: -4,
-    left: 2,
-    right: 2,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  calendarPin: {
-    width: 2,
-    height: 4,
-    backgroundColor: THEME.iconGreen,
-    borderRadius: 1,
-  },
-
   /* Bottom Bar */
   bottomBar: {
     paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingVertical: 12,
     backgroundColor: '#FFFFFF',
     borderTopWidth: 1,
     borderTopColor: '#E2E8F0',
   },
+  publishButtonDisabled: { opacity: 0.65 },
   publishButton: {
-    height: 52,
+    width: '100%',
+    maxWidth: 648,
+    alignSelf: 'center',
+    minHeight: 52,
+    paddingVertical: 14,
     backgroundColor: THEME.buttonGreen,
-    borderRadius: 6,
+    borderRadius: 26,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
@@ -1122,8 +1151,8 @@ const styles = StyleSheet.create({
   publishButtonText: {
     color: '#FFFFFF',
     fontSize: 14,
-    fontWeight: '800',
-    letterSpacing: 1,
+    fontWeight: '700',
+    letterSpacing: 0,
   },
 
   /* Action Sheet Modal (Camera & Gallery) */
@@ -1164,7 +1193,7 @@ const styles = StyleSheet.create({
   actionSheetBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F8FAFC',
+    backgroundColor: C.canvas,
     borderWidth: 1,
     borderColor: '#E2E8F0',
     borderRadius: 12,
@@ -1252,7 +1281,7 @@ const styles = StyleSheet.create({
     borderBottomColor: '#F1F5F9',
   },
   modalOptionItemActive: {
-    backgroundColor: '#F0FDF4',
+    backgroundColor: C.mint,
     paddingHorizontal: 8,
     borderRadius: 6,
   },
