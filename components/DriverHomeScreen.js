@@ -11,40 +11,20 @@ import {
   StatusBar,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import {
   updateOrderStatus,
   subscribeToDriverVehicles,
+  rejectDriverDelivery,
 } from '../services/firebaseDatabase';
+import { FARMER_COLORS as C, FarmerHeading, FarmerButton, IconTile, cleanLabel } from './FarmerDesign';
 import AddVehicleScreen from './AddVehicleScreen';
 import DriverVehiclesListScreen from './DriverVehiclesListScreen';
 import UserProfileScreen from './UserProfileScreen';
-
-// ----------------------------------------------------
-// THEME COLORS
-// ----------------------------------------------------
-const THEME = {
-  navy: '#0B2545',
-  emerald: '#16A34A',
-  emeraldDark: '#15803D',
-  emeraldLight: '#E8F5E9',
-  accentLeaf: '#2ECC71',
-  bg: '#F4F7F6',
-  cardBg: '#FFFFFF',
-  textDark: '#0F172A',
-  textMuted: '#64748B',
-  border: '#E2E8F0',
-  warning: '#F59E0B',
-  warningLight: '#FEF3C7',
-  danger: '#EF4444',
-  dangerLight: '#FEE2E2',
-  info: '#3B82F6',
-  infoLight: '#DBEAFE',
-  purple: '#8B5CF6',
-  purpleLight: '#EDE9FE',
-  cyan: '#06B6D4',
-  cyanLight: '#ECFEFF',
-};
+import DeliveryTrackingScreen from './DeliveryTrackingScreen';
+import { driverLocationLabel } from './DriverDesign';
+import TourTarget from './GuidedTour/TourTarget';
+import { useTour } from '../context/TourContext';
 
 // ----------------------------------------------------
 // LOCALIZATION
@@ -204,13 +184,35 @@ export default function DriverHomeScreen({
   onChangeLanguage,
   onProfileUpdated,
 }) {
+  const [workspaceTab, setWorkspaceTab] = useState('home');
   const [isOnDuty, setIsOnDuty] = useState(true);
-  const [activeTab, setActiveTab] = useState('assigned'); // 'assigned' | 'available'
   const [updatingTripId, setUpdatingTripId] = useState(null);
   const [currentScreen, setCurrentScreen] = useState('dashboard'); // 'dashboard' | 'vehiclesList' | 'addVehicle'
   const [editingVehicle, setEditingVehicle] = useState(null);
   const [vehiclesList, setVehiclesList] = useState([]);
   const [showProfileScreen, setShowProfileScreen] = useState(false);
+  const [selectedTripForTracking, setSelectedTripForTracking] = useState(null);
+
+  const { replayTour, setTabChangeHandler } = useTour();
+
+  useEffect(() => {
+    if (setTabChangeHandler) {
+      setTabChangeHandler((tab) => {
+        if (tab === 'profile') {
+          setShowProfileScreen(true);
+        } else {
+          setShowProfileScreen(false);
+          setWorkspaceTab(tab);
+        }
+      });
+    }
+  }, [setTabChangeHandler]);
+
+  const handleReplayTour = () => {
+    setShowProfileScreen(false);
+    setWorkspaceTab('home');
+    replayTour('driver');
+  };
 
   const t = TRANSLATIONS[lang] || TRANSLATIONS.en;
 
@@ -236,34 +238,35 @@ export default function DriverHomeScreen({
     };
   }, [userProfile?.uid]);
 
-  // Determine currently active vehicle
-  const activeVehicle =
-    vehiclesList.find((v) => v.isActive) ||
-    (vehiclesList.length > 0 ? vehiclesList[0] : null) ||
-    userProfile?.vehicle ||
-    null;
-
   // Real orders from Firestore mapped for Driver logistics view
-  const realOrdersForDriver = ordersList.map((o) => ({
+  const realOrdersForDriver = ordersList.filter((order) =>
+    Boolean(userProfile?.uid && order.driverId === userProfile.uid)
+  ).map((o) => ({
+    ...o,
     id: o.id,
     produceName: `${o.produceName || 'Produce Batch'} (${o.qty || 0} ${o.unit || 'kg'})`,
     qty: o.qty,
     unit: o.unit || 'kg',
-    farmerName: o.farmerName || 'GoviLink Farmer',
+    farmerName: o.farmerName || '',
     farmerPhone: o.farmerPhone || '',
-    pickupLocation: o.pickupLocation || o.location || 'Farm Origin',
-    buyerName: o.buyerName || 'GoviLink Buyer',
+    pickupLocation: driverLocationLabel(o.pickupLocation || o.location, lang, ''),
+    buyerName: o.buyerName || '',
     buyerPhone: o.buyerPhone || '',
-    deliveryAddress: o.deliveryAddress || 'Delivery Destination',
-    totalPrice: o.logisticsFee || 350,
+    deliveryAddress: driverLocationLabel(o.deliveryAddress, lang, ''),
+    // Use real logisticsFee; do NOT fallback to a hardcoded amount
+    totalPrice: o.logisticsFee != null ? o.logisticsFee : (o.totalPrice != null ? o.totalPrice : null),
     status: o.status || 'PENDING',
-    specialNotes: o.deliveryNotes || 'Standard agricultural transport safety handling.',
+    specialNotes: o.deliveryNotes || '',
   }));
 
   const allDriverTrips = realOrdersForDriver;
 
   const activeDeliveries = allDriverTrips.filter(
-    (trip) => trip.status === 'READY_FOR_PICKUP' || trip.status === 'IN_TRANSIT' || trip.status === 'ACCEPTED'
+    (trip) =>
+      trip.status === 'READY_FOR_PICKUP' ||
+      trip.status === 'IN_TRANSIT' ||
+      trip.status === 'ACCEPTED' ||
+      trip.status === 'ASSIGNED'
   );
   const completedDeliveries = allDriverTrips.filter((trip) => trip.status === 'DELIVERED');
   const totalDriverEarnings = completedDeliveries.reduce(
@@ -273,7 +276,12 @@ export default function DriverHomeScreen({
 
   const handleTripProgression = async (trip) => {
     let nextStatus = '';
-    if (trip.status === 'READY_FOR_PICKUP' || trip.status === 'ACCEPTED' || trip.status === 'PENDING') {
+    if (
+      trip.status === 'READY_FOR_PICKUP' ||
+      trip.status === 'ACCEPTED' ||
+      trip.status === 'PENDING' ||
+      trip.status === 'ASSIGNED'
+    ) {
       nextStatus = 'IN_TRANSIT';
     } else if (trip.status === 'IN_TRANSIT') {
       nextStatus = 'DELIVERED';
@@ -283,12 +291,21 @@ export default function DriverHomeScreen({
 
     setUpdatingTripId(trip.id);
     if (trip.id) {
-      await updateOrderStatus(trip.id, nextStatus, {
-        driverName: userProfile?.fullName || 'Assigned Driver',
+      const res = await updateOrderStatus(trip.id, nextStatus, {
+        driverName: userProfile?.fullName || '',
         driverPhone: userProfile?.phoneNumber || '',
+        changedBy: userProfile?.fullName || 'Assigned Driver',
+        actorRole: 'driver',
       });
+      setUpdatingTripId(null);
+
+      if (!res.success) {
+        Alert.alert('Status Error', res.error || 'Failed to update order status');
+        return;
+      }
+    } else {
+      setUpdatingTripId(null);
     }
-    setUpdatingTripId(null);
 
     if (nextStatus === 'IN_TRANSIT') {
       Alert.alert(
@@ -341,261 +358,149 @@ export default function DriverHomeScreen({
     );
   }
 
-  if (showProfileScreen) {
+  if (selectedTripForTracking) {
     return (
-      <UserProfileScreen
+      <DeliveryTrackingScreen
+        delivery={selectedTripForTracking}
         userProfile={userProfile}
         lang={lang}
-        onBack={() => setShowProfileScreen(false)}
+        onBack={() => setSelectedTripForTracking(null)}
         onLogout={onLogout}
-        onChangeLanguage={onChangeLanguage}
-        onProfileUpdated={(updated) => {
-          if (onProfileUpdated) onProfileUpdated(updated);
+        onRejectDelivery={async (orderId) => {
+          const result = await rejectDriverDelivery(orderId, userProfile?.uid);
+          if (result.success) setSelectedTripForTracking(null);
+          return result;
         }}
       />
     );
   }
 
+
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+    <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
+      <StatusBar barStyle="dark-content" backgroundColor={C.canvas} />
 
-      {/* TOP APP HEADER */}
       <View style={styles.topHeader}>
-        <TouchableOpacity
-          style={styles.profileAvatarWrapper}
-          onPress={() => setShowProfileScreen(true)}
-          activeOpacity={0.8}
-        >
-          <Image
-            source={
-              userProfile?.photoURL
-                ? { uri: userProfile.photoURL }
-                : require('../assets/splash-icon.png')
-            }
-            style={styles.profileAvatar}
-          />
-        </TouchableOpacity>
-
-        <View style={styles.brandTitleRow}>
-          <Text style={styles.brandTitle}>GoviLink</Text>
-          <View style={styles.driverRoleBadge}>
-            <Text style={styles.driverRoleBadgeText}>DRIVER</Text>
+        <TourTarget id="driver-brand">
+          <View style={styles.brandTitleRow}>
+            <Image source={require('../assets/logo.png')} style={{ width: 88, height: 44 }} resizeMode="contain" />
+            <Text style={styles.brandCaption}>DRIVER WORKSPACE</Text>
           </View>
-        </View>
-
+        </TourTarget>
         <View style={styles.headerRightActions}>
-          {onChangeLanguage && (
-            <TouchableOpacity
-              style={styles.langPill}
-              onPress={() => {
-                const nextLang = lang === 'en' ? 'si' : lang === 'si' ? 'ta' : 'en';
-                onChangeLanguage(nextLang);
-              }}
-            >
-              <Text style={styles.langPillText}>
-                {lang === 'en' ? 'EN' : lang === 'si' ? 'සිං' : 'තමි'}
-              </Text>
-            </TouchableOpacity>
-          )}
-
-          <TouchableOpacity style={styles.notifBtn} activeOpacity={0.7} onPress={onLogout}>
-            <Ionicons name="log-out-outline" size={20} color="#DC2626" />
+          {onChangeLanguage && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Change language" style={styles.langPill}
+            onPress={() => onChangeLanguage(lang === 'en' ? 'si' : lang === 'si' ? 'ta' : 'en')}>
+            <Text style={styles.langPillText}>{lang === 'en' ? 'EN' : lang === 'si' ? 'සිං' : 'தம'}</Text>
+          </TouchableOpacity>}
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Profile" style={styles.profileAvatarWrapper} onPress={() => setShowProfileScreen(true)}>
+            {userProfile?.photoURL ? <Image source={{ uri: userProfile.photoURL }} style={styles.profileAvatar} />
+              : <Text style={styles.avatarInitial}>{(userProfile?.fullName || 'D').charAt(0).toUpperCase()}</Text>}
           </TouchableOpacity>
         </View>
       </View>
-
-      <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
-        {/* PAGE TITLE & SUBTITLE */}
-        <View style={styles.pageTitleSection}>
-          <Text style={styles.pageTitle}>Driver Logistics</Text>
-          <Text style={styles.pageSubtitle}>Manage assigned farm pickups and delivery routes.</Text>
-        </View>
-
+      {showProfileScreen ? <UserProfileScreen embedded farmerDesign userProfile={userProfile} lang={lang}
+        onBack={() => setShowProfileScreen(false)} onLogout={onLogout} onChangeLanguage={onChangeLanguage} onProfileUpdated={onProfileUpdated} onReplayTour={handleReplayTour} /> : workspaceTab === 'fleet' ? (
+        <DriverVehiclesListScreen embedded userProfile={userProfile} lang={lang} vehicles={vehiclesList}
+          onBack={() => setWorkspaceTab('home')}
+          onAddNewVehicle={() => { setEditingVehicle(null); setCurrentScreen('addVehicle'); }}
+          onEditVehicle={(vehicle) => { setEditingVehicle(vehicle); setCurrentScreen('addVehicle'); }} />
+      ) : (
+      <ScrollView key={workspaceTab} style={{ flex: 1 }} contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
+        <FarmerHeading eyebrow={workspaceTab === 'home' ? 'YOUR ROUTES, AT A GLANCE' : 'FARM PICKUP & DELIVERY'}
+          title={workspaceTab === 'home' ? `Hello, ${userProfile?.fullName?.split(' ')[0] || 'Driver'}.` : t.tabs.assigned} subtitle={t.tagline} />
+        {workspaceTab === 'home' && <>
+          <View style={styles.hero}>
+            <View style={styles.heroTop}>
+              <TourTarget id="driver-tracking-feature">
+                <View style={styles.heroPill}><Ionicons name="location-outline" size={13} color="#D1E9D9" /><Text style={styles.heroEyebrow}>{driverLocationLabel(userProfile?.district, lang, 'Sri Lanka')}</Text></View>
+              </TourTarget>
+              <Ionicons name="car-outline" size={36} color="#82AE92" />
+            </View>
+            <Text style={styles.heroTitle}>Connecting farms,{'\n'}delivering fresh harvests.</Text>
+            <Text style={styles.heroSub}>Plan your pickups, manage your fleet, and keep every delivery moving.</Text>
+            <TourTarget id="driver-tab-deliveries">
+              <FarmerButton label={cleanLabel(t.tabs.assigned)} icon="navigate-outline" onPress={() => setWorkspaceTab('deliveries')} style={styles.heroButton} />
+            </TourTarget>
+          </View>
         {/* SHIFT & DUTY STATUS CARD */}
-        <View style={styles.dutyCard}>
-          <View style={styles.dutyInfo}>
-            <Text style={styles.dutyTitle}>📍 Logistics Availability</Text>
-            <Text style={styles.dutySub}>
-              {isOnDuty ? 'Ready for farm pickup & dropoff dispatches' : 'Offline • No new trip requests'}
-            </Text>
-          </View>
-
-          <TouchableOpacity
-            style={[styles.dutyToggleBtn, isOnDuty ? styles.dutyBtnOn : styles.dutyBtnOff]}
-            onPress={() => setIsOnDuty(!isOnDuty)}
-            activeOpacity={0.8}
-          >
-            <Text style={[styles.dutyToggleText, isOnDuty ? { color: '#006837' } : { color: '#DC2626' }]}>
-              {isOnDuty ? t.shift.onDuty : t.shift.offDuty}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* ACTIVE DISPATCH VEHICLE CARD */}
-        {activeVehicle ? (
-          <View style={styles.registeredVehicleCard}>
-            <View style={styles.vehicleHeaderRow}>
-              <View style={styles.vehicleTitleRow}>
-                <Text style={styles.vehicleIconBadge}>{activeVehicle.vehicleIcon || '🚚'}</Text>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.vehicleCardTitle} numberOfLines={1}>
-                    {activeVehicle.makeModel || 'Assigned Vehicle'}
-                  </Text>
-                  <Text style={styles.vehicleTypeTag}>
-                    {activeVehicle.vehicleTypeLabel || 'Logistics Vehicle'} • 🟢 Operational
-                  </Text>
-                </View>
-              </View>
-
-              <TouchableOpacity
-                style={styles.editVehicleBtn}
-                onPress={() => {
-                  setEditingVehicle(activeVehicle);
-                  setCurrentScreen('addVehicle');
-                }}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.editVehicleBtnText}>{t.vehicle.editBtn}</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.vehicleDetailsRow}>
-              <View style={styles.platePill}>
-                <Text style={styles.platePillText}>🇱🇰 {activeVehicle.plateNumber || 'WP-NB-4482'}</Text>
-              </View>
-
-              <View style={styles.capacityBadge}>
-                <Text style={styles.capacityBadgeText}>
-                  📦 {activeVehicle.capacity ? `${activeVehicle.capacity} kg` : '3500 kg'}
-                </Text>
-              </View>
-
-              {activeVehicle.hasColdChain ? (
-                <View style={styles.coldBadge}>
-                  <Text style={styles.coldBadgeText}>{t.vehicle.coldChain}</Text>
-                </View>
-              ) : (
-                <View style={styles.ambientBadge}>
-                  <Text style={styles.ambientBadgeText}>{t.vehicle.standardCargo}</Text>
-                </View>
-              )}
-            </View>
-
-            {activeVehicle.image ? (
-              <View style={styles.vehicleThumbnailContainer}>
-                <Image
-                  source={{ uri: activeVehicle.image }}
-                  style={styles.vehicleThumbnail}
-                  resizeMode="cover"
-                />
-              </View>
-            ) : null}
-
-            <View style={styles.fleetActionsRow}>
-              <TouchableOpacity
-                style={styles.viewAllVehiclesBtn}
-                onPress={() => setCurrentScreen('vehiclesList')}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.viewAllVehiclesBtnText}>
-                  {t.vehicle.viewAllBtn} ({vehiclesList.length || 1})
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.quickAddVehicleBtn}
-                onPress={() => {
-                  setEditingVehicle(null);
-                  setCurrentScreen('addVehicle');
-                }}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.quickAddVehicleBtnText}>
-                  {t.vehicle.addNewBtn}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        ) : (
-          <View style={styles.noVehicleCard}>
-            <View style={styles.noVehicleContent}>
-              <Text style={styles.noVehicleIcon}>🚚</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.noVehicleTitle}>{t.vehicle.noVehicleTitle}</Text>
-                <Text style={styles.noVehicleSub}>{t.vehicle.noVehicleSub}</Text>
-              </View>
+        <TourTarget id="driver-duty-card">
+          <View style={styles.dutyCard}>
+            <View style={styles.dutyInfo}>
+              <Text style={styles.dutyTitle}>Logistics availability</Text>
+              <Text style={styles.dutySub}>
+                {isOnDuty ? 'Ready for farm pickup & dropoff dispatches' : 'Offline • No new trip requests'}
+              </Text>
             </View>
 
             <TouchableOpacity
-              style={styles.addVehicleBtn}
-              onPress={() => {
-                setEditingVehicle(null);
-                setCurrentScreen('addVehicle');
-              }}
-              activeOpacity={0.85}
+              style={[styles.dutyToggleBtn, isOnDuty ? styles.dutyBtnOn : styles.dutyBtnOff]}
+              onPress={() => setIsOnDuty(!isOnDuty)}
+              activeOpacity={0.8}
             >
-              <Text style={styles.addVehicleBtnText}>{t.vehicle.addBtn}</Text>
+              <Text style={[styles.dutyToggleText, isOnDuty ? { color: C.green } : { color: C.red }]}>
+                {cleanLabel(isOnDuty ? t.shift.onDuty : t.shift.offDuty)}
+              </Text>
             </TouchableOpacity>
           </View>
-        )}
+        </TourTarget>
+
+        {/* COMPACT FLEET ENTRY */}
+        <TourTarget id="driver-fleet-management">
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel={cleanLabel(t.vehicle.viewAllBtn)}
+            style={styles.fleetShortcut}
+            onPress={() => setWorkspaceTab('fleet')}
+            activeOpacity={0.75}
+          >
+            <IconTile name="car-outline" />
+            <View style={styles.fleetShortcutContent}>
+              <Text style={styles.fleetShortcutTitle}>{t.vehicle.fleetLabel} ({vehiclesList.length})</Text>
+              <Text style={styles.fleetShortcutSubtitle}>{cleanLabel(t.vehicle.viewAllBtn)} · {cleanLabel(t.vehicle.addNewBtn)}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={C.green} />
+          </TouchableOpacity>
+        </TourTarget>
 
         {/* DRIVER METRICS GRID */}
         <View style={styles.statsGrid}>
-          <View style={[styles.kpiCard, { borderLeftColor: '#F59E0B' }]}>
-            <Text style={styles.kpiLabel}>{t.stats.activeTrips}</Text>
+          <View style={styles.kpiCard}>
+            <IconTile name="navigate-outline" /><Text style={styles.kpiLabel}>{t.stats.activeTrips}</Text>
             <Text style={styles.kpiValue}>{activeDeliveries.length}</Text>
           </View>
 
-          <View style={[styles.kpiCard, { borderLeftColor: '#10B981' }]}>
-            <Text style={styles.kpiLabel}>{t.stats.completedToday}</Text>
+          <View style={styles.kpiCard}>
+            <IconTile name="checkmark-circle-outline" /><Text style={styles.kpiLabel}>{t.stats.completedToday}</Text>
             <Text style={styles.kpiValue}>{completedDeliveries.length}</Text>
           </View>
 
-          <View style={[styles.kpiCard, { borderLeftColor: '#006837' }]}>
-            <Text style={styles.kpiLabel}>{t.stats.estEarnings}</Text>
+          <View style={styles.kpiCard}>
+            <IconTile name="wallet-outline" /><Text style={styles.kpiLabel}>{t.stats.estEarnings}</Text>
             <Text style={styles.kpiValue}>{t.currency} {totalDriverEarnings.toLocaleString()}</Text>
           </View>
 
-          <View style={[styles.kpiCard, { borderLeftColor: '#3B82F6' }]}>
-            <Text style={styles.kpiLabel}>{t.stats.rating}</Text>
-            <Text style={styles.kpiValue}>5.0 ★</Text>
+          <View style={styles.kpiCard}>
+            <IconTile name="star-outline" /><Text style={styles.kpiLabel}>{t.stats.rating}</Text>
+            <Text style={styles.kpiValue}>{userProfile?.rating ? `${userProfile.rating} ★` : '—'}</Text>
           </View>
         </View>
 
-        {/* TAB SELECTOR */}
-        <View style={styles.tabContainer}>
-          <TouchableOpacity
-            style={[styles.tabBtn, activeTab === 'assigned' && styles.tabBtnActive]}
-            onPress={() => setActiveTab('assigned')}
-          >
-            <Text style={[styles.tabText, activeTab === 'assigned' && styles.tabTextActive]}>
-              Assigned Deliveries ({activeDeliveries.length})
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.tabBtn, activeTab === 'available' && styles.tabBtnActive]}
-            onPress={() => setActiveTab('available')}
-          >
-            <Text style={[styles.tabText, activeTab === 'available' && styles.tabTextActive]}>
-              Available Co-op Loads ({allDriverTrips.length})
-            </Text>
-          </TouchableOpacity>
-        </View>
+        </>}
+        <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>{cleanLabel(t.tabs.assigned)}</Text><Text style={styles.sectionMeta}>{activeDeliveries.length}</Text></View>
 
         {/* ASSIGNED DELIVERIES ROUTE CARDS */}
         <View>
           {activeDeliveries.length === 0 ? (
             <View style={styles.emptyCard}>
-              <Ionicons name="checkmark-circle-outline" size={48} color="#006837" />
+              <Ionicons name="checkmark-circle-outline" size={48} color={C.green} />
               <Text style={styles.emptyTitle}>All deliveries completed!</Text>
-              <Text style={styles.emptySubtitle}>You have no pending pickup routes right now. Switch to 'Available Loads' to claim new trips.</Text>
+              <Text style={styles.emptySubtitle}>You have no pending pickup routes right now.</Text>
             </View>
           ) : (
             activeDeliveries.map((trip) => {
               const isInTransit = trip.status === 'IN_TRANSIT';
-              const isReady = trip.status === 'READY_FOR_PICKUP' || trip.status === 'ACCEPTED' || trip.status === 'PENDING';
+              const isAssigned = trip.status === 'ASSIGNED';
+              const isReady = trip.status === 'READY_FOR_PICKUP' || trip.status === 'ACCEPTED' || trip.status === 'PENDING' || isAssigned;
 
               return (
                 <View key={trip.id} style={styles.deliveryCard}>
@@ -604,20 +509,20 @@ export default function DriverHomeScreen({
                     <Text style={styles.cargoTitle}>{trip.produceName}</Text>
                     <View style={[
                       styles.tripBadge,
-                      isInTransit ? styles.badgeInTransit : styles.badgePending,
+                      isInTransit ? styles.badgeInTransit : isAssigned ? { backgroundColor: '#EFF6FF', borderColor: '#BFDBFE', borderWidth: 1 } : styles.badgePending,
                     ]}>
                       <Text style={[
                         styles.tripBadgeText,
-                        isInTransit ? { color: '#059669' } : { color: '#64748B' },
+                        isInTransit ? { color: C.green } : isAssigned ? { color: '#2563EB' } : { color: C.muted },
                       ]}>
-                        {isInTransit ? 'IN TRANSIT' : 'READY FOR PICKUP'}
+                        {isInTransit ? 'IN TRANSIT' : isAssigned ? 'ASSIGNED' : 'READY FOR PICKUP'}
                       </Text>
                     </View>
                   </View>
 
                   {/* FARMER SUBHEADER ROW */}
                   <View style={styles.farmerRow}>
-                    <Ionicons name="person-outline" size={14} color="#64748B" style={{ marginRight: 6 }} />
+                    <Ionicons name="person-outline" size={14} color={C.muted} style={{ marginRight: 6 }} />
                     <Text style={styles.farmerNameText}>
                       {trip.farmerName} • 📞 {trip.farmerPhone || 'N/A'}
                     </Text>
@@ -656,7 +561,7 @@ export default function DriverHomeScreen({
                   {/* HANDLING NOTES BANNER */}
                   {trip.specialNotes ? (
                     <View style={styles.specialNotesCard}>
-                      <Ionicons name="information-circle-outline" size={16} color="#0284C7" style={{ marginRight: 8 }} />
+                      <Ionicons name="information-circle-outline" size={16} color={C.blue} style={{ marginRight: 8 }} />
                       <Text style={styles.specialNotesText}>{trip.specialNotes}</Text>
                     </View>
                   ) : null}
@@ -675,154 +580,189 @@ export default function DriverHomeScreen({
                       <ActivityIndicator size="small" color="#FFFFFF" />
                     ) : (
                       <>
-                        <MaterialCommunityIcons
-                          name={isInTransit ? 'check-circle' : 'truck-fast'}
+                        <Ionicons name={isInTransit ? 'checkmark-circle-outline' : 'car-outline'}
                           size={18}
                           color="#FFFFFF"
                           style={{ marginRight: 8 }}
                         />
                         <Text style={styles.actionBtnText}>
-                          {isInTransit ? t.actions.markDelivered : t.actions.startTransit}
+                          {cleanLabel(isInTransit ? t.actions.markDelivered : t.actions.startTransit)}
                         </Text>
                       </>
                     )}
+                  </TouchableOpacity>
+
+                  {/* VIEW LIVE TRACKING BUTTON */}
+                  <TouchableOpacity
+                    style={styles.viewTrackingBtn}
+                    onPress={() => setSelectedTripForTracking(trip)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.viewTrackingBtnText}>
+                      View route & tracking details
+                    </Text>
                   </TouchableOpacity>
                 </View>
               );
             })
           )}
         </View>
-      </ScrollView>
+      </ScrollView>)}
+      <SafeAreaView edges={['bottom']} style={styles.navSafe}><View role="tablist" style={styles.nav}>
+        {[
+          ['home', lang === 'si' ? 'සාරාංශය' : lang === 'ta' ? 'சுருக்கம்' : 'Overview', 'grid-outline'],
+          ['deliveries', lang === 'si' ? 'බෙදාහැරීම්' : lang === 'ta' ? 'விநியோகங்கள்' : 'Deliveries', 'cube-outline'],
+          ['fleet', cleanLabel(t.vehicle.fleetLabel), 'car-outline'],
+          ['profile', lang === 'si' ? 'ගිණුම' : lang === 'ta' ? 'சுயவிவரம்' : 'Profile', 'person-outline'],
+        ].map(([key, label, icon]) => {
+          const selected = showProfileScreen ? key === 'profile' : workspaceTab === key;
+          return <TourTarget key={key} id={"driver-tab-" + key} style={{ flex: 1 }}>
+            <TouchableOpacity accessibilityRole="tab" accessibilityLabel={label} accessibilityState={{ selected }} style={styles.navItem}
+              onPress={() => { setShowProfileScreen(key === 'profile'); if (key !== 'profile') setWorkspaceTab(key); }}>
+              <View style={[styles.navIcon, selected && styles.navIconActive]}><Ionicons name={icon} size={22} color={selected ? C.greenDark : C.muted} /></View>
+              <Text style={[styles.navLabel, selected && styles.navLabelActive]}>{label}</Text>
+            </TouchableOpacity>
+          </TourTarget>;
+        })}
+      </View></SafeAreaView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#F8FAFC',
+  fleetShortcut: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: C.white, borderWidth: 1, borderColor: C.border, borderRadius: 22, padding: 18, marginBottom: 20 },
+  fleetShortcutContent: { flex: 1, minWidth: 0 },
+  fleetShortcutTitle: { fontSize: 16, fontWeight: '700', color: C.ink },
+  fleetShortcutSubtitle: { fontSize: 12, lineHeight: 18, color: C.muted, marginTop: 4 },
+  brandCaption: {
+    fontSize: 8,
+    fontWeight: '700',
+    color: C.muted,
+    letterSpacing: 1.3,
+    marginTop: 2,
   },
-
-  /* TOP APP HEADER */
+  avatarInitial: { fontSize: 17, fontWeight: '700', color: C.greenDark },
+  hero: {
+    backgroundColor: C.greenDark,
+    borderRadius: 24,
+    padding: 24,
+    marginBottom: 20,
+  },
+  heroTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  heroPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderWidth: 1,
+    borderColor: '#487B65',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  heroEyebrow: { fontSize: 11, color: '#D1E9D9' },
+  heroTitle: {
+    fontSize: 27,
+    lineHeight: 34,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: -0.6,
+  },
+  heroSub: {
+    fontSize: 13,
+    lineHeight: 21,
+    color: '#C1D9CC',
+    marginTop: 12,
+    marginBottom: 20,
+  },
+  heroButton: {
+    backgroundColor: '#2A9068',
+    alignSelf: 'flex-start',
+    minWidth: 180,
+  },
+  navSafe: { backgroundColor: '#FFFFFF', borderTopWidth: 1, borderTopColor: C.border },
+  nav: {
+    flexDirection: 'row',
+    width: '100%',
+    maxWidth: 760,
+    alignSelf: 'center',
+    paddingHorizontal: 8,
+    paddingTop: 9,
+    paddingBottom: 7,
+  },
+  navItem: { flex: 1, minHeight: 58, alignItems: 'center', gap: 4 },
+  navIcon: {
+    width: 48,
+    height: 32,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  navIconActive: { backgroundColor: C.mint },
+  navLabel: {
+    width: '100%',
+    fontSize: 10,
+    lineHeight: 14,
+    color: C.muted,
+    textAlign: 'center',
+    paddingHorizontal: 2,
+    flexShrink: 1,
+  },
+  navLabelActive: { color: C.greenDark, fontWeight: '700' },
+  sectionHeading: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  sectionTitle: { fontSize: 18, fontWeight: '700', color: C.ink, flexShrink: 1 },
+  sectionMeta: { fontSize: 12, fontWeight: '600', color: C.green },
+  safeArea: { flex: 1, backgroundColor: C.canvas },
   topHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingVertical: 12,
-    backgroundColor: '#F8FAFC',
+    paddingVertical: 14,
+    gap: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
+    backgroundColor: C.canvas,
   },
   profileAvatarWrapper: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#E1EBDD',
+    alignItems: 'center',
+    justifyContent: 'center',
     overflow: 'hidden',
-    borderWidth: 1.5,
-    borderColor: '#E2E8F0',
   },
   profileAvatar: {
     width: '100%',
     height: '100%',
   },
-  brandTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  brandTitle: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: '#006837',
-    letterSpacing: -0.3,
-  },
-  driverRoleBadge: {
-    backgroundColor: '#DCFCE7',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 12,
-  },
-  driverRoleBadgeText: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: '#059669',
-    letterSpacing: 0.5,
-  },
-  headerRightActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  langPill: {
-    backgroundColor: '#E2E8F0',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  langPillText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#334155',
-  },
-  notifBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#FEE2E2',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-
+  brandTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 1 },
+  headerRightActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  langPill: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  langPillText: { fontSize: 12, fontWeight: '700', color: C.muted },
   scrollContainer: {
+    width: '100%',
+    maxWidth: 760,
+    alignSelf: 'center',
     paddingHorizontal: 20,
-    paddingBottom: 40,
+    paddingTop: 26,
+    paddingBottom: 28,
   },
-
-  /* PAGE TITLE SECTION */
-  pageTitleSection: {
-    marginTop: 6,
-    marginBottom: 16,
-  },
-  pageTitle: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: '#0F172A',
-    letterSpacing: -0.3,
-  },
-  pageSubtitle: {
-    fontSize: 13,
-    color: '#64748B',
-    marginTop: 2,
-  },
-
-  /* DUTY AVAILABILITY CARD */
-  dutyCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  dutyInfo: {
-    flex: 1,
-    paddingRight: 10,
-  },
+  dutyCard: { backgroundColor: C.white, borderRadius: 22, padding: 18, marginBottom: 20, borderWidth: 1, borderColor: C.border, flexDirection: 'row', flexWrap: 'wrap', gap: 12, alignItems: 'center' },
+  dutyInfo: { flexGrow: 1, flexBasis: 180 },
   dutyTitle: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#0F172A',
+    color: C.ink,
   },
   dutySub: {
     fontSize: 11,
-    color: '#64748B',
+    color: C.muted,
     marginTop: 2,
   },
   dutyToggleBtn: {
@@ -830,316 +770,44 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: C.border,
   },
   dutyBtnOn: {
-    backgroundColor: '#DCFCE7',
-    borderColor: '#86EFAC',
+    backgroundColor: C.mint,
+    borderColor: C.border,
   },
   dutyBtnOff: {
-    backgroundColor: '#FEE2E2',
-    borderColor: '#FCA5A5',
+    backgroundColor: C.redBg,
+    borderColor: C.redBg,
   },
   dutyToggleText: {
     fontSize: 11,
     fontWeight: '800',
   },
-
-  /* REGISTERED VEHICLE CARD */
-  registeredVehicleCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderLeftWidth: 4,
-    borderLeftColor: '#006837',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  vehicleHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  vehicleTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  vehicleIconBadge: {
-    fontSize: 26,
-    marginRight: 10,
-  },
-  vehicleCardTitle: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: '#0F172A',
-  },
-  vehicleTypeTag: {
-    fontSize: 11,
-    color: '#64748B',
-    marginTop: 1,
-  },
-  editVehicleBtn: {
-    backgroundColor: '#F1F5F9',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
-  },
-  editVehicleBtnText: {
-    color: '#0F172A',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  vehicleDetailsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  platePill: {
-    backgroundColor: '#0F172A',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-  },
-  platePillText: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-  },
-  capacityBadge: {
-    backgroundColor: '#F1F5F9',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  capacityBadgeText: {
-    color: '#334155',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  coldBadge: {
-    backgroundColor: '#E0F2FE',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderWidth: 1,
-    borderColor: '#BAE6FD',
-  },
-  coldBadgeText: {
-    color: '#0284C7',
-    fontSize: 11,
-    fontWeight: '800',
-  },
-  ambientBadge: {
-    backgroundColor: '#F8FAFC',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  ambientBadgeText: {
-    color: '#64748B',
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  vehicleThumbnailContainer: {
-    marginTop: 12,
-    borderRadius: 12,
-    overflow: 'hidden',
-    height: 120,
-    backgroundColor: '#E2E8F0',
-  },
-  vehicleThumbnail: {
-    width: '100%',
-    height: '100%',
-  },
-  fleetActionsRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 14,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#F1F5F9',
-  },
-  viewAllVehiclesBtn: {
-    flex: 1.5,
-    backgroundColor: '#E6F4EA',
-    borderRadius: 10,
-    paddingVertical: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#86EFAC',
-  },
-  viewAllVehiclesBtnText: {
-    color: '#006837',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  quickAddVehicleBtn: {
-    flex: 1,
-    backgroundColor: '#F1F5F9',
-    borderRadius: 10,
-    paddingVertical: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  quickAddVehicleBtnText: {
-    color: '#0F172A',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-
-  /* NO VEHICLE CARD */
-  noVehicleCard: {
-    backgroundColor: '#FEF3C7',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#FDE68A',
-  },
-  noVehicleContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  noVehicleIcon: {
-    fontSize: 32,
-    marginRight: 12,
-  },
-  noVehicleTitle: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#92400E',
-  },
-  noVehicleSub: {
-    fontSize: 11,
-    color: '#B45309',
-    marginTop: 2,
-    lineHeight: 15,
-  },
-  addVehicleBtn: {
-    backgroundColor: '#006837',
-    borderRadius: 10,
-    paddingVertical: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  addVehicleBtnText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-
-  /* KPI METRICS GRID */
-  statsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    marginBottom: 16,
-  },
+  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 26 },
   kpiCard: {
-    flex: 1,
-    minWidth: '47%',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    padding: 14,
-    borderLeftWidth: 4,
+    flexBasis: '46%',
+    flexGrow: 1,
+    padding: 18,
+    borderRadius: 20,
+    backgroundColor: C.white,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 2,
+    borderColor: C.border,
   },
   kpiValue: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: '800',
-    color: '#0F172A',
-    marginTop: 2,
+    letterSpacing: -0.5,
+    color: C.ink,
+    marginTop: 14,
   },
-  kpiLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#64748B',
-  },
-
-  /* TAB SELECTOR */
-  tabContainer: {
-    flexDirection: 'row',
-    backgroundColor: '#F1F5F9',
-    borderRadius: 12,
-    padding: 4,
-    marginBottom: 16,
-  },
-  tabBtn: {
-    flex: 1,
-    paddingVertical: 10,
-    alignItems: 'center',
-    borderRadius: 9,
-  },
-  tabBtnActive: {
-    backgroundColor: '#FFFFFF',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  tabText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#64748B',
-  },
-  tabTextActive: {
-    color: '#006837',
-    fontWeight: '800',
-  },
-
-  /* DELIVERY CARD (MATCHES REQUEST CARDS) */
-  deliveryCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderLeftWidth: 4,
-    borderLeftColor: '#F59E0B',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  tripHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
+  kpiLabel: { fontSize: 12, color: C.muted, marginTop: 5 },
+  deliveryCard: { backgroundColor: C.white, borderRadius: 22, padding: 18, marginBottom: 16, borderWidth: 1, borderColor: C.border },
+  tripHeaderRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center', justifyContent: 'space-between' },
   cargoTitle: {
     fontSize: 16,
     fontWeight: '800',
-    color: '#0F172A',
+    color: C.ink,
     flex: 1,
     marginRight: 8,
   },
@@ -1149,17 +817,16 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   badgePending: {
-    backgroundColor: '#F1F5F9',
+    backgroundColor: C.mint,
   },
   badgeInTransit: {
-    backgroundColor: '#DCFCE7',
+    backgroundColor: C.mint,
   },
   tripBadgeText: {
     fontSize: 10,
     fontWeight: '800',
     letterSpacing: 0.5,
   },
-
   farmerRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1167,16 +834,14 @@ const styles = StyleSheet.create({
   },
   farmerNameText: {
     fontSize: 13,
-    color: '#64748B',
+    color: C.muted,
     fontWeight: '500',
   },
   cardDivider: {
     height: 1,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: C.mint,
     marginVertical: 14,
   },
-
-  /* ROUTE TIMELINE */
   routeContainer: {
     paddingLeft: 2,
   },
@@ -1189,7 +854,7 @@ const styles = StyleSheet.create({
     height: 18,
     borderRadius: 9,
     borderWidth: 2,
-    borderColor: '#006837',
+    borderColor: C.green,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 10,
@@ -1199,21 +864,21 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#006837',
+    backgroundColor: C.green,
   },
   destCircleOuter: {
     width: 18,
     height: 18,
     borderRadius: 9,
     borderWidth: 2,
-    borderColor: '#94A3B8',
+    borderColor: C.muted,
     marginRight: 10,
     marginTop: 2,
   },
   routeConnectingLine: {
     width: 2,
     height: 22,
-    backgroundColor: '#CBD5E1',
+    backgroundColor: C.border,
     marginLeft: 8,
     marginVertical: 2,
   },
@@ -1224,31 +889,30 @@ const styles = StyleSheet.create({
   routeLabelPickup: {
     fontSize: 10,
     fontWeight: '800',
-    color: '#006837',
+    color: C.green,
     letterSpacing: 0.8,
   },
   routeLabelDest: {
     fontSize: 10,
     fontWeight: '800',
-    color: '#64748B',
+    color: C.muted,
     letterSpacing: 0.8,
   },
   locationTitle: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#0F172A',
+    color: C.ink,
     marginTop: 1,
   },
   buyerContactSub: {
     fontSize: 11,
-    color: '#64748B',
+    color: C.muted,
     marginTop: 2,
   },
-
   specialNotesCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F1F5F9',
+    backgroundColor: C.mint,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -1257,50 +921,38 @@ const styles = StyleSheet.create({
   },
   specialNotesText: {
     fontSize: 12,
-    color: '#334155',
+    color: C.ink,
     fontWeight: '500',
     flex: 1,
   },
-
-  actionBtn: {
-    borderRadius: 12,
-    paddingVertical: 13,
-    flexDirection: 'row',
+  actionBtn: { borderRadius: 14, minHeight: 48, paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+  actionBtnTransit: {
+    backgroundColor: C.green,
+  },
+  actionBtnDelivered: {
+    backgroundColor: C.green,
+  },
+  actionBtnText: { color: C.white, fontSize: 14, fontWeight: '700', flexShrink: 1, textAlign: 'center' },
+  viewTrackingBtn: {
+    marginTop: 8,
+    paddingVertical: 10,
+    backgroundColor: C.mint,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  actionBtnTransit: {
-    backgroundColor: '#006837',
-  },
-  actionBtnDelivered: {
-    backgroundColor: '#059669',
-  },
-  actionBtnText: {
-    color: '#FFFFFF',
-    fontSize: 14,
+  viewTrackingBtnText: {
+    color: C.greenDark,
+    fontSize: 12,
     fontWeight: '700',
   },
-
-  /* EMPTY STATE */
-  emptyCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    padding: 30,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
+  emptyCard: { backgroundColor: C.white, borderRadius: 22, padding: 28, alignItems: 'center', borderWidth: 1, borderColor: C.border, gap: 6 },
   emptyTitle: {
     fontSize: 16,
     fontWeight: '800',
-    color: '#0F172A',
+    color: C.ink,
     marginTop: 10,
     marginBottom: 4,
   },
-  emptySubtitle: {
-    fontSize: 12,
-    color: '#64748B',
-    textAlign: 'center',
-    paddingHorizontal: 10,
-  },
+  emptySubtitle: { fontSize: 14, lineHeight: 21, color: C.muted, textAlign: 'center' },
 });

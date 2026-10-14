@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   StyleSheet,
   Text,
@@ -26,6 +26,12 @@ import {
 import { AuthProvider } from './context/AuthContext';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from './firebaseConfig';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { TourProvider } from './context/TourContext';
+import GuidedTourOverlay from './components/GuidedTour/GuidedTourOverlay';
+
+const STORAGE_KEY_FIRST_INSTALL_DONE = '@govilink_first_install_done';
+const STORAGE_KEY_LANG = '@govilink_app_lang';
 
 // Keep the native splash screen visible while JS resources are initializing
 SplashScreen.preventAutoHideAsync().catch(() => {
@@ -37,7 +43,7 @@ const mapRoleToDashboard = (role, email) => {
   if (role === 'cooperative_admin' || role === 'admin') {
     return 'admin';
   }
-  if (email && email.toLowerCase() === 'govilink@admin.lk') {
+  if (email && (email.toLowerCase() === 'govilink@admin.lk' || email.toLowerCase() === 'admin.demo@govilink.lk')) {
     return 'admin';
   }
   switch (role) {
@@ -52,6 +58,7 @@ const mapRoleToDashboard = (role, email) => {
 
 function AppInner() {
   const [isSplashVisible, setIsSplashVisible] = useState(true);
+  const [nativeSplashHidden, setNativeSplashHidden] = useState(false);
   // 'checking' while onAuthStateChanged runs, then 'language'|'login'|'register'|'authenticated'
   const [authScreen, setAuthScreen] = useState('checking');
   const [userProfile, setUserProfile] = useState(null);
@@ -61,15 +68,48 @@ function AppInner() {
   const [ordersList, setOrdersList] = useState([]);
   const [vehiclesList, setVehiclesList] = useState([]);
 
-  useEffect(() => {
-    async function hideNativeSplash() {
+  // Called by the custom SplashScreen once it has laid out and is visible.
+  const handleCustomSplashLayout = useCallback(async () => {
+    if (!nativeSplashHidden) {
+      setNativeSplashHidden(true);
       try {
         await SplashScreen.hideAsync();
       } catch (e) {
         // Native splash already hidden or unavailable
       }
     }
+  }, [nativeSplashHidden]);
+
+  // Hide native splash on mount so custom animated splash screen displays on mobile Expo Go app
+  useEffect(() => {
+    async function hideNativeSplash() {
+      try {
+        await SplashScreen.hideAsync();
+      } catch (_e) {
+        /* Already hidden or web mode */
+      }
+    }
     hideNativeSplash();
+
+    // Check first-time install status and saved language
+    const checkInstallStatus = async () => {
+      try {
+        const [installed, savedLang] = await Promise.all([
+          AsyncStorage.getItem(STORAGE_KEY_FIRST_INSTALL_DONE),
+          AsyncStorage.getItem(STORAGE_KEY_LANG),
+        ]);
+        if (savedLang) {
+          setLang(savedLang);
+        }
+        if (installed !== 'true') {
+          // Only show initial animated splash and start page on first install
+          setIsSplashVisible(true);
+        }
+      } catch (_e) {
+        // Fallback default behavior
+      }
+    };
+    checkInstallStatus();
 
     // Track Firestore subscriptions — all require authentication.
     // They are started only after onAuthStateChanged confirms a signed-in user
@@ -81,7 +121,7 @@ function AppInner() {
     const startFirestoreSubscriptions = () => {
       if (!unsubscribeProduce) {
         unsubscribeProduce = subscribeToProduceListings((items) => {
-          if (items && items.length > 0) {
+          if (items) {
             setProduceListings(items);
           }
         });
@@ -127,6 +167,11 @@ function AppInner() {
         // User is signed in — start all Firestore subscriptions now
         startFirestoreSubscriptions();
 
+        // Mark install as completed if user is already logged in
+        try {
+          await AsyncStorage.setItem(STORAGE_KEY_FIRST_INSTALL_DONE, 'true');
+        } catch (_e) {}
+
         // Fetch their Firestore profile
         const result = await getUserProfile(firebaseUser.uid);
         if (result.success) {
@@ -153,7 +198,18 @@ function AppInner() {
         setOrdersList([]);
         setVehiclesList([]);
         setUserProfile(null);
-        setAuthScreen('language');
+
+        // Check if install time has already passed
+        try {
+          const installed = await AsyncStorage.getItem(STORAGE_KEY_FIRST_INSTALL_DONE);
+          if (installed === 'true') {
+            setAuthScreen('login');
+          } else {
+            setAuthScreen('language');
+          }
+        } catch (_e) {
+          setAuthScreen('login');
+        }
       }
     });
 
@@ -164,14 +220,24 @@ function AppInner() {
   }, []);
 
   const handleLogout = async () => {
-    await logoutUser();
+    try {
+      await logoutUser();
+    } catch (e) {
+      console.error('Logout error:', e);
+    }
     setUserProfile(null);
     setCurrentRole('buyer');
-    setAuthScreen('language');
+    // On logout, navigate directly to the Login page
+    setAuthScreen('login');
   };
 
   if (isSplashVisible) {
-    return <SplashScreenComponent onFinish={() => setIsSplashVisible(false)} />;
+    return (
+      <SplashScreenComponent
+        onFinish={() => setIsSplashVisible(false)}
+        onLayout={handleCustomSplashLayout}
+      />
+    );
   }
 
   // While onAuthStateChanged is determining auth state, show a loading screen
@@ -187,8 +253,12 @@ function AppInner() {
   if (authScreen === 'language') {
     return (
       <LanguageSelectionScreen
-        onSelectLanguage={(selectedLang) => {
+        onSelectLanguage={async (selectedLang) => {
           setLang(selectedLang);
+          try {
+            await AsyncStorage.setItem(STORAGE_KEY_FIRST_INSTALL_DONE, 'true');
+            await AsyncStorage.setItem(STORAGE_KEY_LANG, selectedLang);
+          } catch (_e) {}
           setAuthScreen('login');
         }}
       />
@@ -201,7 +271,10 @@ function AppInner() {
         lang={lang}
         onBackToLang={() => setAuthScreen('language')}
         onNavigateToRegister={() => setAuthScreen('register')}
-        onLoginSuccess={(profile) => {
+        onLoginSuccess={async (profile) => {
+          try {
+            await AsyncStorage.setItem(STORAGE_KEY_FIRST_INSTALL_DONE, 'true');
+          } catch (_e) {}
           setUserProfile(profile);
           setCurrentRole(mapRoleToDashboard(profile?.role, profile?.email));
           setAuthScreen('authenticated');
@@ -216,7 +289,10 @@ function AppInner() {
         lang={lang}
         onBack={() => setAuthScreen('login')}
         onNavigateToLogin={() => setAuthScreen('login')}
-        onRegisterComplete={() => {
+        onRegisterComplete={async () => {
+          try {
+            await AsyncStorage.setItem(STORAGE_KEY_FIRST_INSTALL_DONE, 'true');
+          } catch (_e) {}
           setAuthScreen('login');
         }}
       />
@@ -234,61 +310,64 @@ function AppInner() {
   };
 
   // ----------------------------------------------------
-  // ROLE-BASED HOMEPAGE ROUTING
+  // ROLE-BASED HOMEPAGE ROUTING WITH TOUR OVERLAY
   // ----------------------------------------------------
-  if (currentRole === 'farmer') {
-    return (
-      <FarmerHomeScreen
-        userProfile={userProfile}
-        lang={lang}
-        produceListings={activeProduce}
-        ordersList={ordersList}
-        onChangeLanguage={setLang}
-        onLogout={handleLogout}
-        onProfileUpdated={handleProfileUpdated}
-      />
-    );
-  }
-
-  if (currentRole === 'driver') {
-    return (
-      <DriverHomeScreen
-        userProfile={userProfile}
-        lang={lang}
-        ordersList={ordersList}
-        onChangeLanguage={setLang}
-        onLogout={handleLogout}
-        onProfileUpdated={handleProfileUpdated}
-      />
-    );
-  }
-
-  if (currentRole === 'admin') {
-    return (
-      <AdminHomeScreen
-        userProfile={userProfile}
-        lang={lang}
-        produceListings={activeProduce}
-        ordersList={ordersList}
-        vehiclesList={vehiclesList}
-        onChangeLanguage={setLang}
-        onLogout={handleLogout}
-        onProfileUpdated={handleProfileUpdated}
-      />
-    );
-  }
-
-  // Default: Buyer Homepage
   return (
-    <BuyerHomeScreen
+    <TourProvider
       userProfile={userProfile}
+      currentRole={currentRole}
       lang={lang}
-      produceListings={activeProduce}
-      ordersList={ordersList}
-      onChangeLanguage={setLang}
-      onLogout={handleLogout}
       onProfileUpdated={handleProfileUpdated}
-    />
+      isAuthenticated={authScreen === 'authenticated'}
+    >
+      <View style={{ flex: 1 }}>
+        {currentRole === 'farmer' && (
+          <FarmerHomeScreen
+            userProfile={userProfile}
+            lang={lang}
+            produceListings={activeProduce}
+            ordersList={ordersList}
+            onChangeLanguage={setLang}
+            onLogout={handleLogout}
+            onProfileUpdated={handleProfileUpdated}
+          />
+        )}
+        {currentRole === 'driver' && (
+          <DriverHomeScreen
+            userProfile={userProfile}
+            lang={lang}
+            ordersList={ordersList}
+            onChangeLanguage={setLang}
+            onLogout={handleLogout}
+            onProfileUpdated={handleProfileUpdated}
+          />
+        )}
+        {currentRole === 'admin' && (
+          <AdminHomeScreen
+            userProfile={userProfile}
+            lang={lang}
+            produceListings={activeProduce}
+            ordersList={ordersList}
+            vehiclesList={vehiclesList}
+            onChangeLanguage={setLang}
+            onLogout={handleLogout}
+            onProfileUpdated={handleProfileUpdated}
+          />
+        )}
+        {currentRole !== 'farmer' && currentRole !== 'driver' && currentRole !== 'admin' && (
+          <BuyerHomeScreen
+            userProfile={userProfile}
+            lang={lang}
+            produceListings={activeProduce}
+            ordersList={ordersList}
+            onChangeLanguage={setLang}
+            onLogout={handleLogout}
+            onProfileUpdated={handleProfileUpdated}
+          />
+        )}
+        <GuidedTourOverlay />
+      </View>
+    </TourProvider>
   );
 }
 
@@ -297,15 +376,21 @@ function AppInner() {
 // -------------------------------------------------------
 export default function App() {
   return (
-    <SafeAreaProvider>
-      <AuthProvider>
-        <AppInner />
-      </AuthProvider>
-    </SafeAreaProvider>
+    <View style={styles.rootBackground}>
+      <SafeAreaProvider style={styles.rootBackground}>
+        <AuthProvider>
+          <AppInner />
+        </AuthProvider>
+      </SafeAreaProvider>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  rootBackground: {
+    flex: 1,
+    backgroundColor: '#0B2545',
+  },
   safeArea: {
     flex: 1,
     backgroundColor: '#0B2545',

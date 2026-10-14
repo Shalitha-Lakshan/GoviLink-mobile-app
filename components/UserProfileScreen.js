@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
   Text,
@@ -11,11 +11,16 @@ import {
   ActivityIndicator,
   StatusBar,
   Switch,
+  KeyboardAvoidingView,
+  Platform,
+  BackHandler,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { FARMER_COLORS as C, FarmerHeading } from './FarmerDesign';
 import * as ImagePicker from 'expo-image-picker';
 import { updateUserProfileInFirestore, uploadProduceImage } from '../services/firebaseDatabase';
+import { TOUR_TRANSLATIONS } from '../translations/tourTranslations';
 
 // Standard Sri Lankan Districts for Selection
 const DISTRICTS_LIST = [
@@ -54,7 +59,12 @@ export default function UserProfileScreen({
   onLogout,
   onChangeLanguage,
   onProfileUpdated,
+  onReplayTour,
+  embedded = false,
+  farmerDesign = false,
 }) {
+  const styles = farmerDesign ? farmerStyles : baseStyles;
+  const Container = embedded ? View : SafeAreaView;
   const [fullName, setFullName] = useState(userProfile?.fullName || '');
   const [phoneNumber, setPhoneNumber] = useState(userProfile?.phoneNumber || '');
   const [email, setEmail] = useState(userProfile?.email || userProfile?.userEmail || '');
@@ -67,13 +77,25 @@ export default function UserProfileScreen({
     userProfile?.farmName || userProfile?.businessName || ''
   );
   const [photoURL, setPhotoURL] = useState(
-    userProfile?.photoURL || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80'
+    userProfile?.photoURL || (farmerDesign ? null : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80')
   );
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState(null);
   const [showDistrictPicker, setShowDistrictPicker] = useState(false);
 
-  const role = userProfile?.role || 'FARMER'; // 'ADMIN' | 'FARMER' | 'DRIVER' | 'BUYER'
+  const role = (userProfile?.role || 'FARMER').toUpperCase(); // 'ADMIN' | 'FARMER' | 'DRIVER' | 'BUYER'
+  const tourTexts = (TOUR_TRANSLATIONS[lang] || TOUR_TRANSLATIONS.en).common;
+
+  // Handle Android hardware back button
+  useEffect(() => {
+    if (!onBack) return;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      onBack();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [onBack]);
 
   const handlePickAvatar = async () => {
     try {
@@ -101,14 +123,15 @@ export default function UserProfileScreen({
 
   const handleSaveProfile = async () => {
     if (!fullName.trim()) {
-      Alert.alert('Required Field', 'Please enter your full name.');
+      setSaveMessage({ error: true, text: 'Please enter your full name.' });
       return;
     }
 
+    setSaveMessage(null);
     setIsSaving(true);
 
     let finalPhotoUrl = photoURL;
-    const targetUid = userProfile?.uid || userProfile?.id || `user_${Date.now()}`;
+    const targetUid = userProfile?.uid || userProfile?.id;
 
     // Upload local file:// or data: image to Firebase Storage / base64 fallback
     if (photoURL && (photoURL.startsWith('file://') || photoURL.startsWith('data:'))) {
@@ -133,11 +156,19 @@ export default function UserProfileScreen({
       photoURL: finalPhotoUrl,
     };
 
+    if (!targetUid) {
+      setIsSaving(false);
+      setSaveMessage({ error: true, text: 'Please sign in again before saving your profile.' });
+      return;
+    }
     if (targetUid) {
       try {
-        await updateUserProfileInFirestore(targetUid, updatedData);
+        const result = await updateUserProfileInFirestore(targetUid, updatedData);
+        if (!result?.success) throw new Error(result?.error || 'Please try again.');
       } catch (err) {
-        console.warn('Profile save warning:', err);
+        setIsSaving(false);
+        setSaveMessage({ error: true, text: 'Could not save your profile. ' + err.message });
+        return;
       }
     }
 
@@ -147,38 +178,103 @@ export default function UserProfileScreen({
       onProfileUpdated(updatedData);
     }
 
-    Alert.alert('Profile Updated! ✨', 'Your profile photo and details have been saved successfully.');
+    setSaveMessage({ error: false, text: 'Your profile changes have been saved.' });
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <Container style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
-      {/* TOP HEADER */}
-      <View style={styles.topHeader}>
-        <TouchableOpacity style={styles.backBtn} onPress={onBack} activeOpacity={0.7}>
-          <Ionicons name="arrow-back" size={20} color="#0F172A" />
-        </TouchableOpacity>
+      {!embedded && (
+        <View style={styles.topHeader}>
+          <View style={styles.headerLeftGroup}>
+            {onBack && (
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="Back to Dashboard"
+                style={styles.backBtn}
+                onPress={onBack}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="arrow-back" size={20} color={farmerDesign ? C.greenDark : '#0F172A'} />
+              </TouchableOpacity>
+            )}
 
-        <Text style={styles.headerTitle}>User Profile</Text>
+            {farmerDesign ? (
+              <View style={styles.brand}>
+                <Image
+                  source={require('../assets/splash-icon.png')}
+                  style={styles.brandLogo}
+                  resizeMode="contain"
+                />
+                <View>
+                  <Text style={styles.brandTitle}>
+                    Govi<Text style={{ color: C.green }}>Link</Text>
+                  </Text>
+                  <Text style={styles.brandCaption}>
+                    {role === 'ADMIN' ? 'COOPERATIVE ADMIN' : 'FARMER PROFILE'}
+                  </Text>
+                </View>
+              </View>
+            ) : (
+              <Text style={styles.headerTitle}>User Profile</Text>
+            )}
+          </View>
 
-        <TouchableOpacity style={styles.logoutHeaderBtn} onPress={onLogout} activeOpacity={0.7}>
-          <Ionicons name="log-out-outline" size={20} color="#DC2626" />
-        </TouchableOpacity>
-      </View>
+          {onLogout && (
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Log out"
+              style={styles.logoutHeaderBtn}
+              onPress={onLogout}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="log-out-outline" size={20} color="#DC2626" />
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
 
-      <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+      <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+        {onBack && (
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel={role === 'ADMIN' ? 'Back to Admin Dashboard' : 'Back to Dashboard'}
+            style={styles.backBtnRow}
+            onPress={onBack}
+            activeOpacity={0.7}
+          >
+            <Ionicons
+              name="arrow-back"
+              size={16}
+              color={farmerDesign ? C.green : '#0F172A'}
+              style={{ marginRight: 6 }}
+            />
+            <Text style={styles.backBtnText}>
+              {role === 'ADMIN' ? 'Back to Admin Dashboard' : 'Back to Dashboard'}
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        {farmerDesign && (
+          <FarmerHeading
+            eyebrow={role === 'ADMIN' ? 'ADMINISTRATOR ACCOUNT' : 'YOUR ACCOUNT'}
+            title={role === 'ADMIN' ? 'Admin Profile' : 'My profile'}
+            subtitle={role === 'ADMIN' ? 'Manage your administrator details and system preferences.' : 'Your farm, your details, your connections.'}
+          />
+        )}
         {/* AVATAR & COVER BANNER CARD */}
         <View style={styles.profileBannerCard}>
           <View style={styles.avatarWrapper}>
-            <Image source={{ uri: photoURL }} style={styles.avatarImage} />
-            <TouchableOpacity style={styles.cameraBadgeBtn} onPress={handlePickAvatar} activeOpacity={0.8}>
+            <View style={styles.avatarImage}>{photoURL ? <Image source={{ uri: photoURL }} style={{ width: '100%', height: '100%', borderRadius: 50 }} /> : <Text style={{ fontSize: 32, fontWeight: '700', color: C.greenDark }}>{(fullName || 'F').charAt(0).toUpperCase()}</Text>}</View>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Change profile photo" style={styles.cameraBadgeBtn} onPress={handlePickAvatar} activeOpacity={0.8}>
               <Ionicons name="camera" size={16} color="#FFFFFF" />
             </TouchableOpacity>
           </View>
 
           <Text style={styles.profileNameText}>{fullName || 'GoviLink User'}</Text>
-          <Text style={styles.profilePhoneText}>📞 {phoneNumber || 'No phone number added'}</Text>
+          <Text style={styles.profilePhoneText}>{phoneNumber || 'No phone number added'}</Text>
 
           {/* ROLE BADGE */}
           <View style={styles.roleBadgeContainer}>
@@ -203,7 +299,7 @@ export default function UserProfileScreen({
                 {role === 'ADMIN'
                   ? '🛡️ ADMINISTRATOR'
                   : role === 'FARMER'
-                  ? '🧑‍🌾 VERIFIED GROWER'
+                  ? (farmerDesign ? 'FARMER ACCOUNT' : '🧑‍🌾 VERIFIED GROWER')
                   : role === 'DRIVER'
                   ? '🚛 LOGISTICS PARTNER'
                   : '🛒 VERIFIED BUYER'}
@@ -214,7 +310,7 @@ export default function UserProfileScreen({
 
         {/* PERSONAL DETAILS CARD */}
         <View style={styles.cardBox}>
-          <Text style={styles.cardHeaderTitle}>Personal Information</Text>
+          <Text style={styles.cardHeaderTitle}>Personal information</Text>
 
           {/* FULL NAME INPUT */}
           <View style={styles.inputGroup}>
@@ -223,6 +319,7 @@ export default function UserProfileScreen({
               <Ionicons name="person-outline" size={18} color="#64748B" style={{ marginRight: 8 }} />
               <TextInput
                 style={styles.textInputField}
+                accessibilityLabel="Full name"
                 value={fullName}
                 onChangeText={setFullName}
                 placeholder="Enter full name"
@@ -238,6 +335,7 @@ export default function UserProfileScreen({
               <Ionicons name="call-outline" size={18} color="#64748B" style={{ marginRight: 8 }} />
               <TextInput
                 style={styles.textInputField}
+                accessibilityLabel="Phone number"
                 value={phoneNumber}
                 onChangeText={setPhoneNumber}
                 keyboardType="phone-pad"
@@ -254,6 +352,7 @@ export default function UserProfileScreen({
               <Ionicons name="mail-outline" size={18} color="#64748B" style={{ marginRight: 8 }} />
               <TextInput
                 style={styles.textInputField}
+                accessibilityLabel="Email address"
                 value={email}
                 onChangeText={setEmail}
                 keyboardType="email-address"
@@ -264,6 +363,9 @@ export default function UserProfileScreen({
             </View>
           </View>
 
+        </View>
+        <View style={styles.cardBox}>
+          <Text style={styles.cardHeaderTitle}>{role === 'FARMER' ? 'Farm details' : 'Location & business'}</Text>
           {/* DISTRICT SELECTOR */}
           <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>District & Hub Location</Text>
@@ -327,7 +429,8 @@ export default function UserProfileScreen({
                 />
                 <TextInput
                   style={styles.textInputField}
-                  value={farmOrBusinessName}
+                  accessibilityLabel="Farm or business name"
+                value={farmOrBusinessName}
                   onChangeText={setFarmOrBusinessName}
                   placeholder={role === 'FARMER' ? 'e.g. Green Valley Organic Plot' : 'e.g. Manning Market Outlet 4'}
                   placeholderTextColor="#94A3B8"
@@ -339,12 +442,12 @@ export default function UserProfileScreen({
 
         {/* APP PREFERENCES CARD */}
         <View style={styles.cardBox}>
-          <Text style={styles.cardHeaderTitle}>App Preferences & Settings</Text>
+          <Text style={styles.cardHeaderTitle}>Preferences</Text>
 
           {/* LANGUAGE SWITCHER */}
           <View style={styles.preferenceRow}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.prefTitle}>Language / ඡාෂාව / மொழி</Text>
+              <Text style={styles.prefTitle}>Language / භාෂාව / மொழி</Text>
               <Text style={styles.prefSub}>
                 {lang === 'en' ? 'English (Current)' : lang === 'si' ? 'සිංහල' : 'தமிழ்'}
               </Text>
@@ -381,11 +484,39 @@ export default function UserProfileScreen({
               thumbColor={notificationsEnabled ? '#006837' : '#94A3B8'}
             />
           </View>
+
+          {/* REPLAY APP TOUR */}
+          {Boolean(onReplayTour) && (
+            <>
+              <View style={styles.prefDivider} />
+              <TouchableOpacity
+                style={styles.replayTourRow}
+                onPress={onReplayTour}
+                accessibilityRole="button"
+                accessibilityLabel={tourTexts.replayTour}
+                activeOpacity={0.75}
+              >
+                <View style={styles.replayTourLeft}>
+                  <View style={styles.replayTourIconCircle}>
+                    <Ionicons name="compass-outline" size={20} color="#006837" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.prefTitle}>{tourTexts.replayTour}</Text>
+                    <Text style={styles.prefSub}>{tourTexts.replayTourSub}</Text>
+                  </View>
+                </View>
+                <Ionicons name="play-circle-outline" size={24} color="#006837" />
+              </TouchableOpacity>
+            </>
+          )}
         </View>
 
+        {!!saveMessage && <View accessibilityRole="alert" style={{ backgroundColor: saveMessage.error ? C.redBg : C.mint, padding: 16, borderRadius: 14, marginBottom: 14 }}><Text style={{ color: saveMessage.error ? C.red : C.greenDark, fontSize: 13, lineHeight: 20 }}>{saveMessage.text}</Text></View>}
         {/* ACTION BUTTONS */}
         <TouchableOpacity
           style={[styles.saveBtn, isSaving && styles.saveBtnDisabled]}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: isSaving, busy: isSaving }}
           onPress={handleSaveProfile}
           disabled={isSaving}
           activeOpacity={0.85}
@@ -400,16 +531,17 @@ export default function UserProfileScreen({
           )}
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.logoutOutlineBtn} onPress={onLogout} activeOpacity={0.8}>
+        <TouchableOpacity accessibilityRole="button" style={styles.logoutOutlineBtn} onPress={onLogout} activeOpacity={0.8}>
           <Ionicons name="log-out-outline" size={18} color="#DC2626" style={{ marginRight: 8 }} />
           <Text style={styles.logoutOutlineBtnText}>Log Out of GoviLink Account</Text>
         </TouchableOpacity>
       </ScrollView>
-    </SafeAreaView>
+      </KeyboardAvoidingView>
+    </Container>
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: '#F8FAFC',
@@ -424,6 +556,11 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     backgroundColor: '#F8FAFC',
   },
+  headerLeftGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
   backBtn: {
     width: 36,
     height: 36,
@@ -432,10 +569,43 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  backBtnRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+    marginBottom: 14,
+  },
+  backBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
   headerTitle: {
     fontSize: 18,
     fontWeight: '800',
     color: '#0F172A',
+  },
+  brand: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  brandLogo: {
+    width: 36,
+    height: 36,
+    marginRight: 10,
+  },
+  brandTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#0F172A',
+    letterSpacing: -0.5,
+  },
+  brandCaption: {
+    fontSize: 8,
+    fontWeight: '700',
+    color: '#64748B',
+    letterSpacing: 1.2,
+    marginTop: 2,
   },
   logoutHeaderBtn: {
     width: 36,
@@ -629,6 +799,27 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#FFFFFF',
   },
+  replayTourRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 6,
+  },
+  replayTourLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 12,
+    marginRight: 10,
+  },
+  replayTourIconCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#E8F5E9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 
   /* BUTTONS */
   saveBtn: {
@@ -669,3 +860,86 @@ const styles = StyleSheet.create({
     color: '#DC2626',
   },
 });
+
+// Farmer styling is scoped so the other account types keep their existing layout.
+const farmerStyles = {
+  ...baseStyles,
+  safeArea: { flex: 1, backgroundColor: C.canvas },
+  topHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
+  },
+  headerLeftGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  backBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: C.mint,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  backBtnRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+    marginBottom: 14,
+  },
+  backBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: C.green,
+  },
+  brand: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  brandLogo: {
+    width: 38,
+    height: 38,
+    marginRight: 10,
+  },
+  brandTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: C.ink,
+    letterSpacing: -0.6,
+  },
+  brandCaption: {
+    fontSize: 8,
+    fontWeight: '700',
+    color: C.muted,
+    letterSpacing: 1.3,
+    marginTop: 2,
+  },
+  logoutHeaderBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: C.redBg,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  scrollContainer: { width: '100%', maxWidth: 760, alignSelf: 'center', paddingHorizontal: 20, paddingTop: 16, paddingBottom: 28 },
+  profileBannerCard: { backgroundColor: C.mint, borderRadius: 24, padding: 26, alignItems: 'center', marginBottom: 22, borderWidth: 1, borderColor: C.border },
+  avatarImage: { width: 90, height: 90, borderRadius: 45, backgroundColor: '#D4E7D9', alignItems: 'center', justifyContent: 'center', borderWidth: 4, borderColor: '#FFFFFF' },
+  profileNameText: { fontSize: 24, fontWeight: '700', color: C.ink, textAlign: 'center' },
+  cardBox: { backgroundColor: '#FFFFFF', borderRadius: 22, padding: 20, marginBottom: 18, borderWidth: 1, borderColor: C.border },
+  cardHeaderTitle: { fontSize: 17, fontWeight: '700', color: C.ink, marginBottom: 22 },
+  inputGroup: { marginBottom: 18 },
+  inputLabel: { fontSize: 12, fontWeight: '600', color: C.muted, marginBottom: 8 },
+  inputBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FBFCFA', borderRadius: 13, borderWidth: 1, borderColor: C.border, paddingHorizontal: 14, minHeight: 52, paddingVertical: 12 },
+  textInputField: { flex: 1, minWidth: 0, fontSize: 14, color: C.ink, paddingVertical: 0 },
+  saveBtn: { ...baseStyles.saveBtn, backgroundColor: C.green, elevation: 0, shadowOpacity: 0, minHeight: 52, height: undefined, paddingVertical: 15 },
+  logoutOutlineBtn: { ...baseStyles.logoutOutlineBtn, backgroundColor: C.redBg, borderColor: C.redBg, minHeight: 48, height: undefined, paddingVertical: 14 },
+  cameraBadgeBtn: { ...baseStyles.cameraBadgeBtn, width: 36, height: 36, borderRadius: 18, backgroundColor: C.green },
+};

@@ -20,15 +20,28 @@ service cloud.firestore {
       allow create: if request.auth != null;
       allow update: if request.auth != null &&
                        (resource.data.farmerUid == request.auth.uid ||
-                        resource.data.farmerId  == request.auth.uid);
+                        resource.data.farmerId  == request.auth.uid ||
+                        resource.data.farmerId  == 'farmer_uid' ||
+                        !('farmerUid' in resource.data));
       allow delete: if request.auth != null &&
                        (resource.data.farmerUid == request.auth.uid ||
-                        resource.data.farmerId  == request.auth.uid);
+                        resource.data.farmerId  == request.auth.uid ||
+                        resource.data.farmerId  == 'farmer_uid' ||
+                        !('farmerUid' in resource.data));
     }
 
     // ── ORDERS ─────────────────────────────────────────────
     // Any authenticated user can read/write orders.
     match /orders/{orderId} {
+      allow read:   if request.auth != null;
+      allow create: if request.auth != null;
+      allow update: if request.auth != null;
+      allow delete: if request.auth != null;
+    }
+
+    // ── NOTIFICATIONS ──────────────────────────────────────
+    // Any authenticated user can read/write notifications.
+    match /notifications/{notificationId} {
       allow read:   if request.auth != null;
       allow create: if request.auth != null;
       allow update: if request.auth != null;
@@ -43,17 +56,32 @@ service cloud.firestore {
       allow update: if request.auth != null;
       allow delete: if request.auth != null;
     }
+    match /buyer_requests/{requestId} {
+      allow read:   if request.auth != null;
+      allow create: if request.auth != null;
+      allow update: if request.auth != null;
+      allow delete: if request.auth != null;
+    }
+
+    function isAdmin() {
+      return request.auth != null && (
+        request.auth.token.email == 'govilink@admin.lk' ||
+        request.auth.token.email == 'admin.demo@govilink.lk' ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['cooperative_admin', 'admin'])
+      );
+    }
 
     // ── VEHICLES ───────────────────────────────────────────
     // Any authenticated user can read vehicles.
-    // Only the owning driver can modify their own vehicles.
+    // Drivers can only modify their own vehicles. Admins can update for assignment.
     match /vehicles/{vehicleId} {
       allow read:   if request.auth != null;
       allow create: if request.auth != null;
       allow update: if request.auth != null &&
-                       resource.data.driverUid == request.auth.uid;
+                       (resource.data.driverUid == request.auth.uid || isAdmin());
       allow delete: if request.auth != null &&
-                       resource.data.driverUid == request.auth.uid;
+                       (resource.data.driverUid == request.auth.uid || isAdmin());
     }
   }
 }

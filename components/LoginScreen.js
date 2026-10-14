@@ -6,7 +6,6 @@ import {
   TextInput,
   TouchableOpacity,
   ScrollView,
-  SafeAreaView,
   StatusBar,
   Alert,
   ActivityIndicator,
@@ -15,6 +14,7 @@ import {
   Keyboard,
   Image,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { loginWithFirebase } from '../services/firebaseDatabase';
 
 // ----------------------------------------------------
@@ -136,7 +136,7 @@ const getFriendlyLoginError = (errorCode) => {
     case 'auth/wrong-password':
     case 'auth/user-not-found':
     case 'auth/invalid-email':
-      return 'Invalid email or password.';
+      return 'Invalid email or password. If you haven\'t created this account yet, please tap Register below.';
     case 'auth/user-disabled':
       return 'This account has been disabled. Please contact support.';
     case 'auth/too-many-requests':
@@ -144,7 +144,7 @@ const getFriendlyLoginError = (errorCode) => {
     case 'auth/network-request-failed':
       return 'Network error. Please check your internet connection.';
     default:
-      return 'Invalid email or password.';
+      return 'Invalid email or password. Please verify your credentials or register.';
   }
 };
 
@@ -158,6 +158,7 @@ export default function LoginScreen({ lang = 'en', onBackToLang, onNavigateToReg
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
+  const [authError, setAuthError] = useState(null);
 
   const validateForm = () => {
     let newErrors = {};
@@ -179,6 +180,7 @@ export default function LoginScreen({ lang = 'en', onBackToLang, onNavigateToReg
 
   const handleLogin = async () => {
     Keyboard.dismiss();
+    setAuthError(null);
     if (!validateForm()) return;
 
     setIsSubmitting(true);
@@ -191,10 +193,13 @@ export default function LoginScreen({ lang = 'en', onBackToLang, onNavigateToReg
         }
       } else {
         const friendlyMsg = getFriendlyLoginError(result.error);
+        setAuthError(friendlyMsg);
         Alert.alert('Login Failed', friendlyMsg);
       }
     } catch (e) {
-      Alert.alert('Error', 'An unexpected error occurred. Please try again.');
+      const fallbackMsg = 'An unexpected error occurred. Please try again.';
+      setAuthError(fallbackMsg);
+      Alert.alert('Error', fallbackMsg);
     } finally {
       setIsSubmitting(false);
     }
@@ -239,6 +244,7 @@ export default function LoginScreen({ lang = 'en', onBackToLang, onNavigateToReg
 
           {/* FORM FIELDS */}
           <View style={styles.formSection}>
+
             {/* EMAIL INPUT */}
             <View style={styles.inputGroup}>
               <Text style={styles.label}>{t.emailLabel}</Text>
@@ -254,6 +260,7 @@ export default function LoginScreen({ lang = 'en', onBackToLang, onNavigateToReg
                   keyboardType="email-address"
                   onChangeText={(text) => {
                     setEmail(text);
+                    if (authError) setAuthError(null);
                     if (errors.email) setErrors((prev) => ({ ...prev, email: null }));
                   }}
                 />
@@ -275,6 +282,7 @@ export default function LoginScreen({ lang = 'en', onBackToLang, onNavigateToReg
                   value={password}
                   onChangeText={(text) => {
                     setPassword(text);
+                    if (authError) setAuthError(null);
                     if (errors.password) setErrors((prev) => ({ ...prev, password: null }));
                   }}
                 />
@@ -295,6 +303,11 @@ export default function LoginScreen({ lang = 'en', onBackToLang, onNavigateToReg
             </TouchableOpacity>
 
             {/* LOGIN BUTTON WITH LOADING SPINNER */}
+            {authError && (
+              <Text accessibilityRole="alert" style={[styles.errorText, { marginBottom: 12 }]}>
+                {authError}
+              </Text>
+            )}
             <TouchableOpacity
               activeOpacity={0.85}
               disabled={isSubmitting}

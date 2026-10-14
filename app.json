@@ -10,7 +10,7 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#0B2545"
     },
     "plugins": [
       [
@@ -19,7 +19,7 @@
           "image": "./assets/splash-icon.png",
           "imageWidth": 160,
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff"
+          "backgroundColor": "#0B2545"
         }
       ],
       [
@@ -28,20 +28,39 @@
           "photosPermission": "The app accesses your photos to allow you to select produce images.",
           "cameraPermission": "The app accesses your camera to allow you to take photos of your produce."
         }
+      ],
+      "expo-status-bar",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "GoviLink uses your location to set delivery and pickup coordinates."
+        }
       ]
     ],
     "ios": {
       "supportsTablet": true
     },
     "android": {
+      "package": "com.anonymous.GoviLinkmobileapp",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "fbc38128-0fcd-43c8-bb05-b399f7b681ae"
+      }
+    },
+    "owner": "avishka1118"
   }
 }

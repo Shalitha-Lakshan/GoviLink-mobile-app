@@ -9,10 +9,23 @@ import {
   Image,
   Modal,
   Alert,
-  ActivityIndicator,
   StatusBar,
+  BackHandler,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import {
+  FARMER_COLORS as C,
+  BUYER_NAV,
+  FarmerButton,
+  FarmerEmpty,
+  FarmerHeading,
+  FilterChip,
+  IconTile,
+  DetailRow,
+  cleanLabel,
+} from './FarmerDesign';
 import {
   placeOrderInFirestore,
   subscribeToBuyerRequests,
@@ -20,29 +33,36 @@ import {
 } from '../services/firebaseDatabase';
 import BuyerRequestProduceScreen from './BuyerRequestProduceScreen';
 import UserProfileScreen from './UserProfileScreen';
+import DeliveryTrackingScreen from './DeliveryTrackingScreen';
+import TourTarget from './GuidedTour/TourTarget';
+import { useTour } from '../context/TourContext';
 
-// ----------------------------------------------------
-// THEME COLORS
-// ----------------------------------------------------
-const THEME = {
-  navy: '#0B2545',
-  emerald: '#16A34A',
-  emeraldDark: '#15803D',
-  emeraldLight: '#E8F5E9',
-  accentLeaf: '#2ECC71',
-  bg: '#F4F7F6',
-  cardBg: '#FFFFFF',
-  textDark: '#0F172A',
-  textMuted: '#64748B',
-  border: '#E2E8F0',
-  warning: '#F59E0B',
-  warningLight: '#FEF3C7',
-  danger: '#EF4444',
-  info: '#3B82F6',
-  infoLight: '#DBEAFE',
-  purple: '#8B5CF6',
-  purpleLight: '#F3E8FF',
+const NAV_ICONS = {
+  home: 'grid-outline',
+  market: 'storefront-outline',
+  requests: 'chatbubbles-outline',
+  orders: 'cube-outline',
 };
+
+const STATUS = {
+  PENDING: ['Awaiting Farmer', C.amber, C.amberBg],
+  ACCEPTED: ['Farmer Confirmed', C.blue, C.blueBg],
+  READY_FOR_PICKUP: ['Ready for Pickup', C.amber, C.amberBg],
+  IN_TRANSIT: ['In Transit', C.blue, C.blueBg],
+  DELIVERED: ['Delivered', C.green, C.mint],
+  CANCELLED: ['Cancelled', C.red, C.redBg],
+};
+
+const cropName = (item, lang) =>
+  (lang === 'si' ? item.nameSi : lang === 'ta' ? item.nameTa : item.nameEn) ||
+  item.nameEn ||
+  'Produce';
+
+const money = (value) =>
+  Number(value || 0).toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 
 // ----------------------------------------------------
 // LOCALIZATION
@@ -55,7 +75,7 @@ const TRANSLATIONS = {
     categories: ['All', 'Vegetables', 'Fruits', 'Rice & Grains', 'Spices'],
     tabs: {
       market: 'Fresh Marketplace',
-      customRequests: 'Custom Requests',
+      customRequests: 'Custom Inquiries',
       myOrders: 'My Orders',
     },
     customRequests: {
@@ -74,14 +94,14 @@ const TRANSLATIONS = {
       targetPrice: 'Target Budget:',
       quality: 'Grade:',
       destination: 'Delivery Location:',
-      statusOpen: '⏳ Broadcasted (Open)',
+      statusOpen: 'Open Inquiry',
     },
     labels: {
-      farmer: 'Farmer:',
-      location: 'Farm Location:',
+      farmer: 'Farmer',
+      location: 'Location',
       inStock: 'In Stock',
-      grade: 'Quality:',
-      orderBtn: 'Order Produce',
+      grade: 'Quality',
+      orderBtn: 'Order',
       currency: 'Rs.',
       logout: 'Logout',
     },
@@ -104,6 +124,7 @@ const TRANSLATIONS = {
       READY_FOR_PICKUP: 'Packed for Dispatch 📦',
       IN_TRANSIT: 'In Transit 🚛',
       DELIVERED: 'Delivered ✅',
+      CANCELLED: 'Cancelled ❌',
     },
   },
   si: {
@@ -114,7 +135,7 @@ const TRANSLATIONS = {
     tabs: {
       market: 'නැවුම් වෙළඳපොළ',
       customRequests: 'විශේෂ ඉල්ලුම්',
-      myOrders: 'මගේ ඇණවුම් ',
+      myOrders: 'මගේ ඇණවුම්',
     },
     customRequests: {
       title: 'විශේෂ අස්වනු ඉල්ලුම්',
@@ -132,13 +153,13 @@ const TRANSLATIONS = {
       targetPrice: 'බලාපොරොත්තු මිල:',
       quality: 'තත්ත්ව ශ්‍රේණිය:',
       destination: 'භාරදිය යුතු ස්ථානය:',
-      statusOpen: '⏳ විවෘත ඉල්ලුමක්',
+      statusOpen: 'විවෘත ඉල්ලුමක්',
     },
     labels: {
-      farmer: 'ගොවියා:',
-      location: 'ස්ථානය:',
+      farmer: 'ගොවියා',
+      location: 'ස්ථානය',
       inStock: 'තොග ඇත',
-      grade: 'තත්ත්වය:',
+      grade: 'තත්ත්වය',
       orderBtn: 'ඇණවුම් කරන්න',
       currency: 'රු.',
       logout: 'ඉවත් වන්න',
@@ -162,6 +183,7 @@ const TRANSLATIONS = {
       READY_FOR_PICKUP: 'පැටවීමට සූදානම් 📦',
       IN_TRANSIT: 'ප්‍රවාහනයේ පවතී 🚛',
       DELIVERED: 'භාරදුන්නා ✅',
+      CANCELLED: 'අවලංගු කළා ❌',
     },
   },
   ta: {
@@ -190,13 +212,13 @@ const TRANSLATIONS = {
       targetPrice: 'எதிர்பார்க்கப்படும் விலை:',
       quality: 'தரம்:',
       destination: 'விநியோக இடம்:',
-      statusOpen: '⏳ அனுப்பப்பட்டது (விசாரணை)',
+      statusOpen: 'திறந்த கோரிக்கை',
     },
     labels: {
-      farmer: 'விவசாயி:',
-      location: 'இடம்:',
+      farmer: 'விவசாயி',
+      location: 'இடம்',
       inStock: 'இருப்பில் உள்ளது',
-      grade: 'தரம்:',
+      grade: 'தரம்',
       orderBtn: 'ஆர்டர் செய்',
       currency: 'ரூ.',
       logout: 'வெளியேறு',
@@ -220,6 +242,7 @@ const TRANSLATIONS = {
       READY_FOR_PICKUP: 'தயாராக உள்ளது 📦',
       IN_TRANSIT: 'பயணத்தில் உள்ளது 🚛',
       DELIVERED: 'முடிந்தது ✅',
+      CANCELLED: 'ரத்து செய்யப்பட்டது ❌',
     },
   },
 };
@@ -245,6 +268,20 @@ const SORT_OPTIONS = [
   { id: 'stock_desc', labelEn: 'Stock: High to Low', labelSi: 'තොග: වැඩිවේ සිට', labelTa: 'இருப்பு: கூடியதிலிருந்து' },
 ];
 
+function SectionLabel({ title, action, onPress }) {
+  return (
+    <View style={s.sectionLabel}>
+      <Text accessibilityRole="header" style={s.sectionTitle}>{title}</Text>
+      {action && (
+        <TouchableOpacity onPress={onPress} accessibilityRole="button" style={s.textAction}>
+          <Text style={s.textActionText}>{action}</Text>
+          <Ionicons name="arrow-forward" size={16} color={C.green} />
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+}
+
 export default function BuyerHomeScreen({
   userProfile,
   lang = 'en',
@@ -254,26 +291,56 @@ export default function BuyerHomeScreen({
   onChangeLanguage,
   onProfileUpdated,
 }) {
-  const [activeTab, setActiveTab] = useState('market'); // 'market' | 'customRequests' | 'myOrders'
+  const [activeTab, setActiveTab] = useState('home'); // 'home' | 'market' | 'requests' | 'orders' | 'profile'
   const [showRequestScreen, setShowRequestScreen] = useState(false);
   const [buyerRequests, setBuyerRequests] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState(0);
   const [selectedDistrict, setSelectedDistrict] = useState('All');
   const [sortBy, setSortBy] = useState('newest');
+  const [orderFilter, setOrderFilter] = useState('all'); // 'all' | 'active' | 'completed'
+
   const [selectedProduce, setSelectedProduce] = useState(null);
   const [detailProduce, setDetailProduce] = useState(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [orderQty, setOrderQty] = useState(5);
   const [deliveryAddress, setDeliveryAddress] = useState(
-    userProfile?.district?.nameEn ? `${userProfile.district.nameEn} Central Outlet` : 'Colombo 03'
+    userProfile?.district?.nameEn
+      ? `${userProfile.district.nameEn} Central Outlet`
+      : 'Colombo 03'
   );
   const [deliveryNotes, setDeliveryNotes] = useState('');
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
-  const [showProfileScreen, setShowProfileScreen] = useState(false);
+  const [selectedOrderForTracking, setSelectedOrderForTracking] = useState(null);
 
   const t = TRANSLATIONS[lang] || TRANSLATIONS.en;
+  const nav = BUYER_NAV[lang] || BUYER_NAV.en;
+  const district =
+    typeof userProfile?.district === 'string'
+      ? userProfile.district
+      : userProfile?.district?.nameEn;
+
+  // Android hardware back handler
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (showDetailModal) {
+        setShowDetailModal(false);
+      } else if (showOrderModal) {
+        setShowOrderModal(false);
+      } else if (selectedOrderForTracking) {
+        setSelectedOrderForTracking(null);
+      } else if (showRequestScreen) {
+        setShowRequestScreen(false);
+      } else if (activeTab !== 'home') {
+        setActiveTab('home');
+      } else {
+        return false;
+      }
+      return true;
+    });
+    return () => subscription.remove();
+  }, [showDetailModal, showOrderModal, selectedOrderForTracking, showRequestScreen, activeTab]);
 
   // Real-time listener for buyer's own custom requests
   useEffect(() => {
@@ -284,28 +351,23 @@ export default function BuyerHomeScreen({
     return () => unsub && unsub();
   }, [userProfile?.uid]);
 
-  const handleDeleteRequest = (requestId, cropName) => {
-    Alert.alert(
-      t.customRequests.cancelBtn,
-      `${t.customRequests.cancelConfirm} (${cropName})`,
-      [
-        { text: 'No', style: 'cancel' },
-        {
-          text: 'Yes, Cancel',
-          style: 'destructive',
-          onPress: async () => {
-            await deleteBuyerRequest(requestId);
-          },
-        },
-      ]
-    );
+  const switchTab = (tab) => {
+    setActiveTab(tab);
   };
 
-  const getProduceTitle = (item) => {
-    if (!item) return '';
-    if (lang === 'si') return item.nameSi || item.nameEn;
-    if (lang === 'ta') return item.nameTa || item.nameEn;
-    return item.nameEn;
+  const { replayTour, setTabChangeHandler } = useTour();
+
+  useEffect(() => {
+    if (setTabChangeHandler) {
+      setTabChangeHandler((tab) => {
+        if (tab) switchTab(tab);
+      });
+    }
+  }, [setTabChangeHandler]);
+
+  const handleReplayTour = () => {
+    switchTab('home');
+    replayTour('buyer');
   };
 
   const getProduceUnit = (item) => {
@@ -315,17 +377,42 @@ export default function BuyerHomeScreen({
     return item.unitEn || 'kg';
   };
 
-  // Filter & sort listings based on search, category, origin district & selected sort
+  const handleDeleteRequest = (requestId, crop) => {
+    const title = t.customRequests.cancelBtn;
+    const msg = `${t.customRequests.cancelConfirm} (${crop})`;
+    if (Platform.OS === 'web') {
+      if (window.confirm(`${title}\n\n${msg}`)) {
+        deleteBuyerRequest(requestId);
+      }
+      return;
+    }
+    Alert.alert(title, msg, [
+      { text: 'No', style: 'cancel' },
+      {
+        text: 'Yes, Cancel',
+        style: 'destructive',
+        onPress: async () => {
+          await deleteBuyerRequest(requestId);
+        },
+      },
+    ]);
+  };
+
+  // Filter & sort listings based on search, category, origin district & sort
+  const query = searchQuery.trim().toLowerCase();
   const filteredListings = produceListings
     .filter((item) => {
-      const title = getProduceTitle(item).toLowerCase();
+      const title = cropName(item, lang).toLowerCase();
       const farmer = (item.farmerName || '').toLowerCase();
       const loc = (item.location || '').toLowerCase();
       const desc = (item.description || '').toLowerCase();
-      const query = searchQuery.toLowerCase();
 
       const matchesSearch =
-        title.includes(query) || farmer.includes(query) || loc.includes(query) || desc.includes(query);
+        !query ||
+        title.includes(query) ||
+        farmer.includes(query) ||
+        loc.includes(query) ||
+        desc.includes(query);
 
       if (!matchesSearch) return false;
 
@@ -334,7 +421,8 @@ export default function BuyerHomeScreen({
         const itemCat = (item.category || 'Vegetables').toLowerCase();
         if (selectedCategory === 1 && !itemCat.includes('veg')) return false;
         if (selectedCategory === 2 && !itemCat.includes('fruit')) return false;
-        if (selectedCategory === 3 && !(itemCat.includes('rice') || itemCat.includes('grain'))) return false;
+        if (selectedCategory === 3 && !(itemCat.includes('rice') || itemCat.includes('grain')))
+          return false;
         if (selectedCategory === 4 && !itemCat.includes('spice')) return false;
       }
 
@@ -354,7 +442,6 @@ export default function BuyerHomeScreen({
       if (sortBy === 'price_asc') return (Number(a.price) || 0) - (Number(b.price) || 0);
       if (sortBy === 'price_desc') return (Number(b.price) || 0) - (Number(a.price) || 0);
       if (sortBy === 'stock_desc') return (Number(b.stockQty) || 0) - (Number(a.stockQty) || 0);
-      // Fallback: newest first
       const timeA = a.createdAt?.seconds || 0;
       const timeB = b.createdAt?.seconds || 0;
       return timeB - timeA;
@@ -362,8 +449,27 @@ export default function BuyerHomeScreen({
 
   // Filter buyer's own orders
   const myBuyerOrders = ordersList.filter(
-    (o) => !o.buyerPhone || o.buyerPhone === userProfile?.phoneNumber || o.buyerName === userProfile?.fullName || true
+    (o) =>
+      !o.buyerPhone ||
+      o.buyerPhone === userProfile?.phoneNumber ||
+      o.buyerUid === userProfile?.uid ||
+      o.buyerName === userProfile?.fullName ||
+      true
   );
+
+  const activeBuyerOrders = myBuyerOrders.filter(
+    (order) => !['DELIVERED', 'CANCELLED'].includes(order.status)
+  );
+
+  const totalSpent = myBuyerOrders
+    .filter((o) => o.status !== 'CANCELLED')
+    .reduce((sum, o) => sum + Number(o.totalPrice || 0), 0);
+
+  const visibleOrders = myBuyerOrders.filter((order) => {
+    if (orderFilter === 'active') return !['DELIVERED', 'CANCELLED'].includes(order.status);
+    if (orderFilter === 'completed') return order.status === 'DELIVERED';
+    return true;
+  });
 
   const handleOpenDetailModal = (item) => {
     setDetailProduce(item);
@@ -392,7 +498,7 @@ export default function BuyerHomeScreen({
     }
 
     setIsPlacingOrder(true);
-    const produceName = getProduceTitle(selectedProduce);
+    const produceTitle = cropName(selectedProduce, lang);
     const unitPrice = selectedProduce.price || 0;
     const subtotal = unitPrice * orderQty;
     const logisticsFee = 350;
@@ -400,7 +506,7 @@ export default function BuyerHomeScreen({
 
     const orderPayload = {
       produceId: selectedProduce.id,
-      produceName,
+      produceName: produceTitle,
       qty: orderQty,
       unit: getProduceUnit(selectedProduce),
       unitPrice,
@@ -423,20 +529,33 @@ export default function BuyerHomeScreen({
 
     if (res.success) {
       setShowOrderModal(false);
-      Alert.alert(
-        'Order Placed! 🌾✨',
-        `Your order for ${orderQty} ${getProduceUnit(selectedProduce)} of ${produceName} was placed successfully.\nThe farmer and cooperative logistics have been alerted!`,
-        [
+      const successMessage = `Your order for ${orderQty} ${getProduceUnit(selectedProduce)} of ${produceTitle} was placed successfully.\nThe farmer and cooperative logistics have been alerted!`;
+      if (Platform.OS === 'web') {
+        window.alert(`Order Placed! 🌾✨\n\n${successMessage}`);
+        setActiveTab('orders');
+      } else {
+        Alert.alert('Order Placed! 🌾✨', successMessage, [
           {
             text: 'Track Order',
-            onPress: () => setActiveTab('myOrders'),
+            onPress: () => setActiveTab('orders'),
           },
           { text: 'OK' },
-        ]
-      );
+        ]);
+      }
     } else {
-      Alert.alert('Order Failed', `Could not complete order: ${res.error}`);
+      if (Platform.OS === 'web') {
+        window.alert(`Could not complete order: ${res.error}`);
+      } else {
+        Alert.alert('Order Failed', `Could not complete order: ${res.error}`);
+      }
     }
+  };
+
+  const resetFilters = () => {
+    setSearchQuery('');
+    setSelectedCategory(0);
+    setSelectedDistrict('All');
+    setSortBy('newest');
   };
 
   if (showRequestScreen) {
@@ -447,806 +566,991 @@ export default function BuyerHomeScreen({
         onBack={() => setShowRequestScreen(false)}
         onRequestSubmitted={() => {
           setShowRequestScreen(false);
-          setActiveTab('customRequests');
+          setActiveTab('requests');
         }}
       />
     );
   }
 
-  if (showProfileScreen) {
+  if (selectedOrderForTracking) {
     return (
-      <UserProfileScreen
+      <DeliveryTrackingScreen
+        delivery={selectedOrderForTracking}
         userProfile={userProfile}
         lang={lang}
-        onBack={() => setShowProfileScreen(false)}
+        onBack={() => setSelectedOrderForTracking(null)}
         onLogout={onLogout}
-        onChangeLanguage={onChangeLanguage}
-        onProfileUpdated={(updated) => {
-          if (onProfileUpdated) onProfileUpdated(updated);
-        }}
       />
     );
   }
 
-  return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="light-content" backgroundColor={THEME.navy} />
+  // ----------------------------------------------------
+  // SUB-RENDER: PRODUCE CARD (MATCHING FARMER DESIGN)
+  // ----------------------------------------------------
+  const renderListing = (item) => {
+    const stockVal = Number(item.stockQty || 0);
+    const isOutOfStock = stockVal <= 0;
+    const isLimited = stockVal > 0 && stockVal <= 20;
 
-      {/* TOP HEADER BAR */}
-      <View style={styles.headerBar}>
-        <TouchableOpacity
-          style={styles.brandRow}
-          onPress={() => setShowProfileScreen(true)}
-          activeOpacity={0.8}
-        >
-          <Image
-            source={require('../assets/splash-icon.png')}
-            style={styles.logoBadge}
-            resizeMode="contain"
-          />
-          <View>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Text style={styles.brandGovi}>Govi</Text>
-              <Text style={styles.brandLink}>Link</Text>
-              <View style={styles.roleTag}>
-                <Text style={styles.roleTagText}>🛒 Buyer</Text>
-              </View>
+    return (
+      <View key={item.id} style={s.card}>
+        <View style={s.listingTop}>
+          {item.image ? (
+            <Image source={{ uri: item.image }} style={s.produceImage} />
+          ) : (
+            <View style={[s.produceImage, s.imageFallback]}>
+              <Ionicons name="leaf-outline" size={32} color={C.green} />
             </View>
-            <Text style={styles.buyerWelcome} numberOfLines={1}>
-              Hi, {userProfile?.fullName ? userProfile.fullName.split(' ')[0] : 'Buyer'} • 📍 {userProfile?.district?.nameEn || 'Colombo'}
+          )}
+
+          <View style={s.flex}>
+            <View style={s.badgeRow}>
+              <Text style={s.category}>{item.category || 'Produce'}</Text>
+              {item.grade ? (
+                <Text style={s.gradeBadge}>Grade {item.grade}</Text>
+              ) : null}
+            </View>
+
+            <Text style={s.cardTitle}>{cropName(item, lang)}</Text>
+
+            <View style={s.locationRow}>
+              <Ionicons name="location-outline" size={13} color={C.muted} />
+              <Text style={s.smallText}>{item.location || 'Sri Lanka'}</Text>
+            </View>
+
+            <View style={s.farmerRow}>
+              <Ionicons name="person-outline" size={13} color={C.muted} />
+              <Text style={s.smallText}>
+                {item.farmerName || 'Verified Farmer'}
+              </Text>
+            </View>
+
+            <Text style={s.price}>
+              {t.labels.currency} {money(item.price)}{' '}
+              <Text style={s.unit}>/ {getProduceUnit(item)}</Text>
             </Text>
           </View>
-        </TouchableOpacity>
+        </View>
 
-        <View style={styles.headerRightActions}>
-          {/* Active Orders Pill */}
-          <TouchableOpacity
-            style={styles.ordersPill}
-            onPress={() => setActiveTab('myOrders')}
-          >
-            <Text style={styles.ordersPillText}>
-              📦 {myBuyerOrders.length}
+        {Boolean(item.description) && (
+          <Text style={s.description} numberOfLines={2}>
+            {item.description}
+          </Text>
+        )}
+
+        <View style={s.cardFooter}>
+          <View style={s.stock}>
+            <View
+              style={[
+                s.dot,
+                {
+                  backgroundColor: isOutOfStock
+                    ? C.red
+                    : isLimited
+                    ? C.amber
+                    : C.green,
+                },
+              ]}
+            />
+            <Text style={s.stockText}>
+              {isOutOfStock
+                ? 'Out of Stock'
+                : `${stockVal} ${getProduceUnit(item)} in stock`}
             </Text>
-          </TouchableOpacity>
+          </View>
 
-          {/* Language Switcher Pill */}
+          <View style={s.inlineActions}>
+            <FarmerButton
+              label="Details"
+              icon="eye-outline"
+              secondary
+              onPress={() => handleOpenDetailModal(item)}
+              style={s.compactBtn}
+            />
+            <FarmerButton
+              label={t.labels.orderBtn}
+              icon="cart-outline"
+              disabled={isOutOfStock}
+              onPress={() => handleOpenOrderModal(item)}
+              style={s.compactBtn}
+            />
+          </View>
+        </View>
+      </View>
+    );
+  };
+
+  // ----------------------------------------------------
+  // SUB-RENDER: CUSTOM INQUIRY CARD
+  // ----------------------------------------------------
+  const renderRequest = (req) => {
+    return (
+      <View key={req.id} style={s.card}>
+        <View style={s.cardHeading}>
+          <IconTile name="leaf-outline" />
+          <View style={s.flex}>
+            <Text style={s.cardTitle}>{req.cropName}</Text>
+            <Text style={s.smallText}>{req.category || 'Vegetables'}</Text>
+          </View>
+          <View style={s.openBadge}>
+            <Text style={s.openBadgeText}>Open Inquiry</Text>
+          </View>
+        </View>
+
+        <View style={s.requestMetrics}>
+          <View style={s.flex}>
+            <Text style={s.metricCaption}>Required volume</Text>
+            <Text style={s.metricValue}>
+              {req.quantity} <Text style={s.unit}>{req.unit || 'kg'}</Text>
+            </Text>
+          </View>
+          {!!req.targetPricePerUnit && (
+            <View style={s.flex}>
+              <Text style={s.metricCaption}>Target budget</Text>
+              <Text style={s.metricValue}>
+                {t.labels.currency} {money(req.targetPricePerUnit)}
+              </Text>
+            </View>
+          )}
+        </View>
+
+        <DetailRow
+          icon="location-outline"
+          label={cleanLabel(t.customRequests.targetDistrict)}
+          value={`${req.targetDistrictName || req.targetDistrictEn || 'Island-wide'}${
+            req.specificArea ? ` · ${req.specificArea}` : ''
+          }`}
+        />
+        <DetailRow
+          icon="calendar-outline"
+          label={cleanLabel(t.customRequests.datePeriod)}
+          value={
+            req.datePeriodDescription ||
+            [req.requiredDateStart, req.requiredDateEnd].filter(Boolean).join(' – ') ||
+            'Immediate'
+          }
+        />
+        <DetailRow
+          icon="car-outline"
+          label="Logistics"
+          value={
+            req.deliveryNeeded === false
+              ? 'Farm Self-Pickup by Buyer'
+              : `Delivery: ${req.deliveryAddress || 'Central Destination'}`
+          }
+        />
+        {!!req.qualityGrade && (
+          <DetailRow icon="ribbon-outline" label="Quality grade" value={req.qualityGrade} />
+        )}
+        {!!req.notes && (
+          <View style={s.note}>
+            <Text style={s.noteText}>{req.notes}</Text>
+          </View>
+        )}
+
+        <View style={s.orderActions}>
+          <FarmerButton
+            label={cleanLabel(t.customRequests.cancelBtn)}
+            icon="trash-outline"
+            danger
+            onPress={() => handleDeleteRequest(req.id, req.cropName)}
+          />
+        </View>
+      </View>
+    );
+  };
+
+  // ----------------------------------------------------
+  // SUB-RENDER: BUYER ORDER CARD
+  // ----------------------------------------------------
+  const renderOrder = (order) => {
+    const status = order.status || 'PENDING';
+    const [statusLabel, color, backgroundColor] = STATUS[status] || [
+      status.replace(/_/g, ' '),
+      C.muted,
+      C.canvas,
+    ];
+    const steps = ['PENDING', 'ACCEPTED', 'IN_TRANSIT', 'DELIVERED'];
+    const stepIndex = steps.indexOf(status);
+
+    return (
+      <View key={order.id} style={s.card}>
+        <View style={s.orderTop}>
+          <View style={[s.statusBadge, { backgroundColor }]}>
+            <View style={[s.dot, { backgroundColor: color }]} />
+            <Text style={[s.statusText, { color }]}>{statusLabel}</Text>
+          </View>
+          <Text style={s.orderId}>
+            #{String(order.id || '').slice(-6).toUpperCase()}
+          </Text>
+        </View>
+
+        <Text style={s.cardTitle}>{order.produceName || 'Produce Order'}</Text>
+
+        <View style={s.requestMetrics}>
+          <View style={s.flex}>
+            <Text style={s.metricCaption}>Ordered volume</Text>
+            <Text style={s.metricValue}>
+              {order.qty} <Text style={s.unit}>{order.unit || 'kg'}</Text>
+            </Text>
+          </View>
+          <View style={s.flex}>
+            <Text style={s.metricCaption}>Total payable</Text>
+            <Text style={s.metricValue}>
+              {t.labels.currency} {money(order.totalPrice)}
+            </Text>
+          </View>
+        </View>
+
+        {status !== 'CANCELLED' && (
+          <View style={s.progressRow}>
+            {['Placed', 'Confirmed', 'In Transit', 'Delivered'].map((label, index) => (
+              <View key={label} style={s.progressStep}>
+                <View
+                  style={[
+                    s.progressLine,
+                    index <= stepIndex && { backgroundColor: C.green },
+                  ]}
+                />
+                <Text
+                  style={[
+                    s.progressText,
+                    index <= stepIndex && { color: C.greenDark, fontWeight: '700' },
+                  ]}
+                >
+                  {label}
+                </Text>
+              </View>
+            ))}
+          </View>
+        )}
+
+        <DetailRow
+          icon="person-outline"
+          label="Grower"
+          value={order.farmerName || 'GoviLink Farmer'}
+        />
+        <DetailRow
+          icon="location-outline"
+          label="Delivery address"
+          value={order.deliveryAddress || 'Address on file'}
+        />
+        {!!order.deliveryNotes && (
+          <View style={s.note}>
+            <Text style={s.noteText}>"{order.deliveryNotes}"</Text>
+          </View>
+        )}
+
+        <View style={s.orderActions}>
+          <FarmerButton
+            label="Track Live Delivery"
+            icon="car-outline"
+            secondary
+            onPress={() => setSelectedOrderForTracking(order)}
+          />
+        </View>
+      </View>
+    );
+  };
+
+  return (
+    <SafeAreaView edges={['top', 'left', 'right']} style={s.safe}>
+      <StatusBar barStyle="dark-content" backgroundColor={C.canvas} />
+
+      {/* TOP HEADER BAR (MATCHING FARMER WORKSPACE) */}
+      <View style={s.header}>
+        <TourTarget id="buyer-brand">
+          <View style={s.brand}>
+            <Image
+              source={require('../assets/logo.png')}
+              style={{ width: 88, height: 44 }}
+              resizeMode="contain"
+            />
+            <Text style={s.brandCaption}>BUYER WORKSPACE</Text>
+          </View>
+        </TourTarget>
+
+        <View style={s.headerActions}>
           {onChangeLanguage && (
             <TouchableOpacity
-              style={styles.langPill}
-              onPress={() => {
-                const nextLang = lang === 'en' ? 'si' : lang === 'si' ? 'ta' : 'en';
-                onChangeLanguage(nextLang);
-              }}
+              accessibilityRole="button"
+              accessibilityLabel="Change language"
+              onPress={() =>
+                onChangeLanguage(lang === 'en' ? 'si' : lang === 'si' ? 'ta' : 'en')
+              }
+              style={s.language}
             >
-              <Text style={styles.langPillText}>
+              <Text style={s.languageText}>
                 {lang === 'en' ? 'EN' : lang === 'si' ? 'සිං' : 'தம'}
               </Text>
             </TouchableOpacity>
           )}
 
-          {/* Logout Button */}
           <TouchableOpacity
-            style={styles.logoutBtn}
-            onPress={onLogout}
-            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel={nav.profile}
+            onPress={() => switchTab('profile')}
+            style={s.avatarButton}
           >
-            <Text style={styles.logoutBtnText}>{t.labels.logout}</Text>
+            {userProfile?.photoURL ? (
+              <Image source={{ uri: userProfile.photoURL }} style={s.avatarImage} />
+            ) : (
+              <Text style={s.avatarInitial}>
+                {(userProfile?.fullName || 'B').charAt(0).toUpperCase()}
+              </Text>
+            )}
           </TouchableOpacity>
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
-        {/* TAB SWITCHER */}
-        <View style={styles.tabContainer}>
-          <TouchableOpacity
-            style={[styles.tabBtn, activeTab === 'market' && styles.tabBtnActive]}
-            onPress={() => setActiveTab('market')}
-          >
-            <Text style={[styles.tabText, activeTab === 'market' && styles.tabTextActive]}>
-              🌾 {t.tabs.market}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.tabBtn, activeTab === 'customRequests' && styles.tabBtnActive]}
-            onPress={() => setActiveTab('customRequests')}
-          >
-            <Text style={[styles.tabText, activeTab === 'customRequests' && styles.tabTextActive]}>
-              📋 {t.tabs.customRequests}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.tabBtn, activeTab === 'myOrders' && styles.tabBtnActive]}
-            onPress={() => setActiveTab('myOrders')}
-          >
-            <Text style={[styles.tabText, activeTab === 'myOrders' && styles.tabTextActive]}>
-              📦 {t.tabs.myOrders}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* ============================================== */}
-        {/* TAB 1: FRESH MARKETPLACE BROWSE & SEARCH       */}
-        {/* ============================================== */}
-        {activeTab === 'market' && (
-          <View>
-            {/* Direct Sourcing Banner */}
-            <View style={styles.requestBannerCard}>
-              <View style={styles.requestBannerLeft}>
-                <View style={styles.requestBannerBadgeRow}>
-                  <Text style={styles.requestBannerBadge}>✨ DIRECT SOURCING</Text>
-                </View>
-                <Text style={styles.requestBannerTitle}>{t.customRequests.bannerTitle}</Text>
-                <Text style={styles.requestBannerSub}>{t.customRequests.bannerSub}</Text>
-              </View>
-              <TouchableOpacity
-                style={styles.requestBannerBtn}
-                activeOpacity={0.85}
-                onPress={() => setShowRequestScreen(true)}
-              >
-                <Text style={styles.requestBannerBtnText}>{t.customRequests.bannerBtn}</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Search Input Box */}
-            <View style={styles.searchBarContainer}>
-              <Text style={styles.searchIcon}>🔍</Text>
-              <TextInput
-                style={styles.searchInput}
-                placeholder={t.searchPlaceholder}
-                placeholderTextColor={THEME.textMuted}
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-                clearButtonMode="while-editing"
+      {/* VIEWPORT BODY */}
+      {activeTab === 'profile' ? (
+        <UserProfileScreen
+          embedded
+          farmerDesign
+          userProfile={userProfile}
+          lang={lang}
+          onBack={() => switchTab('home')}
+          onLogout={onLogout}
+          onChangeLanguage={onChangeLanguage}
+          onProfileUpdated={onProfileUpdated}
+          onReplayTour={handleReplayTour}
+        />
+      ) : (
+        <ScrollView
+          key={activeTab}
+          style={s.scroll}
+          contentContainerStyle={s.content}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          {/* TAB 1: OVERVIEW DASHBOARD */}
+          {activeTab === 'home' && (
+            <>
+              <FarmerHeading
+                eyebrow="YOUR MARKETPLACE, AT A GLANCE"
+                title={`Hello, ${userProfile?.fullName?.split(' ')[0] || 'Buyer'}.`}
+                subtitle="Fresh farm harvests from rural growers to your doorstep."
               />
-              {searchQuery ? (
-                <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearSearchBtn}>
-                  <Text style={styles.clearSearchText}>✕</Text>
-                </TouchableOpacity>
-              ) : null}
-            </View>
 
-            {/* Category Chips Scroll */}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScrollView}>
-              {t.categories.map((cat, idx) => (
-                <TouchableOpacity
-                  key={cat}
-                  onPress={() => setSelectedCategory(idx)}
-                  style={[
-                    styles.categoryChip,
-                    selectedCategory === idx && styles.categoryChipActive,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.categoryChipText,
-                      selectedCategory === idx && styles.categoryChipTextActive,
-                    ]}
-                  >
-                    {cat}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+              {/* HERO BANNER MATCHING FARMER HERO */}
+              <View style={s.hero}>
+                <View style={s.heroTop}>
+                  <TourTarget id="buyer-delivery-location">
+                    <View style={s.heroPill}>
+                      <Ionicons name="location-outline" size={13} color="#D1E9D9" />
+                      <Text style={s.heroEyebrow}>{district || 'Sri Lanka'}</Text>
+                    </View>
+                  </TourTarget>
+                  <Ionicons name="storefront-outline" size={36} color="#82AE92" />
+                </View>
+                <Text style={s.heroTitle}>Direct farm sourcing,{'\n'}fresh harvest at fair prices.</Text>
+                <Text style={s.heroSub}>
+                  Connect directly with verified growers.{'\n'}Support local agriculture with transparent pricing.
+                </Text>
+                <TourTarget id="buyer-tab-market">
+                  <FarmerButton
+                    label="Browse Marketplace"
+                    icon="storefront-outline"
+                    onPress={() => switchTab('market')}
+                    style={s.heroButton}
+                  />
+                </TourTarget>
+              </View>
 
-            {/* District / Origin Filter Scroll */}
-            <View style={styles.filterSectionRow}>
-              <Text style={styles.filterSectionTitle}>📍 Origin District:</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 4 }}>
-                {DISTRICT_OPTIONS.map((dist) => (
+              {/* STATS GRID */}
+              <View style={s.statsGrid}>
+                {[
+                  [nav.market, produceListings.length, 'leaf-outline', 'market'],
+                  [nav.requests, buyerRequests.length, 'chatbubbles-outline', 'requests'],
+                  ['Active orders', activeBuyerOrders.length, 'cube-outline', 'orders'],
+                  ['Total spent', `${t.labels.currency} ${money(totalSpent)}`, 'wallet-outline', 'orders'],
+                ].map(([label, value, icon, tab]) => (
                   <TouchableOpacity
-                    key={dist}
-                    onPress={() => setSelectedDistrict(dist)}
-                    style={[
-                      styles.districtChip,
-                      selectedDistrict === dist && styles.districtChipActive,
-                    ]}
+                    key={label}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${label}: ${value}`}
+                    onPress={() => switchTab(tab)}
+                    style={s.statCard}
                   >
-                    <Text
-                      style={[
-                        styles.districtChipText,
-                        selectedDistrict === dist && styles.districtChipTextActive,
-                      ]}
-                    >
-                      {dist === 'All' ? 'All Districts' : dist}
-                    </Text>
+                    <Ionicons name={icon} size={20} color={C.green} />
+                    <Text style={s.statValue}>{value}</Text>
+                    <Text style={s.statLabel}>{label}</Text>
                   </TouchableOpacity>
                 ))}
-              </ScrollView>
-            </View>
+              </View>
 
-            {/* Sort Selector Scroll */}
-            <View style={styles.filterSectionRow}>
-              <Text style={styles.filterSectionTitle}>⚡ Sort By:</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 4 }}>
-                {SORT_OPTIONS.map((sortOpt) => {
-                  const label =
-                    lang === 'si'
-                      ? sortOpt.labelSi
-                      : lang === 'ta'
+              {/* QUICK NEXT STEPS */}
+              <SectionLabel title="Your next steps" />
+              <View style={s.quickCard}>
+                {[
+                  [
+                    'storefront-outline',
+                    'Browse fresh marketplace',
+                    `${filteredListings.length} harvest listings currently available`,
+                    'market',
+                  ],
+                  [
+                    'chatbubbles-outline',
+                    'Broadcast custom inquiry',
+                    'Request specific crops by region and harvest window',
+                    'requests',
+                  ],
+                  [
+                    'cube-outline',
+                    'Track active orders',
+                    `${activeBuyerOrders.length} orders in delivery progress`,
+                    'orders',
+                  ],
+                  [
+                    'person-outline',
+                    'Update delivery profile',
+                    'Keep your address and contact info accurate',
+                    'profile',
+                  ],
+                ].map(([icon, title, subtitle, tab], index) => (
+                  <TouchableOpacity
+                    key={tab}
+                    accessibilityRole="button"
+                    onPress={() => switchTab(tab)}
+                    style={[s.quickRow, index > 0 && s.quickBorder]}
+                  >
+                    <IconTile name={icon} />
+                    <View style={s.flex}>
+                      <Text style={s.quickTitle}>{title}</Text>
+                      <Text style={s.smallText}>{subtitle}</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color={C.muted} />
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* FEATURED CROPS PREVIEW */}
+              <SectionLabel
+                title="Featured harvests"
+                action="View all"
+                onPress={() => switchTab('market')}
+              />
+              {produceListings.slice(0, 3).map(renderListing)}
+            </>
+          )}
+
+          {/* TAB 2: FRESH MARKETPLACE */}
+          {activeTab === 'market' && (
+            <>
+              <FarmerHeading
+                eyebrow="BUYER WORKSPACE"
+                title={cleanLabel(t.tabs.market)}
+                subtitle="Direct sourcing from verified Sri Lankan farmers."
+              />
+
+              {/* DIRECT SOURCING BANNER */}
+              <View style={s.bannerCard}>
+                <View style={s.bannerLeft}>
+                  <View style={s.bannerBadge}>
+                    <Text style={s.bannerBadgeText}>✨ DIRECT SOURCING</Text>
+                  </View>
+                  <Text style={s.bannerTitle}>{t.customRequests.bannerTitle}</Text>
+                  <Text style={s.bannerSub}>{t.customRequests.bannerSub}</Text>
+                </View>
+                <FarmerButton
+                  label={t.customRequests.postBtn}
+                  secondary
+                  onPress={() => setShowRequestScreen(true)}
+                  style={{ alignSelf: 'flex-start', marginTop: 12 }}
+                />
+              </View>
+
+              {/* SEARCH BOX MATCHING FARMER WORKSPACE */}
+              <TourTarget id="buyer-search-filter">
+                <View style={s.searchBox}>
+                  <Ionicons name="search-outline" size={20} color={C.muted} />
+                  <TextInput
+                    accessibilityLabel="Search marketplace"
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                    placeholder={t.searchPlaceholder}
+                    placeholderTextColor={C.muted}
+                    style={s.searchInput}
+                  />
+                  {!!searchQuery && (
+                    <TouchableOpacity
+                      accessibilityRole="button"
+                      accessibilityLabel="Clear search"
+                      onPress={() => setSearchQuery('')}
+                      style={s.clearSearch}
+                    >
+                      <Ionicons name="close-circle" size={20} color={C.muted} />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </TourTarget>
+
+              {/* CATEGORY CHIPS */}
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={s.filters}
+              >
+                {t.categories.map((cat, idx) => (
+                  <FilterChip
+                    key={cat}
+                    label={cat}
+                    selected={selectedCategory === idx}
+                    onPress={() => setSelectedCategory(idx)}
+                  />
+                ))}
+              </ScrollView>
+
+              {/* DISTRICT ORIGIN CHIPS */}
+              <View style={s.filterRowWrap}>
+                <Text style={s.filterLabel}>Origin District:</Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={s.filters}
+                >
+                  {DISTRICT_OPTIONS.map((dist) => (
+                    <FilterChip
+                      key={dist}
+                      label={dist === 'All' ? 'All Districts' : dist}
+                      selected={selectedDistrict === dist}
+                      onPress={() => setSelectedDistrict(dist)}
+                    />
+                  ))}
+                </ScrollView>
+              </View>
+
+              {/* SORT CHIPS */}
+              <View style={s.filterRowWrap}>
+                <Text style={s.filterLabel}>Sort By:</Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={s.filters}
+                >
+                  {SORT_OPTIONS.map((sortOpt) => {
+                    const label =
+                      lang === 'si'
+                        ? sortOpt.labelSi
+                        : lang === 'ta'
                         ? sortOpt.labelTa
                         : sortOpt.labelEn;
-                  return (
-                    <TouchableOpacity
-                      key={sortOpt.id}
-                      onPress={() => setSortBy(sortOpt.id)}
-                      style={[
-                        styles.sortChip,
-                        sortBy === sortOpt.id && styles.sortChipActive,
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.sortChipText,
-                          sortBy === sortOpt.id && styles.sortChipTextActive,
-                        ]}
-                      >
-                        {label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-            </View>
-
-            <View style={styles.marketTitleRow}>
-              <Text style={styles.sectionHeader}>{t.dashboardTitle}</Text>
-              <Text style={styles.itemCountText}>{filteredListings.length} available</Text>
-            </View>
-
-            {/* Produce Cards */}
-            {filteredListings.length === 0 ? (
-              <View style={styles.emptyCard}>
-                <Text style={styles.emptyIcon}>🔍</Text>
-                <Text style={styles.emptyTitle}>No matching produce found</Text>
-                <Text style={styles.emptySubtitle}>Try changing your search term, origin district, or category filter.</Text>
+                    return (
+                      <FilterChip
+                        key={sortOpt.id}
+                        label={label}
+                        selected={sortBy === sortOpt.id}
+                        onPress={() => setSortBy(sortOpt.id)}
+                      />
+                    );
+                  })}
+                </ScrollView>
               </View>
-            ) : (
-              filteredListings.map((item) => {
-                const stockVal = Number(item.stockQty || 0);
-                const isOutOfStock = stockVal <= 0;
-                const isLimited = stockVal > 0 && stockVal <= 20;
 
-                return (
-                  <TouchableOpacity
-                    key={item.id}
-                    style={styles.produceCard}
-                    activeOpacity={0.9}
-                    onPress={() => handleOpenDetailModal(item)}
-                  >
-                    <Image source={{ uri: item.image }} style={styles.produceImage} resizeMode="cover" />
-                    <View style={styles.produceDetails}>
-                      <View style={styles.badgeRow}>
-                        <View
-                          style={[
-                            styles.stockBadge,
-                            isOutOfStock && { backgroundColor: '#FEE2E2' },
-                            isLimited && { backgroundColor: THEME.warningLight },
-                          ]}
-                        >
-                          <Text
-                            style={[
-                              styles.stockBadgeText,
-                              isOutOfStock && { color: THEME.danger },
-                              isLimited && { color: THEME.warning },
-                            ]}
-                          >
-                            {isOutOfStock
-                              ? '🔴 Out of Stock'
-                              : isLimited
-                                ? `🟡 Low Stock (${stockVal} ${getProduceUnit(item)})`
-                                : `✓ In Stock (${stockVal} ${getProduceUnit(item)})`}
-                          </Text>
-                        </View>
-                        <Text style={styles.locationText}>📍 {item.location || 'Sri Lanka'}</Text>
-                      </View>
+              <Text style={s.resultCount}>
+                Marketplace · {filteredListings.length} listings available
+              </Text>
 
-                      <Text style={styles.produceName}>{getProduceTitle(item)}</Text>
+              {/* LISTINGS / EMPTY */}
+              {filteredListings.length ? (
+                filteredListings.map((item, idx) =>
+                  idx === 0 ? (
+                    <TourTarget key={item.id} id="buyer-product-card">
+                      {renderListing(item)}
+                    </TourTarget>
+                  ) : (
+                    renderListing(item)
+                  )
+                )
+              ) : produceListings.length ? (
+                <FarmerEmpty
+                  icon="search-outline"
+                  title={nav.empty}
+                  subtitle="Try a different search term, category, or origin district."
+                  action={nav.reset}
+                  onAction={resetFilters}
+                />
+              ) : (
+                <FarmerEmpty
+                  icon="leaf-outline"
+                  title="No produce listings available"
+                  subtitle="Fresh produce will appear here once farmers list their harvests."
+                />
+              )}
+            </>
+          )}
 
-                      {item.grade ? (
-                        <Text style={styles.gradeBadge}>🌿 Grade: {item.grade}</Text>
-                      ) : null}
+          {/* TAB 3: CUSTOM HARVEST INQUIRIES */}
+          {activeTab === 'requests' && (
+            <>
+              <FarmerHeading
+                eyebrow="BUYER WORKSPACE"
+                title={cleanLabel(t.customRequests.title)}
+                subtitle={t.customRequests.subtitle}
+              />
 
-                      <Text style={styles.farmerSubText}>
-                        {t.labels.farmer}{' '}
-                        <Text style={{ fontWeight: '600', color: THEME.textDark }}>
-                          {item.farmerName || 'Local Cooperative'}
-                        </Text>
-                      </Text>
-
-                      <View style={styles.priceRow}>
-                        <View>
-                          <Text style={styles.priceText}>
-                            {t.labels.currency} {Number(item.price).toFixed(2)}
-                          </Text>
-                          <Text style={styles.unitSub}>per {getProduceUnit(item)}</Text>
-                        </View>
-
-                        <View style={{ flexDirection: 'row', gap: 6 }}>
-                          <TouchableOpacity
-                            style={styles.detailBtn}
-                            activeOpacity={0.8}
-                            onPress={() => handleOpenDetailModal(item)}
-                          >
-                            <Text style={styles.detailBtnText}>👁️ View</Text>
-                          </TouchableOpacity>
-
-                          <TouchableOpacity
-                            style={[styles.orderButton, isOutOfStock && { backgroundColor: '#94A3B8' }]}
-                            disabled={isOutOfStock}
-                            activeOpacity={0.85}
-                            onPress={() => handleOpenOrderModal(item)}
-                          >
-                            <Text style={styles.orderButtonText}>🛒 {t.labels.orderBtn}</Text>
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })
-            )}
-          </View>
-        )}
-
-        {/* ============================================== */}
-        {/* TAB 2: CUSTOM HARVEST REQUESTS & BROADCASTS    */}
-        {/* ============================================== */}
-        {activeTab === 'customRequests' && (
-          <View>
-            <View style={styles.requestsHeaderRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.sectionHeader}>{t.customRequests.title}</Text>
-                <Text style={styles.sectionSubText}>{t.customRequests.subtitle}</Text>
-              </View>
-              <TouchableOpacity
-                style={styles.newRequestTopBtn}
-                onPress={() => setShowRequestScreen(true)}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.newRequestTopBtnText}>{t.customRequests.postBtn}</Text>
-              </TouchableOpacity>
-            </View>
-
-            {buyerRequests.length === 0 ? (
-              <View style={styles.emptyCard}>
-                <Text style={styles.emptyIcon}>📋</Text>
-                <Text style={styles.emptyTitle}>{t.customRequests.emptyTitle}</Text>
-                <Text style={styles.emptySubtitle}>{t.customRequests.emptySub}</Text>
-                <TouchableOpacity
-                  style={[styles.newRequestTopBtn, { marginTop: 14, alignSelf: 'center' }]}
+              <View style={s.addRow}>
+                <FarmerButton
+                  label={t.customRequests.postBtn}
+                  icon="add"
                   onPress={() => setShowRequestScreen(true)}
+                />
+              </View>
+
+              <Text style={s.resultCount}>
+                Inquiries · {buyerRequests.length} active
+              </Text>
+
+              {buyerRequests.length ? (
+                buyerRequests.map(renderRequest)
+              ) : (
+                <FarmerEmpty
+                  icon="clipboard-outline"
+                  title={t.customRequests.emptyTitle}
+                  subtitle={t.customRequests.emptySub}
+                  action={t.customRequests.postBtn}
+                  onAction={() => setShowRequestScreen(true)}
+                />
+              )}
+            </>
+          )}
+
+          {/* TAB 4: MY ORDERS */}
+          {activeTab === 'orders' && (
+            <>
+              <FarmerHeading
+                eyebrow="BUYER WORKSPACE"
+                title={cleanLabel(t.tabs.myOrders)}
+                subtitle="Track fulfillment, farmer dispatch & cooperative delivery in real time."
+              />
+
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={s.filters}
+              >
+                {[
+                  ['all', nav.all],
+                  ['active', nav.active],
+                  ['completed', nav.completed],
+                ].map(([key, label]) => (
+                  <FilterChip
+                    key={key}
+                    label={label}
+                    selected={orderFilter === key}
+                    onPress={() => setOrderFilter(key)}
+                  />
+                ))}
+              </ScrollView>
+
+              <Text style={s.resultCount}>
+                Orders · {visibleOrders.length}
+              </Text>
+
+              {visibleOrders.length ? (
+                visibleOrders.map(renderOrder)
+              ) : myBuyerOrders.length ? (
+                <FarmerEmpty
+                  icon="cube-outline"
+                  title="No matching orders"
+                  subtitle="There are no orders matching this filter."
+                  action={nav.reset}
+                  onAction={() => setOrderFilter('all')}
+                />
+              ) : (
+                <FarmerEmpty
+                  icon="cube-outline"
+                  title="No orders placed yet"
+                  subtitle="Browse the marketplace and place your first fresh farm order!"
+                  action="Browse Marketplace"
+                  onAction={() => switchTab('market')}
+                />
+              )}
+            </>
+          )}
+        </ScrollView>
+      )}
+
+      {/* BOTTOM TAB NAVIGATION (MATCHING FARMER WORKSPACE) */}
+      <SafeAreaView edges={['bottom']} style={s.navSafe}>
+        <View role="tablist" style={s.nav}>
+          {Object.keys(NAV_ICONS).map((key) => {
+            const selected = key === activeTab;
+            const count =
+              key === 'requests'
+                ? buyerRequests.length
+                : key === 'orders'
+                ? activeBuyerOrders.length
+                : 0;
+            return (
+              <TourTarget key={key} id={"buyer-tab-" + key} style={{ flex: 1 }}>
+                <TouchableOpacity
+                  accessibilityRole="tab"
+                  accessibilityLabel={nav[key]}
+                  accessibilityState={{ selected }}
+                  aria-selected={selected}
+                  onPress={() => switchTab(key)}
+                  style={s.navItem}
                 >
-                  <Text style={styles.newRequestTopBtnText}>+ Broadcast First Request</Text>
+                  <View style={[s.navIcon, selected && s.navIconActive]}>
+                    <Ionicons
+                      name={NAV_ICONS[key]}
+                      size={22}
+                      color={selected ? C.greenDark : C.muted}
+                    />
+                    {count > 0 && (
+                      <View style={s.navBadge}>
+                        <Text style={s.navBadgeText}>{count > 9 ? '9+' : count}</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text
+                    numberOfLines={2}
+                    style={[s.navLabel, selected && s.navLabelActive]}
+                  >
+                    {nav[key]}
+                  </Text>
                 </TouchableOpacity>
-              </View>
-            ) : (
-              buyerRequests.map((req) => (
-                <View key={req.id} style={styles.customRequestCard}>
-                  <View style={styles.reqCardHeader}>
-                    <View style={styles.reqCropRow}>
-                      <Text style={styles.reqCropIcon}>
-                        {req.cropName?.toLowerCase().includes('carrot')
-                          ? '🥕'
-                          : req.cropName?.toLowerCase().includes('potato')
-                            ? '🥔'
-                            : req.cropName?.toLowerCase().includes('leek')
-                              ? '🌱'
-                              : req.cropName?.toLowerCase().includes('tomato')
-                                ? '🍅'
-                                : req.cropName?.toLowerCase().includes('cabbage')
-                                  ? '🥬'
-                                  : req.cropName?.toLowerCase().includes('rice')
-                                    ? '🌾'
-                                    : req.cropName?.toLowerCase().includes('banana')
-                                      ? '🍌'
-                                      : req.cropName?.toLowerCase().includes('papaya')
-                                        ? '🍈'
-                                        : '🌱'}
-                      </Text>
-                      <View>
-                        <Text style={styles.reqCropName}>{req.cropName}</Text>
-                        <Text style={styles.reqCategoryBadge}>🏷️ {req.category || 'Vegetables'}</Text>
-                      </View>
-                    </View>
-                    <View style={styles.reqStatusBadge}>
-                      <Text style={styles.reqStatusText}>{t.customRequests.statusOpen}</Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.reqInfoGrid}>
-                    <View style={styles.reqInfoItem}>
-                      <Text style={styles.reqInfoLabel}>⚖️ Quantity:</Text>
-                      <Text style={styles.reqInfoValue}>
-                        {req.quantity} {req.unit || 'kg'}
-                      </Text>
-                    </View>
-                    <View style={styles.reqInfoItem}>
-                      <Text style={styles.reqInfoLabel}>📍 {t.customRequests.targetDistrict}</Text>
-                      <Text style={styles.reqInfoValue} numberOfLines={1}>
-                        {req.targetDistrictName || req.targetDistrictEn || 'Island-wide'}
-                        {req.specificArea ? ` (${req.specificArea})` : ''}
-                      </Text>
-                    </View>
-                    <View style={styles.reqInfoItem}>
-                      <Text style={styles.reqInfoLabel}>📅 {t.customRequests.datePeriod}</Text>
-                      <Text style={styles.reqInfoValue}>
-                        {req.datePeriodDescription || `${req.requiredDateStart} to ${req.requiredDateEnd}`}
-                      </Text>
-                    </View>
-                    {req.targetPricePerUnit ? (
-                      <View style={styles.reqInfoItem}>
-                        <Text style={styles.reqInfoLabel}>💰 {t.customRequests.targetPrice}</Text>
-                        <Text style={styles.reqInfoValue}>
-                          Rs. {req.targetPricePerUnit} / {req.unit || 'kg'}
-                        </Text>
-                      </View>
-                    ) : null}
-                    {req.qualityGrade ? (
-                      <View style={styles.reqInfoItem}>
-                        <Text style={styles.reqInfoLabel}>✨ {t.customRequests.quality}</Text>
-                        <Text style={styles.reqInfoValue} numberOfLines={1}>{req.qualityGrade}</Text>
-                      </View>
-                    ) : null}
-                  </View>
-
-                  {req.notes ? (
-                    <View style={styles.reqNotesBox}>
-                      <Text style={styles.reqNotesText}>📝 "{req.notes}"</Text>
-                    </View>
-                  ) : null}
-
-                  <View style={styles.reqFooter}>
-                    <Text style={styles.reqDeliveryText} numberOfLines={1}>
-                      {req.deliveryNeeded === false ? '🚜 Farm Self-Pickup by Buyer' : `🚚 Deliver to: ${req.deliveryAddress || 'Central Destination'}`}
-                    </Text>
-                    <TouchableOpacity
-                      style={styles.reqDeleteBtn}
-                      onPress={() => handleDeleteRequest(req.id, req.cropName)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={styles.reqDeleteBtnText}>🗑️ {t.customRequests.cancelBtn}</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ))
-            )}
-          </View>
-        )}
-
-        {/* ============================================== */}
-        {/* TAB 3: MY ORDERS & REAL-TIME TRACKING          */}
-        {/* ============================================== */}
-        {activeTab === 'myOrders' && (
-          <View>
-            <Text style={styles.sectionHeader}>{t.tabs.myOrders}</Text>
-            {myBuyerOrders.length === 0 ? (
-              <View style={styles.emptyCard}>
-                <Text style={styles.emptyIcon}>🛒</Text>
-                <Text style={styles.emptyTitle}>No orders placed yet</Text>
-                <Text style={styles.emptySubtitle}>Browse the marketplace and place your first fresh farm order!</Text>
-              </View>
-            ) : (
-              myBuyerOrders.map((order) => {
-                const status = order.status || 'PENDING';
-                const statusLabel = t.orderStatus[status] || status;
-
-                return (
-                  <View key={order.id} style={styles.buyerOrderCard}>
-                    <View style={styles.orderTopHeader}>
-                      <View style={styles.orderIdBadge}>
-                        <Text style={styles.orderIdText}>
-                          ORDER #{order.id ? order.id.slice(-6).toUpperCase() : 'GL-100'}
-                        </Text>
-                      </View>
-                      <View style={[
-                        styles.statusPill,
-                        status === 'PENDING' && { backgroundColor: THEME.warningLight },
-                        status === 'ACCEPTED' && { backgroundColor: THEME.infoLight },
-                        status === 'IN_TRANSIT' && { backgroundColor: THEME.warningLight },
-                        status === 'DELIVERED' && { backgroundColor: THEME.emeraldLight },
-                      ]}>
-                        <Text style={[
-                          styles.statusPillText,
-                          status === 'PENDING' && { color: THEME.warning },
-                          status === 'ACCEPTED' && { color: THEME.info },
-                          status === 'IN_TRANSIT' && { color: THEME.warning },
-                          status === 'DELIVERED' && { color: THEME.emerald },
-                        ]}>
-                          {statusLabel}
-                        </Text>
-                      </View>
-                    </View>
-
-                    <Text style={styles.orderProduceTitle}>{order.produceName || 'Fresh Harvest Crop'}</Text>
-
-                    <View style={styles.buyerOrderDetailsRow}>
-                      <Text style={styles.buyerOrderSub}>
-                        👨‍🌾 Farmer: <Text style={{ fontWeight: '600', color: THEME.textDark }}>{order.farmerName || 'GoviLink Farmer'}</Text>
-                      </Text>
-                      <Text style={styles.buyerOrderSub}>
-                        📍 Delivery: <Text style={{ fontWeight: '600', color: THEME.textDark }}>{order.deliveryAddress || 'Address on file'}</Text>
-                      </Text>
-                    </View>
-
-                    {/* LIVE TRACKING STEPPER */}
-                    <View style={styles.stepperContainer}>
-                      <View style={[styles.stepItem, { opacity: 1 }]}>
-                        <View style={[styles.stepDot, styles.stepDotActive]} />
-                        <Text style={styles.stepText}>Placed</Text>
-                      </View>
-                      <View style={[styles.stepLine, (status === 'ACCEPTED' || status === 'IN_TRANSIT' || status === 'DELIVERED') && styles.stepLineActive]} />
-                      <View style={[styles.stepItem, (status === 'ACCEPTED' || status === 'IN_TRANSIT' || status === 'DELIVERED') ? { opacity: 1 } : { opacity: 0.4 }]}>
-                        <View style={[styles.stepDot, (status === 'ACCEPTED' || status === 'IN_TRANSIT' || status === 'DELIVERED') && styles.stepDotActive]} />
-                        <Text style={styles.stepText}>Confirmed</Text>
-                      </View>
-                      <View style={[styles.stepLine, (status === 'IN_TRANSIT' || status === 'DELIVERED') && styles.stepLineActive]} />
-                      <View style={[styles.stepItem, (status === 'IN_TRANSIT' || status === 'DELIVERED') ? { opacity: 1 } : { opacity: 0.4 }]}>
-                        <View style={[styles.stepDot, (status === 'IN_TRANSIT' || status === 'DELIVERED') && styles.stepDotActive]} />
-                        <Text style={styles.stepText}>In Transit</Text>
-                      </View>
-                      <View style={[styles.stepLine, status === 'DELIVERED' && styles.stepLineActive]} />
-                      <View style={[styles.stepItem, status === 'DELIVERED' ? { opacity: 1 } : { opacity: 0.4 }]}>
-                        <View style={[styles.stepDot, status === 'DELIVERED' && styles.stepDotActive]} />
-                        <Text style={styles.stepText}>Delivered</Text>
-                      </View>
-                    </View>
-
-                    <View style={styles.orderFooterTotalRow}>
-                      <Text style={styles.orderFooterQty}>
-                        Quantity: <Text style={{ fontWeight: 'bold', color: THEME.textDark }}>{order.qty} {order.unit || 'kg'}</Text>
-                      </Text>
-                      <Text style={styles.orderFooterPrice}>
-                        Total: {t.labels.currency} {Number(order.totalPrice || 0).toFixed(2)}
-                      </Text>
-                    </View>
-                  </View>
-                );
-              })
-            )}
-          </View>
-        )}
-      </ScrollView>
+              </TourTarget>
+            );
+          })}
+        </View>
+      </SafeAreaView>
 
       {/* ============================================== */}
       {/* MODAL: ORDER CONFIRMATION SHEET                */}
       {/* ============================================== */}
       {selectedProduce && (
-        <Modal visible={showOrderModal} transparent animationType="slide">
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <View style={styles.modalHeaderRow}>
-                <Text style={styles.modalTitle}>{t.modal.title}</Text>
-                <TouchableOpacity onPress={() => setShowOrderModal(false)} style={styles.closeBtn}>
-                  <Text style={{ fontSize: 16, color: THEME.textMuted }}>✕</Text>
+        <Modal visible={showOrderModal} transparent animationType="fade" onRequestClose={() => setShowOrderModal(false)}>
+          <View style={s.modalOverlay}>
+            <View style={s.modalCardLarge}>
+              <View style={s.modalTop}>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.modalTitle}>{t.modal.title}</Text>
+                  <Text style={s.smallText}>
+                    Direct from {selectedProduce.farmerName || 'Grower'}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => setShowOrderModal(false)}
+                  style={s.closeIconBtn}
+                >
+                  <Ionicons name="close" size={22} color={C.ink} />
                 </TouchableOpacity>
               </View>
 
-              <ScrollView showsVerticalScrollIndicator={false}>
-                <Text style={styles.modalProduceName}>{getProduceTitle(selectedProduce)}</Text>
-                <Text style={styles.modalFarmerText}>
-                  👨‍🌾 {selectedProduce.farmerName} • 📍 {selectedProduce.location}
-                </Text>
-
-                {/* QUANTITY CONTROLS */}
-                <View style={styles.qtyContainer}>
-                  <Text style={styles.qtyLabel}>{t.modal.qtyLabel}:</Text>
-                  <View style={styles.qtyControls}>
-                    <TouchableOpacity
-                      style={styles.qtyBtn}
-                      onPress={() => setOrderQty(Math.max(1, orderQty - 1))}
-                    >
-                      <Text style={styles.qtyBtnText}>-</Text>
-                    </TouchableOpacity>
-                    <Text style={styles.qtyValText}>
-                      {orderQty} {getProduceUnit(selectedProduce)}
+              <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 420 }}>
+                {/* PRODUCE SUMMARY */}
+                <View style={s.produceSummaryCard}>
+                  {selectedProduce.image ? (
+                    <Image source={{ uri: selectedProduce.image }} style={s.produceThumbnail} />
+                  ) : (
+                    <View style={[s.produceThumbnail, s.imageFallback]}>
+                      <Ionicons name="leaf-outline" size={20} color={C.green} />
+                    </View>
+                  )}
+                  <View style={s.flex}>
+                    <Text style={s.quickTitle}>{cropName(selectedProduce, lang)}</Text>
+                    <Text style={s.smallText}>
+                      {t.labels.currency} {money(selectedProduce.price)} per{' '}
+                      {getProduceUnit(selectedProduce)}
                     </Text>
-                    <TouchableOpacity
-                      style={styles.qtyBtn}
-                      onPress={() => setOrderQty(orderQty + 1)}
-                    >
-                      <Text style={styles.qtyBtnText}>+</Text>
-                    </TouchableOpacity>
                   </View>
                 </View>
 
+                {/* QUANTITY PICKER */}
+                <Text style={s.inputLabel}>{t.modal.qtyLabel}:</Text>
+                <View style={s.qtyControlRow}>
+                  <TouchableOpacity
+                    style={s.qtyButton}
+                    onPress={() => setOrderQty(Math.max(1, orderQty - 1))}
+                  >
+                    <Ionicons name="remove" size={18} color={C.greenDark} />
+                  </TouchableOpacity>
+                  <Text style={s.qtyValue}>
+                    {orderQty} {getProduceUnit(selectedProduce)}
+                  </Text>
+                  <TouchableOpacity
+                    style={s.qtyButton}
+                    onPress={() => setOrderQty(orderQty + 1)}
+                  >
+                    <Ionicons name="add" size={18} color={C.greenDark} />
+                  </TouchableOpacity>
+                </View>
+
                 {/* QUICK QTY CHIPS */}
-                <View style={styles.quickQtyRow}>
+                <View style={s.quickChipsWrap}>
                   {[5, 10, 25, 50, 100].map((num) => (
-                    <TouchableOpacity
+                    <FilterChip
                       key={num}
-                      style={[styles.quickQtyPill, orderQty === num && styles.quickQtyPillActive]}
+                      label={`${num} ${getProduceUnit(selectedProduce)}`}
+                      selected={orderQty === num}
                       onPress={() => setOrderQty(num)}
-                    >
-                      <Text style={[styles.quickQtyText, orderQty === num && styles.quickQtyTextActive]}>
-                        {num} {getProduceUnit(selectedProduce)}
-                      </Text>
-                    </TouchableOpacity>
+                    />
                   ))}
                 </View>
 
                 {/* DESTINATION INPUT */}
-                <Text style={styles.fieldLabel}>{t.modal.deliveryLabel}</Text>
+                <Text style={s.inputLabel}>{t.modal.deliveryLabel}:</Text>
                 <TextInput
-                  style={styles.inputField}
+                  style={s.modalInput}
                   placeholder={t.modal.deliveryPlaceholder}
-                  placeholderTextColor={THEME.textMuted}
+                  placeholderTextColor={C.muted}
                   value={deliveryAddress}
                   onChangeText={setDeliveryAddress}
                 />
 
                 {/* SPECIAL NOTES */}
-                <Text style={styles.fieldLabel}>{t.modal.notesLabel}</Text>
+                <Text style={s.inputLabel}>{t.modal.notesLabel}:</Text>
                 <TextInput
-                  style={[styles.inputField, { height: 60 }]}
+                  style={[s.modalInput, { height: 60, textAlignVertical: 'top' }]}
                   placeholder={t.modal.notesPlaceholder}
-                  placeholderTextColor={THEME.textMuted}
+                  placeholderTextColor={C.muted}
                   multiline
                   value={deliveryNotes}
                   onChangeText={setDeliveryNotes}
                 />
 
-                {/* BREAKDOWN */}
-                <View style={styles.priceBreakdownBox}>
-                  <View style={styles.breakdownRow}>
-                    <Text style={styles.breakdownLabel}>{t.modal.subtotal}</Text>
-                    <Text style={styles.breakdownValue}>
-                      {t.labels.currency} {((selectedProduce.price || 0) * orderQty).toFixed(2)}
+                {/* PRICE BREAKDOWN BOX */}
+                <View style={s.breakdownCard}>
+                  <View style={s.breakdownRow}>
+                    <Text style={s.breakdownLabel}>{t.modal.subtotal}</Text>
+                    <Text style={s.breakdownValue}>
+                      {t.labels.currency}{' '}
+                      {money((selectedProduce.price || 0) * orderQty)}
                     </Text>
                   </View>
-                  <View style={styles.breakdownRow}>
-                    <Text style={styles.breakdownLabel}>{t.modal.estLogistics}</Text>
-                    <Text style={styles.breakdownValue}>{t.labels.currency} 350.00</Text>
-                  </View>
-                  <View style={[styles.breakdownRow, { borderTopWidth: 1, borderTopColor: THEME.border, paddingTop: 6, marginTop: 4 }]}>
-                    <Text style={styles.totalLabel}>{t.modal.totalPrice}</Text>
-                    <Text style={styles.totalVal}>
-                      {t.labels.currency} {(((selectedProduce.price || 0) * orderQty) + 350).toFixed(2)}
+                  <View style={s.breakdownRow}>
+                    <Text style={s.breakdownLabel}>{t.modal.estLogistics}</Text>
+                    <Text style={s.breakdownValue}>
+                      {t.labels.currency} 350.00
                     </Text>
                   </View>
-                </View>
-
-                <View style={styles.modalActionRow}>
-                  <TouchableOpacity
-                    style={[styles.modalBtn, styles.modalBtnCancel]}
-                    onPress={() => setShowOrderModal(false)}
-                  >
-                    <Text style={styles.modalBtnCancelText}>{t.modal.cancelBtn}</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[styles.modalBtn, styles.modalBtnConfirm]}
-                    disabled={isPlacingOrder}
-                    onPress={handleConfirmOrder}
-                  >
-                    {isPlacingOrder ? (
-                      <ActivityIndicator size="small" color="#FFF" />
-                    ) : (
-                      <Text style={styles.modalBtnConfirmText}>{t.modal.confirmBtn}</Text>
-                    )}
-                  </TouchableOpacity>
+                  <View style={[s.breakdownRow, s.breakdownTotalRow]}>
+                    <Text style={s.breakdownTotalLabel}>{t.modal.totalPrice}</Text>
+                    <Text style={s.breakdownTotalValue}>
+                      {t.labels.currency}{' '}
+                      {money((selectedProduce.price || 0) * orderQty + 350)}
+                    </Text>
+                  </View>
                 </View>
               </ScrollView>
+
+              <View style={s.modalActions}>
+                <FarmerButton
+                  label={t.modal.cancelBtn}
+                  secondary
+                  onPress={() => setShowOrderModal(false)}
+                  style={s.flex}
+                />
+                <FarmerButton
+                  label={t.modal.confirmBtn}
+                  icon="checkmark-outline"
+                  loading={isPlacingOrder}
+                  onPress={handleConfirmOrder}
+                  style={s.flex}
+                />
+              </View>
             </View>
           </View>
         </Modal>
       )}
 
       {/* ============================================== */}
-      {/* MODAL: PRODUCT DETAILS SHEET                   */}
+      {/* MODAL: PRODUCT DETAILS OVERVIEW SHEET          */}
       {/* ============================================== */}
       {detailProduce && (
-        <Modal visible={showDetailModal} transparent animationType="slide">
-          <View style={styles.modalOverlay}>
-            <View style={[styles.modalContent, { maxHeight: '92%' }]}>
-              <View style={styles.modalHeaderRow}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Text style={styles.modalTitle}>🌾 Produce Overview</Text>
+        <Modal visible={showDetailModal} transparent animationType="fade" onRequestClose={() => setShowDetailModal(false)}>
+          <View style={s.modalOverlay}>
+            <View style={s.modalCardLarge}>
+              <View style={s.modalTop}>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.modalTitle}>Produce Overview</Text>
+                  <Text style={s.smallText}>Fresh farm harvest details</Text>
                 </View>
-                <TouchableOpacity onPress={() => setShowDetailModal(false)} style={styles.closeBtn}>
-                  <Text style={{ fontSize: 16, color: THEME.textMuted }}>✕</Text>
+                <TouchableOpacity
+                  onPress={() => setShowDetailModal(false)}
+                  style={s.closeIconBtn}
+                >
+                  <Ionicons name="close" size={22} color={C.ink} />
                 </TouchableOpacity>
               </View>
 
-              <ScrollView showsVerticalScrollIndicator={false}>
+              <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 460 }}>
                 {detailProduce.image ? (
-                  <Image
-                    source={{ uri: detailProduce.image }}
-                    style={styles.detailCoverImage}
-                    resizeMode="cover"
-                  />
+                  <Image source={{ uri: detailProduce.image }} style={s.detailImage} />
                 ) : null}
 
                 <View style={{ marginTop: 12 }}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Text style={styles.modalProduceName}>{getProduceTitle(detailProduce)}</Text>
-                    <Text style={styles.detailPriceTag}>
-                      {t.labels.currency} {Number(detailProduce.price).toFixed(2)} / {getProduceUnit(detailProduce)}
+                  <View style={s.badgeRow}>
+                    <Text style={s.category}>{detailProduce.category || 'Produce'}</Text>
+                    {detailProduce.grade ? (
+                      <Text style={s.gradeBadge}>Grade {detailProduce.grade}</Text>
+                    ) : null}
+                  </View>
+
+                  <Text style={s.detailTitle}>{cropName(detailProduce, lang)}</Text>
+                  <Text style={s.detailPrice}>
+                    {t.labels.currency} {money(detailProduce.price)}{' '}
+                    <Text style={s.unit}>/ {getProduceUnit(detailProduce)}</Text>
+                  </Text>
+                </View>
+
+                {/* GROWER CARD */}
+                <View style={s.growerCard}>
+                  <IconTile name="person-outline" />
+                  <View style={s.flex}>
+                    <Text style={s.quickTitle}>
+                      {detailProduce.farmerName || 'Verified Farmer'}
+                    </Text>
+                    <Text style={s.smallText}>
+                      📍 {detailProduce.location || 'Sri Lanka'} • Certified Co-op Member
                     </Text>
                   </View>
-
-                  <View style={{ flexDirection: 'row', gap: 6, marginVertical: 8, flexWrap: 'wrap' }}>
-                    <View style={styles.detailChipBadge}>
-                      <Text style={styles.detailChipBadgeText}>🏷️ {detailProduce.category || 'Vegetables'}</Text>
-                    </View>
-                    {detailProduce.grade ? (
-                      <View style={[styles.detailChipBadge, { backgroundColor: THEME.emeraldLight }]}>
-                        <Text style={[styles.detailChipBadgeText, { color: THEME.emeraldDark }]}>🌿 {detailProduce.grade}</Text>
-                      </View>
-                    ) : null}
-                    <View style={[styles.detailChipBadge, { backgroundColor: THEME.infoLight }]}>
-                      <Text style={[styles.detailChipBadgeText, { color: THEME.info }]}>📍 {detailProduce.location || 'Sri Lanka'}</Text>
-                    </View>
-                  </View>
                 </View>
 
-                {/* FARMER PROFILE CARD */}
-                <View style={styles.farmerProfileBox}>
-                  <Text style={styles.farmerBoxTitle}>👨‍🌾 Grower & Origin Info</Text>
-                  <Text style={styles.farmerBoxName}>{detailProduce.farmerName || 'Registered GoviLink Farmer'}</Text>
-                  <Text style={styles.farmerBoxSub}>
-                    📍 Farm Location: {detailProduce.location || 'Sri Lanka'}
-                  </Text>
-                  <Text style={styles.farmerBoxSub}>
-                    🛡️ Quality Verification: Certified Co-op Member
-                  </Text>
-                </View>
-
-                {/* STOCK & HARVEST SPECS */}
-                <View style={styles.specsGrid}>
-                  <View style={styles.specBox}>
-                    <Text style={styles.specLabel}>Available Stock</Text>
-                    <Text style={styles.specVal}>
+                {/* METRICS GRID */}
+                <View style={s.requestMetrics}>
+                  <View style={s.flex}>
+                    <Text style={s.metricCaption}>Available Stock</Text>
+                    <Text style={s.metricValue}>
                       {detailProduce.stockQty || 0} {getProduceUnit(detailProduce)}
                     </Text>
                   </View>
-                  <View style={styles.specBox}>
-                    <Text style={styles.specLabel}>Unit Price</Text>
-                    <Text style={styles.specVal}>
-                      Rs. {Number(detailProduce.price || 0).toFixed(2)}
-                    </Text>
-                  </View>
-                  <View style={styles.specBox}>
-                    <Text style={styles.specLabel}>Harvest State</Text>
-                    <Text style={styles.specVal}>
-                      {Number(detailProduce.stockQty) > 20 ? '🟢 Fresh In Stock' : Number(detailProduce.stockQty) > 0 ? '🟡 Low Stock' : '🔴 Out of Stock'}
+                  <View style={s.flex}>
+                    <Text style={s.metricCaption}>Unit Price</Text>
+                    <Text style={s.metricValue}>
+                      {t.labels.currency} {money(detailProduce.price)}
                     </Text>
                   </View>
                 </View>
 
                 {/* DESCRIPTION */}
-                {detailProduce.description ? (
-                  <View style={styles.descriptionSection}>
-                    <Text style={styles.descriptionTitle}>📝 Sourcing & Crop Notes</Text>
-                    <Text style={styles.descriptionText}>{detailProduce.description}</Text>
-                  </View>
-                ) : (
-                  <View style={styles.descriptionSection}>
-                    <Text style={styles.descriptionTitle}>📝 Harvest Overview</Text>
-                    <Text style={styles.descriptionText}>
-                      Fresh farm produce grown and harvested with high quality standards. Transport and direct delivery managed by cooperative logistics.
-                    </Text>
-                  </View>
-                )}
-
-                <View style={styles.modalActionRow}>
-                  <TouchableOpacity
-                    style={[styles.modalBtn, styles.modalBtnCancel]}
-                    onPress={() => setShowDetailModal(false)}
-                  >
-                    <Text style={styles.modalBtnCancelText}>Close</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[styles.modalBtn, styles.modalBtnConfirm, Number(detailProduce.stockQty || 0) <= 0 && { backgroundColor: '#94A3B8' }]}
-                    disabled={Number(detailProduce.stockQty || 0) <= 0}
-                    onPress={handleOpenOrderFromDetail}
-                  >
-                    <Text style={styles.modalBtnConfirmText}>🛒 Proceed to Order</Text>
-                  </TouchableOpacity>
+                <View style={s.descriptionBox}>
+                  <Text style={s.descriptionHeader}>Sourcing & Crop Notes</Text>
+                  <Text style={s.descriptionText}>
+                    {detailProduce.description ||
+                      'Fresh farm produce harvested following quality standards. Cooperative transport and direct doorstep delivery available across Sri Lanka.'}
+                  </Text>
                 </View>
               </ScrollView>
+
+              <View style={s.modalActions}>
+                <FarmerButton
+                  label="Close"
+                  secondary
+                  onPress={() => setShowDetailModal(false)}
+                  style={s.flex}
+                />
+                <FarmerButton
+                  label="Proceed to Order"
+                  icon="cart-outline"
+                  disabled={Number(detailProduce.stockQty || 0) <= 0}
+                  onPress={handleOpenOrderFromDetail}
+                  style={s.flex}
+                />
+              </View>
             </View>
           </View>
         </Modal>
@@ -1255,962 +1559,447 @@ export default function BuyerHomeScreen({
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: THEME.navy,
-  },
-  headerBar: {
-    backgroundColor: THEME.navy,
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 14,
+const s = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: C.canvas },
+  flex: { flex: 1, minWidth: 0 },
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    gap: 12,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.1)',
+    borderBottomColor: C.border,
+    backgroundColor: C.canvas,
   },
-  brandRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  logoBadge: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: '#FFFFFF',
-    marginRight: 10,
-  },
-  brandGovi: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-  },
-  brandLink: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: THEME.accentLeaf,
-  },
-  roleTag: {
-    backgroundColor: THEME.emerald,
-    borderRadius: 6,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    marginLeft: 8,
-  },
-  roleTagText: {
-    color: '#FFFFFF',
-    fontSize: 10,
-    fontWeight: 'bold',
-  },
-  buyerWelcome: {
-    fontSize: 11,
-    color: '#B0BEC5',
+  brand: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 1 },
+  brandCaption: {
+    fontSize: 8,
+    fontWeight: '700',
+    color: C.muted,
+    letterSpacing: 1.3,
     marginTop: 2,
   },
-  headerRightActions: {
-    flexDirection: 'row',
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  language: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  languageText: { fontSize: 12, fontWeight: '700', color: C.muted },
+  avatarButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#E1EBDD',
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
-  ordersPill: {
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
+  avatarImage: { width: '100%', height: '100%' },
+  avatarInitial: { fontSize: 17, fontWeight: '700', color: C.greenDark },
+  scroll: { flex: 1 },
+  content: {
+    width: '100%',
+    maxWidth: 760,
+    alignSelf: 'center',
+    paddingHorizontal: 20,
+    paddingTop: 26,
+    paddingBottom: 28,
   },
-  ordersPillText: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: '700',
+  hero: {
+    backgroundColor: C.greenDark,
+    borderRadius: 24,
+    padding: 24,
+    marginBottom: 20,
   },
-  langPill: {
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-  },
-  langPillText: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  logoutBtn: {
-    backgroundColor: 'rgba(239, 68, 68, 0.9)',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  logoutBtnText: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-
-  scrollContainer: {
-    backgroundColor: THEME.bg,
-    padding: 16,
-    paddingBottom: 40,
-    minHeight: '100%',
-  },
-
-  // Tabs
-  tabContainer: {
+  heroTop: {
     flexDirection: 'row',
-    backgroundColor: '#E2E8F0',
-    borderRadius: 10,
-    padding: 3,
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 16,
   },
-  tabBtn: {
-    flex: 1,
-    paddingVertical: 8,
-    alignItems: 'center',
-    borderRadius: 8,
-  },
-  tabBtnActive: {
-    backgroundColor: THEME.cardBg,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-  },
-  tabText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: THEME.textMuted,
-  },
-  tabTextActive: {
-    color: THEME.navy,
-    fontWeight: 'bold',
-  },
-
-  // Search & Filter
-  searchBarContainer: {
+  heroPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: THEME.cardBg,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: 12,
+    gap: 5,
     borderWidth: 1,
-    borderColor: THEME.border,
+    borderColor: '#487B65',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 20,
   },
-  searchIcon: {
-    fontSize: 16,
-    marginRight: 8,
+  heroEyebrow: { fontSize: 11, color: '#D1E9D9' },
+  heroTitle: {
+    fontSize: 27,
+    lineHeight: 34,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: -0.6,
+  },
+  heroSub: {
+    fontSize: 13,
+    lineHeight: 21,
+    color: '#C1D9CC',
+    marginTop: 12,
+    marginBottom: 20,
+  },
+  heroButton: {
+    backgroundColor: '#2A9068',
+    alignSelf: 'flex-start',
+    minWidth: 180,
+  },
+  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 26 },
+  statCard: {
+    flexBasis: '46%',
+    flexGrow: 1,
+    padding: 18,
+    borderRadius: 20,
+    backgroundColor: C.white,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  statValue: {
+    fontSize: 22,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+    color: C.ink,
+    marginTop: 14,
+  },
+  statLabel: { fontSize: 12, color: C.muted, marginTop: 5 },
+  sectionLabel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginBottom: 12,
+  },
+  sectionTitle: { fontSize: 18, fontWeight: '700', color: C.ink, flexShrink: 1 },
+  textAction: { flexDirection: 'row', alignItems: 'center', gap: 5, minHeight: 44 },
+  textActionText: { fontSize: 12, fontWeight: '600', color: C.green },
+  quickCard: {
+    backgroundColor: C.white,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 22,
+    paddingHorizontal: 16,
+    marginBottom: 24,
+  },
+  quickRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 17, gap: 12 },
+  quickBorder: { borderTopWidth: 1, borderTopColor: C.border },
+  quickTitle: { fontSize: 14, fontWeight: '600', color: C.ink, marginBottom: 4 },
+  bannerCard: {
+    backgroundColor: C.white,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: C.border,
+    padding: 18,
+    marginBottom: 18,
+  },
+  bannerLeft: { flex: 1 },
+  bannerBadge: {
+    backgroundColor: C.mint,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+    marginBottom: 8,
+  },
+  bannerBadgeText: { fontSize: 10, fontWeight: '700', color: C.green },
+  bannerTitle: { fontSize: 16, fontWeight: '700', color: C.ink, marginBottom: 4 },
+  bannerSub: { fontSize: 12, lineHeight: 18, color: C.muted },
+  card: {
+    padding: 18,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: C.border,
+    backgroundColor: C.white,
+    marginBottom: 16,
+  },
+  listingTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 15 },
+  produceImage: { width: 90, height: 106, borderRadius: 15, backgroundColor: C.mint },
+  imageFallback: { justifyContent: 'center', alignItems: 'center' },
+  badgeRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
+  category: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: C.green,
+    backgroundColor: C.mint,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  gradeBadge: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: C.greenDark,
+    backgroundColor: '#E1EBDD',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  cardTitle: { fontSize: 18, fontWeight: '700', color: C.ink, lineHeight: 24 },
+  locationRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
+  farmerRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
+  smallText: { fontSize: 12, lineHeight: 18, color: C.muted, flexShrink: 1 },
+  price: { fontSize: 18, fontWeight: '800', color: C.greenDark, marginTop: 8 },
+  unit: { fontSize: 12, fontWeight: '500', color: C.muted },
+  description: { fontSize: 13, color: C.muted, lineHeight: 20, marginTop: 12 },
+  cardFooter: {
+    borderTopWidth: 1,
+    borderTopColor: C.border,
+    marginTop: 16,
+    paddingTop: 12,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  stock: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  dot: { width: 6, height: 6, borderRadius: 3 },
+  stockText: { fontSize: 11, color: C.muted },
+  inlineActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  compactBtn: { minHeight: 40, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12 },
+  cardHeading: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 15 },
+  openBadge: {
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    backgroundColor: C.amberBg,
+    borderRadius: 7,
+  },
+  openBadgeText: { fontSize: 10, fontWeight: '700', color: C.amber },
+  requestMetrics: {
+    flexDirection: 'row',
+    gap: 12,
+    backgroundColor: C.canvas,
+    padding: 14,
+    borderRadius: 14,
+    marginTop: 12,
+    marginBottom: 12,
+  },
+  metricCaption: { fontSize: 11, color: C.muted, marginBottom: 6 },
+  metricValue: { fontSize: 18, fontWeight: '700', color: C.ink },
+  note: {
+    backgroundColor: C.canvas,
+    borderLeftWidth: 3,
+    borderLeftColor: C.border,
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 10,
+  },
+  noteText: { fontSize: 12, lineHeight: 19, color: C.muted },
+  orderTop: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginBottom: 15,
+  },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  statusText: { fontSize: 11, fontWeight: '600' },
+  orderId: { fontSize: 11, color: C.muted, fontWeight: '600' },
+  progressRow: { flexDirection: 'row', gap: 5, marginTop: 4, marginBottom: 13 },
+  progressStep: { flex: 1 },
+  progressLine: { height: 4, borderRadius: 2, backgroundColor: C.border, marginBottom: 7 },
+  progressText: { fontSize: 9, color: C.muted },
+  orderActions: { gap: 8, marginTop: 14 },
+  addRow: { marginBottom: 18 },
+  searchBox: {
+    minHeight: 52,
+    paddingLeft: 15,
+    paddingRight: 5,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 15,
+    backgroundColor: '#FFFFFF',
+    marginBottom: 14,
   },
   searchInput: {
     flex: 1,
-    fontSize: 13,
-    color: THEME.textDark,
-  },
-  chipScrollView: {
-    marginBottom: 14,
-  },
-  categoryChip: {
-    backgroundColor: THEME.cardBg,
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 20,
-    marginRight: 8,
-    borderWidth: 1,
-    borderColor: THEME.border,
-  },
-  categoryChipActive: {
-    backgroundColor: THEME.navy,
-    borderColor: THEME.navy,
-  },
-  categoryChipText: {
-    fontSize: 12,
-    color: THEME.textMuted,
-  },
-  categoryChipTextActive: {
-    color: '#FFF',
-    fontWeight: 'bold',
-  },
-
-  marketTitleRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  sectionHeader: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: THEME.textDark,
-  },
-  itemCountText: {
-    fontSize: 11,
-    color: THEME.textMuted,
-  },
-
-  // Cards
-  produceCard: {
-    backgroundColor: THEME.cardBg,
-    borderRadius: 14,
-    overflow: 'hidden',
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: THEME.border,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-  },
-  produceImage: {
-    width: '100%',
-    height: 150,
-    backgroundColor: '#E2E8F0',
-  },
-  produceDetails: {
-    padding: 14,
-  },
-  badgeRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  stockBadge: {
-    backgroundColor: THEME.emeraldLight,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 6,
-  },
-  stockBadgeText: {
-    color: THEME.emeraldDark,
-    fontSize: 11,
-    fontWeight: 'bold',
-  },
-  locationText: {
-    fontSize: 11,
-    color: THEME.textMuted,
-  },
-  produceName: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: THEME.textDark,
-    marginVertical: 4,
-  },
-  gradeBadge: {
-    fontSize: 11,
-    color: THEME.emeraldDark,
-    marginBottom: 4,
-  },
-  farmerSubText: {
-    fontSize: 12,
-    color: THEME.textMuted,
-    marginBottom: 12,
-  },
-  priceRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderTopWidth: 1,
-    borderTopColor: THEME.border,
-    paddingTop: 10,
-  },
-  priceText: {
-    fontSize: 17,
-    fontWeight: 'bold',
-    color: THEME.emeraldDark,
-  },
-  unitSub: {
-    fontSize: 10,
-    color: THEME.textMuted,
-  },
-  orderButton: {
-    backgroundColor: THEME.emerald,
-    paddingHorizontal: 16,
-    paddingVertical: 9,
-    borderRadius: 8,
-  },
-  orderButtonText: {
-    color: '#FFF',
-    fontWeight: 'bold',
-    fontSize: 13,
-  },
-
-  // Buyer Orders
-  buyerOrderCard: {
-    backgroundColor: THEME.cardBg,
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 14,
-    borderWidth: 1,
-    borderColor: THEME.border,
-  },
-  orderTopHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  orderIdBadge: {
-    backgroundColor: THEME.bg,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  orderIdText: {
-    fontSize: 10,
-    fontWeight: 'bold',
-    color: THEME.navy,
-  },
-  statusPill: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  statusPillText: {
-    fontSize: 11,
-    fontWeight: 'bold',
-  },
-  orderProduceTitle: {
-    fontSize: 15,
-    fontWeight: 'bold',
-    color: THEME.textDark,
-    marginBottom: 6,
-  },
-  buyerOrderDetailsRow: {
-    marginBottom: 10,
-  },
-  buyerOrderSub: {
-    fontSize: 11,
-    color: THEME.textMuted,
-    marginBottom: 2,
-  },
-
-  // Stepper
-  stepperContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: THEME.bg,
-    padding: 10,
-    borderRadius: 8,
-    marginVertical: 8,
-  },
-  stepItem: {
-    alignItems: 'center',
-  },
-  stepDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#CBD5E1',
-    marginBottom: 4,
-  },
-  stepDotActive: {
-    backgroundColor: THEME.emerald,
-  },
-  stepLine: {
-    flex: 1,
-    height: 2,
-    backgroundColor: '#CBD5E1',
-    marginTop: -14,
-    marginHorizontal: 4,
-  },
-  stepLineActive: {
-    backgroundColor: THEME.emerald,
-  },
-  stepText: {
-    fontSize: 9,
-    color: THEME.textMuted,
-    fontWeight: '600',
-  },
-
-  orderFooterTotalRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderTopWidth: 1,
-    borderTopColor: THEME.border,
-    paddingTop: 8,
-    marginTop: 4,
-  },
-  orderFooterQty: {
-    fontSize: 12,
-    color: THEME.textMuted,
-  },
-  orderFooterPrice: {
+    minWidth: 0,
+    minHeight: 50,
     fontSize: 14,
-    fontWeight: 'bold',
-    color: THEME.emeraldDark,
+    color: C.ink,
+    paddingVertical: 10,
   },
-
-  // Empty
-  emptyCard: {
-    backgroundColor: THEME.cardBg,
+  clearSearch: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  filters: { gap: 8, paddingBottom: 4 },
+  filterRowWrap: { marginTop: 10 },
+  filterLabel: { fontSize: 11, fontWeight: '700', color: C.muted, marginBottom: 6 },
+  resultCount: { fontSize: 12, color: C.muted, marginTop: 14, marginBottom: 14 },
+  navSafe: { backgroundColor: '#FFFFFF', borderTopWidth: 1, borderTopColor: C.border },
+  nav: {
+    flexDirection: 'row',
+    width: '100%',
+    maxWidth: 760,
+    alignSelf: 'center',
+    paddingHorizontal: 8,
+    paddingTop: 9,
+    paddingBottom: 7,
+  },
+  navItem: { flex: 1, minHeight: 58, alignItems: 'center', gap: 4 },
+  navIcon: {
+    width: 48,
+    height: 32,
     borderRadius: 12,
-    padding: 30,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: THEME.border,
+    justifyContent: 'center',
   },
-  emptyIcon: {
-    fontSize: 36,
-    marginBottom: 10,
-  },
-  emptyTitle: {
-    fontSize: 15,
-    fontWeight: 'bold',
-    color: THEME.textDark,
-    marginBottom: 4,
-  },
-  emptySubtitle: {
-    fontSize: 12,
-    color: THEME.textMuted,
+  navIconActive: { backgroundColor: C.mint },
+  navLabel: {
+    width: '100%',
+    fontSize: 10,
+    lineHeight: 14,
+    color: C.muted,
     textAlign: 'center',
+    paddingHorizontal: 2,
+    flexShrink: 1,
   },
-
-  // Modal
+  navLabelActive: { color: C.greenDark, fontWeight: '700' },
+  navBadge: {
+    position: 'absolute',
+    top: -3,
+    right: 2,
+    minWidth: 15,
+    height: 15,
+    paddingHorizontal: 3,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+    backgroundColor: C.green,
+  },
+  navBadgeText: { fontSize: 9, fontWeight: '700', color: '#FFFFFF' },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: THEME.cardBg,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    backgroundColor: 'rgba(12,35,26,0.5)',
     padding: 20,
-    maxHeight: '90%',
-  },
-  modalHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  modalTitle: {
-    fontSize: 17,
-    fontWeight: 'bold',
-    color: THEME.navy,
-  },
-  closeBtn: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: THEME.bg,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  modalProduceName: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: THEME.emeraldDark,
+  modalCardLarge: {
+    width: '100%',
+    maxWidth: 480,
+    padding: 22,
+    borderRadius: 24,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: C.border,
   },
-  modalFarmerText: {
-    fontSize: 12,
-    color: THEME.textMuted,
-    marginBottom: 14,
-  },
-  qtyContainer: {
+  modalTop: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 16,
   },
-  qtyLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: THEME.textDark,
-  },
-  qtyControls: {
+  modalTitle: { fontSize: 18, fontWeight: '700', color: C.ink },
+  closeIconBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
+  produceSummaryCard: {
     flexDirection: 'row',
     alignItems: 'center',
-  },
-  qtyBtn: {
-    width: 34,
-    height: 34,
-    backgroundColor: THEME.bg,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  qtyBtnText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: THEME.textDark,
-  },
-  qtyValText: {
-    fontSize: 15,
-    fontWeight: 'bold',
-    marginHorizontal: 12,
-    color: THEME.navy,
-  },
-  quickQtyRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 14,
-  },
-  quickQtyPill: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    gap: 12,
+    padding: 12,
     borderRadius: 14,
-    backgroundColor: THEME.bg,
+    backgroundColor: C.canvas,
     borderWidth: 1,
-    borderColor: THEME.border,
+    borderColor: C.border,
+    marginBottom: 14,
   },
-  quickQtyPillActive: {
-    backgroundColor: THEME.navy,
-    borderColor: THEME.navy,
-  },
-  quickQtyText: {
-    fontSize: 11,
-    color: THEME.textMuted,
-  },
-  quickQtyTextActive: {
-    color: '#FFF',
-    fontWeight: 'bold',
-  },
-  fieldLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: THEME.textDark,
-    marginBottom: 4,
-    marginTop: 6,
-  },
-  inputField: {
-    backgroundColor: THEME.bg,
-    borderWidth: 1,
-    borderColor: THEME.border,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    fontSize: 12,
-    color: THEME.textDark,
-    marginBottom: 8,
-  },
-  priceBreakdownBox: {
-    backgroundColor: THEME.bg,
-    borderRadius: 8,
+  produceThumbnail: { width: 50, height: 50, borderRadius: 10, backgroundColor: C.mint },
+  inputLabel: { fontSize: 12, fontWeight: '600', color: C.ink, marginTop: 10, marginBottom: 6 },
+  qtyControlRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    backgroundColor: C.canvas,
     padding: 10,
-    marginVertical: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  qtyButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: C.mint,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  qtyValue: { flex: 1, textAlign: 'center', fontSize: 16, fontWeight: '700', color: C.ink },
+  quickChipsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginVertical: 10 },
+  modalInput: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 13,
+    color: C.ink,
+    minHeight: 44,
+  },
+  breakdownCard: {
+    backgroundColor: C.canvas,
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: C.border,
+    marginTop: 14,
+    marginBottom: 6,
   },
   breakdownRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 4,
-  },
-  breakdownLabel: {
-    fontSize: 11,
-    color: THEME.textMuted,
-  },
-  breakdownValue: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: THEME.textDark,
-  },
-  totalLabel: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: THEME.textDark,
-  },
-  totalVal: {
-    fontSize: 17,
-    fontWeight: 'bold',
-    color: THEME.emeraldDark,
-  },
-  modalActionRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 10,
-    marginBottom: 10,
-  },
-  modalBtn: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 10,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalBtnCancel: {
-    backgroundColor: THEME.bg,
-  },
-  modalBtnCancelText: {
-    color: THEME.textMuted,
-    fontWeight: 'bold',
-  },
-  modalBtnConfirm: {
-    backgroundColor: THEME.emerald,
-    flex: 2,
-  },
-  modalBtnConfirmText: {
-    color: '#FFF',
-    fontWeight: 'bold',
-  },
-
-  // ----------------------------------------------------
-  // DIRECT SOURCING BANNER & CUSTOM REQUESTS
-  // ----------------------------------------------------
-  requestBannerCard: {
-    backgroundColor: THEME.navy,
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.1,
-    shadowRadius: 5,
-    elevation: 3,
-  },
-  requestBannerLeft: {
-    flex: 1,
-    paddingRight: 10,
-  },
-  requestBannerBadgeRow: {
-    flexDirection: 'row',
-    marginBottom: 4,
-  },
-  requestBannerBadge: {
-    backgroundColor: THEME.emerald,
-    color: '#FFFFFF',
-    fontSize: 9,
-    fontWeight: '900',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    letterSpacing: 0.5,
-  },
-  requestBannerTitle: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '800',
-    marginBottom: 2,
-  },
-  requestBannerSub: {
-    color: '#94A3B8',
-    fontSize: 11,
-    lineHeight: 15,
-  },
-  requestBannerBtn: {
-    backgroundColor: THEME.emerald,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  requestBannerBtnText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '800',
-  },
-
-  requestsHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 14,
-  },
-  sectionSubText: {
-    fontSize: 11,
-    color: THEME.textMuted,
-    marginTop: 2,
-  },
-  newRequestTopBtn: {
-    backgroundColor: THEME.emerald,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  newRequestTopBtnText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '800',
-  },
-
-  customRequestCard: {
-    backgroundColor: THEME.cardBg,
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 14,
-    borderWidth: 1,
-    borderColor: THEME.border,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  reqCardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  reqCropRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  reqCropIcon: {
-    fontSize: 26,
-    marginRight: 10,
-  },
-  reqCropName: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: THEME.textDark,
-  },
-  reqCategoryBadge: {
-    fontSize: 11,
-    color: THEME.textMuted,
-    fontWeight: '600',
-    marginTop: 1,
-  },
-  reqStatusBadge: {
-    backgroundColor: THEME.warningLight,
-    paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 6,
   },
-  reqStatusText: {
-    color: THEME.warning,
-    fontSize: 11,
-    fontWeight: '800',
-  },
-
-  reqInfoGrid: {
-    backgroundColor: THEME.bg,
-    borderRadius: 10,
-    padding: 10,
-    marginBottom: 10,
-    gap: 6,
-  },
-  reqInfoItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  reqInfoLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: THEME.textMuted,
-  },
-  reqInfoValue: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: THEME.textDark,
-    maxWidth: '65%',
-    textAlign: 'right',
-  },
-  reqNotesBox: {
-    backgroundColor: '#F8FAFC',
-    borderLeftWidth: 3,
-    borderLeftColor: THEME.emerald,
-    padding: 8,
-    borderRadius: 4,
-    marginBottom: 10,
-  },
-  reqNotesText: {
-    fontSize: 11,
-    color: THEME.textMuted,
-    fontStyle: 'italic',
-  },
-  reqFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  breakdownLabel: { fontSize: 12, color: C.muted },
+  breakdownValue: { fontSize: 13, fontWeight: '600', color: C.ink },
+  breakdownTotalRow: {
     borderTopWidth: 1,
-    borderTopColor: THEME.border,
+    borderTopColor: C.border,
     paddingTop: 8,
+    marginTop: 6,
   },
-  reqDeliveryText: {
-    fontSize: 11,
-    color: THEME.textMuted,
-    flex: 1,
-    marginRight: 8,
-  },
-  reqDeleteBtn: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    backgroundColor: 'rgba(239, 68, 68, 0.08)',
-  },
-  reqDeleteBtnText: {
-    color: THEME.danger,
-    fontSize: 11,
-    fontWeight: '700',
-  },
-
-  // Search Clear & Filtering Styles
-  clearSearchBtn: {
-    padding: 4,
-    marginLeft: 4,
-  },
-  clearSearchText: {
-    fontSize: 14,
-    color: THEME.textMuted,
-    fontWeight: 'bold',
-  },
-  filterSectionRow: {
-    marginBottom: 8,
-  },
-  filterSectionTitle: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: THEME.navy,
-    marginBottom: 2,
-  },
-  districtChip: {
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 16,
-    marginRight: 6,
-    borderWidth: 1,
-    borderColor: THEME.border,
-  },
-  districtChipActive: {
-    backgroundColor: THEME.emerald,
-    borderColor: THEME.emerald,
-  },
-  districtChipText: {
-    fontSize: 11,
-    color: THEME.textMuted,
-    fontWeight: '600',
-  },
-  districtChipTextActive: {
-    color: '#FFFFFF',
-    fontWeight: 'bold',
-  },
-  sortChip: {
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 14,
-    marginRight: 6,
-    borderWidth: 1,
-    borderColor: THEME.border,
-  },
-  sortChipActive: {
-    backgroundColor: THEME.navy,
-    borderColor: THEME.navy,
-  },
-  sortChipText: {
-    fontSize: 11,
-    color: THEME.textMuted,
-    fontWeight: '600',
-  },
-  sortChipTextActive: {
-    color: '#FFFFFF',
-    fontWeight: 'bold',
-  },
-  detailBtn: {
-    backgroundColor: THEME.bg,
-    borderWidth: 1,
-    borderColor: THEME.border,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    borderRadius: 8,
-  },
-  detailBtnText: {
-    color: THEME.navy,
-    fontWeight: '700',
-    fontSize: 12,
-  },
-
-  // Product Details Modal Styles
-  detailCoverImage: {
+  breakdownTotalLabel: { fontSize: 14, fontWeight: '700', color: C.ink },
+  breakdownTotalValue: { fontSize: 16, fontWeight: '800', color: C.greenDark },
+  modalActions: { flexDirection: 'row', gap: 10, marginTop: 18 },
+  detailImage: {
     width: '100%',
     height: 180,
-    borderRadius: 12,
-    backgroundColor: '#E2E8F0',
+    borderRadius: 18,
+    backgroundColor: C.mint,
+    marginBottom: 8,
   },
-  detailPriceTag: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: THEME.emeraldDark,
-  },
-  detailChipBadge: {
-    backgroundColor: THEME.bg,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  detailChipBadgeText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: THEME.textMuted,
-  },
-  farmerProfileBox: {
-    backgroundColor: '#F8FAFC',
-    borderRadius: 12,
-    padding: 12,
-    marginVertical: 10,
-    borderWidth: 1,
-    borderColor: THEME.border,
-  },
-  farmerBoxTitle: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: THEME.navy,
-    marginBottom: 4,
-  },
-  farmerBoxName: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: THEME.textDark,
-    marginBottom: 2,
-  },
-  farmerBoxSub: {
-    fontSize: 11,
-    color: THEME.textMuted,
-    marginTop: 2,
-  },
-  specsGrid: {
+  detailTitle: { fontSize: 22, fontWeight: '800', color: C.ink, marginTop: 6 },
+  detailPrice: { fontSize: 18, fontWeight: '800', color: C.greenDark, marginTop: 6 },
+  growerCard: {
     flexDirection: 'row',
-    gap: 8,
-    marginVertical: 8,
-  },
-  specBox: {
-    flex: 1,
-    backgroundColor: THEME.bg,
-    padding: 8,
-    borderRadius: 8,
     alignItems: 'center',
+    gap: 12,
+    padding: 14,
+    borderRadius: 14,
+    backgroundColor: C.canvas,
     borderWidth: 1,
-    borderColor: THEME.border,
+    borderColor: C.border,
+    marginTop: 14,
   },
-  specLabel: {
-    fontSize: 10,
-    color: THEME.textMuted,
-    marginBottom: 2,
-  },
-  specVal: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: THEME.navy,
-  },
-  descriptionSection: {
-    backgroundColor: THEME.cardBg,
-    borderRadius: 10,
-    padding: 12,
-    marginVertical: 8,
+  descriptionBox: {
+    backgroundColor: C.canvas,
+    borderRadius: 14,
+    padding: 14,
     borderWidth: 1,
-    borderColor: THEME.border,
+    borderColor: C.border,
+    marginTop: 10,
   },
-  descriptionTitle: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: THEME.navy,
-    marginBottom: 4,
-  },
-  descriptionText: {
-    fontSize: 12,
-    color: THEME.textMuted,
-    lineHeight: 18,
-  },
+  descriptionHeader: { fontSize: 12, fontWeight: '700', color: C.ink, marginBottom: 4 },
+  descriptionText: { fontSize: 12, lineHeight: 19, color: C.muted },
 });
-

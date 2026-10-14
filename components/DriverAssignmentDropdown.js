@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   StyleSheet,
   Text,
@@ -9,93 +9,272 @@ import {
   TextInput,
   Alert,
 } from 'react-native';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { db } from '../firebaseConfig';
 import { checkDriverAvailability } from '../services/firebaseDatabase';
+import { FARMER_COLORS as C } from './FarmerDesign';
 
 const THEME = {
-  navy: '#0B2545',
-  emerald: '#16A34A',
-  emeraldLight: '#E8F5E9',
-  accentLeaf: '#2ECC71',
-  bg: '#F8FAFC',
-  cardBg: '#FFFFFF',
-  textDark: '#0F172A',
-  textMuted: '#64748B',
-  border: '#E2E8F0',
-  warning: '#F59E0B',
-  warningLight: '#FEF3C7',
-  danger: '#EF4444',
-  dangerLight: '#FEE2E2',
-  info: '#3B82F6',
-  infoLight: '#DBEAFE',
+  ink: C.ink,
+  green: C.green,
+  greenDark: C.greenDark,
+  mint: C.mint,
+  bg: C.canvas,
+  cardBg: C.white,
+  textDark: C.ink,
+  textMuted: C.muted,
+  border: C.border,
+  warning: C.amber,
+  warningLight: C.amberBg,
+  danger: C.red,
+  dangerLight: C.redBg,
+  info: C.blue,
+  infoLight: C.blueBg,
 };
 
 /**
  * DriverAssignmentDropdown Component
- *
- * @param {object} props
- * @param {Array} props.drivers - List of all registered / fleet drivers
- * @param {Array} props.ordersList - Current real-time orders list to calculate availability
- * @param {object} props.selectedDriver - Currently selected driver
- * @param {function} props.onSelectDriver - Callback when driver is selected
- * @param {string} props.orderId - (Optional) ID of order being assigned
- * @param {string} props.placeholder - Dropdown placeholder text
- * @param {boolean} props.disabled - Disable dropdown interaction
- * @param {string} props.lang - Language code ('en' | 'si' | 'ta')
+ * Handles the strict 2-step assignment flow:
+ * 1. Select Driver (from real drivers, showing availability & status)
+ * 2. Select Vehicle (disabled until Driver is selected; strictly filtered to that driver's available vehicles)
  */
 export default function DriverAssignmentDropdown({
   drivers = [],
+  vehiclesList = [],
   ordersList = [],
   selectedDriver = null,
+  selectedVehicle = null,
   onSelectDriver,
+  onSelectVehicle,
   orderId = null,
   placeholder = 'Select an Available Driver...',
+  vehiclePlaceholder = 'Select Vehicle for this Driver...',
   disabled = false,
   lang = 'en',
 }) {
-  const [modalVisible, setModalVisible] = useState(false);
+  const [driverModalVisible, setModalVisible] = useState(false);
+  const [vehicleModalVisible, setVehicleModalVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [vehicleSearchQuery, setVehicleSearchQuery] = useState('');
 
-  // Compute availability for all drivers
+  // Real-time queried vehicles for the currently selected driver
+  const [queriedVehicles, setQueriedVehicles] = useState([]);
+  const [vehiclesLoading, setVehiclesLoading] = useState(false);
+  const [vehiclesError, setVehiclesError] = useState(null);
+
+  // Normalized driver identifier
+  const selectedDriverActualId = selectedDriver?.uid || selectedDriver?.id || null;
+
+  // 1. Query/load ONLY vehicles belonging to that driver when selected (Section 3 & 11)
+  useEffect(() => {
+    if (!selectedDriverActualId) {
+      setQueriedVehicles([]);
+      setVehiclesLoading(false);
+      setVehiclesError(null);
+      return;
+    }
+
+    setVehiclesLoading(true);
+    setVehiclesError(null);
+
+    const vehiclesRef = collection(db, 'vehicles');
+    const q = query(vehiclesRef, where('driverUid', '==', selectedDriverActualId));
+
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const vehicles = snapshot.docs.map((docSnap) => ({
+          id: docSnap.id,
+          ...docSnap.data(),
+        }));
+
+        setQueriedVehicles(vehicles);
+        setVehiclesLoading(false);
+        setVehiclesError(null);
+
+        // Debug logging (Section 5 requirement)
+        console.log('[DriverAssignmentDropdown] Selected driver:', {
+          id: selectedDriver.id,
+          uid: selectedDriver.uid,
+          name: selectedDriver.fullName || selectedDriver.name,
+        });
+
+        vehicles.forEach((v) => {
+          console.log('[DriverAssignmentDropdown] Vehicle:', {
+            id: v.id,
+            driverUid: v.driverUid || v.driverId,
+            plateNumber: v.plateNumber,
+            status: v.status || 'AVAILABLE',
+          });
+        });
+      },
+      (error) => {
+        console.error('[DriverAssignmentDropdown] Firestore error loading vehicles:', error);
+        setVehiclesError(error.message || 'Error querying driver vehicles from Firestore');
+        setVehiclesLoading(false);
+      }
+    );
+
+    return () => {
+      unsubscribe();
+    };
+  }, [selectedDriverActualId]);
+
+  // Combine queried vehicles with any vehiclesList prop for this driver
+  const driverRawVehicles = useMemo(() => {
+    if (!selectedDriverActualId) return [];
+    if (queriedVehicles.length > 0) return queriedVehicles;
+    return (vehiclesList || []).filter((v) => {
+      const vOwner = v.driverUid || v.driverId || v.ownerDriverId || v.userId;
+      return vOwner === selectedDriverActualId;
+    });
+  }, [selectedDriverActualId, queriedVehicles, vehiclesList]);
+
+  // 1. Compute driver availability for driver roster
   const evaluatedDrivers = useMemo(() => {
     const list = Array.isArray(drivers) ? drivers : [];
     return list.map((driver) => {
+      const driverId = driver.uid || driver.id;
       const availability = checkDriverAvailability(driver, ordersList || []);
+      const count = (vehiclesList || []).filter((v) => {
+        const vOwner = v.driverUid || v.driverId || v.ownerDriverId || v.userId;
+        return vOwner === driverId;
+      }).length;
+
       return {
         ...driver,
         isAvailable: availability.isAvailable,
         activeOrder: availability.activeOrder,
         busyReason: availability.reason,
+        vehiclesCount: count,
       };
     });
-  }, [drivers, ordersList]);
+  }, [drivers, ordersList, vehiclesList]);
 
-  // Filter based on search query
+  // Filter drivers based on search query
   const filteredDrivers = useMemo(() => {
     if (!searchQuery.trim()) return evaluatedDrivers;
     const q = searchQuery.toLowerCase().trim();
     return evaluatedDrivers.filter(
       (d) =>
         (d.fullName && d.fullName.toLowerCase().includes(q)) ||
-        (d.vehicleNumber && d.vehicleNumber.toLowerCase().includes(q)) ||
-        (d.district?.nameEn && d.district.nameEn.toLowerCase().includes(q)) ||
-        (d.phoneNumber && d.phoneNumber.includes(q))
+        (d.email && d.email.toLowerCase().includes(q)) ||
+        (d.phoneNumber && d.phoneNumber.includes(q)) ||
+        (typeof d.district === 'string' && d.district.toLowerCase().includes(q)) ||
+        (d.district?.nameEn && d.district.nameEn.toLowerCase().includes(q))
     );
   }, [evaluatedDrivers, searchQuery]);
 
   const availableCount = evaluatedDrivers.filter((d) => d.isAvailable).length;
   const busyCount = evaluatedDrivers.length - availableCount;
 
+  // 2. Compute vehicles belonging ONLY to the selected driver with normalized status
+  const driverVehicles = useMemo(() => {
+    return driverRawVehicles.map((v) => {
+      const isAssignedToOther = (ordersList || []).some(
+        (o) =>
+          o.id !== orderId &&
+          (o.vehicleId === v.id || o.driverVehicleId === v.id) &&
+          ['ACCEPTED', 'ASSIGNED', 'PICKED_UP', 'IN_TRANSIT', 'PENDING_DELIVERY'].includes(o.status)
+      );
+
+      const normStatus = String(v.status || '').trim().toUpperCase();
+      const isMaintenance = normStatus === 'MAINTENANCE' || normStatus === 'REPAIR';
+      const isInactive = normStatus === 'INACTIVE' || normStatus === 'DISABLED';
+      const isBusy =
+        isAssignedToOther ||
+        normStatus === 'IN_USE' ||
+        normStatus === 'IN_TRANSIT' ||
+        normStatus === 'IN TRANSIT' ||
+        normStatus === 'ASSIGNED' ||
+        normStatus === 'BUSY' ||
+        v.isAvailable === false;
+
+      // Available if not maintenance, not inactive, not busy (even if status is undefined in DB)
+      const isAvailable = !isMaintenance && !isInactive && !isBusy;
+
+      const statusLabel = isMaintenance
+        ? 'MAINTENANCE'
+        : isBusy
+        ? 'IN_USE'
+        : isInactive
+        ? 'INACTIVE'
+        : 'AVAILABLE';
+
+      const statusDisplay = isMaintenance
+        ? 'Maintenance'
+        : isBusy
+        ? 'In Use'
+        : isInactive
+        ? 'Inactive'
+        : 'Available';
+
+      return {
+        ...v,
+        isAvailable,
+        statusLabel,
+        statusDisplay,
+      };
+    });
+  }, [driverRawVehicles, ordersList, orderId]);
+
+  const filteredDriverVehicles = useMemo(() => {
+    if (!vehicleSearchQuery.trim()) return driverVehicles;
+    const q = vehicleSearchQuery.toLowerCase().trim();
+    return driverVehicles.filter(
+      (v) =>
+        (v.plateNumber && v.plateNumber.toLowerCase().includes(q)) ||
+        (v.makeModel && v.makeModel.toLowerCase().includes(q)) ||
+        (v.vehicleType && v.vehicleType.toLowerCase().includes(q))
+    );
+  }, [driverVehicles, vehicleSearchQuery]);
+
+  const totalRegisteredVehiclesCount = driverRawVehicles.length;
+  const availableVehiclesCount = driverVehicles.filter((v) => v.isAvailable).length;
+
+  // Log summary metrics (Section 5 requirement)
+  useEffect(() => {
+    if (selectedDriverActualId && driverRawVehicles.length > 0) {
+      console.log('[DriverAssignmentDropdown] Vehicles summary:', {
+        totalVehiclesLoaded: driverRawVehicles.length,
+        vehiclesMatchingSelectedDriver: driverVehicles.length,
+        availableVehiclesAfterFiltering: availableVehiclesCount,
+      });
+    }
+  }, [selectedDriverActualId, driverRawVehicles.length, driverVehicles.length, availableVehiclesCount]);
+
   const handleSelectDriver = (driver) => {
     if (!driver.isAvailable) {
       Alert.alert(
         'Driver Currently Busy 🚛',
-        `"${driver.fullName}" is currently assigned to another active shipment.\n\n${driver.busyReason || 'In-transit'}\n\nDrivers become available automatically once they confirm delivery.`
+        `"${driver.fullName}" is unavailable.\n\n${driver.busyReason || 'Currently assigned to another active route.'}`
       );
       return;
     }
 
-    onSelectDriver(driver);
+    if (onSelectDriver) {
+      onSelectDriver(driver);
+    }
+    // Section 11: Clear previous vehicle selection immediately on driver change
+    if (onSelectVehicle) {
+      onSelectVehicle(null);
+    }
     setModalVisible(false);
+  };
+
+  const handleSelectVehicle = (vehicle) => {
+    if (!vehicle.isAvailable) {
+      Alert.alert(
+        'Vehicle Unavailable 🚚',
+        `Vehicle ${vehicle.plateNumber} is currently ${vehicle.statusDisplay.toLowerCase()} and cannot be selected.`
+      );
+      return;
+    }
+    if (onSelectVehicle) {
+      onSelectVehicle(vehicle);
+    }
+    setVehicleModalVisible(false);
   };
 
   const getDistrictName = (district) => {
@@ -108,52 +287,146 @@ export default function DriverAssignmentDropdown({
 
   return (
     <View style={styles.container}>
-      {/* DROPDOWN TRIGGER BUTTON */}
-      <TouchableOpacity
-        style={[
-          styles.dropdownBtn,
-          disabled && styles.dropdownBtnDisabled,
-          selectedDriver && styles.dropdownBtnSelected,
-        ]}
-        onPress={() => !disabled && setModalVisible(true)}
-        activeOpacity={0.8}
-      >
-        <View style={styles.dropdownLeft}>
-          <Text style={styles.driverIcon}>🚛</Text>
-          <View style={styles.selectedInfo}>
-            {selectedDriver ? (
-              <>
-                <View style={styles.nameBadgeRow}>
-                  <Text style={styles.selectedDriverName} numberOfLines={1}>
-                    {selectedDriver.fullName || selectedDriver.name}
-                  </Text>
-                  <View style={styles.greenDot} />
-                </View>
-                <Text style={styles.selectedDriverSub} numberOfLines={1}>
-                  {selectedDriver.vehicleNumber || 'Transport Fleet'} • {selectedDriver.phoneNumber || ''}
-                </Text>
-              </>
-            ) : (
-              <Text style={styles.placeholderText} numberOfLines={1}>
-                {placeholder} ({availableCount} Available)
+      {/* ── STEP 1: DRIVER SELECTOR ──────────────────────── */}
+      <View style={styles.stepBlock}>
+        <Text style={styles.stepLabel}>Step 1: Assign Delivery Driver</Text>
+        <TouchableOpacity
+          style={[
+            styles.dropdownBtn,
+            disabled && styles.dropdownBtnDisabled,
+            selectedDriver && styles.dropdownBtnSelected,
+          ]}
+          onPress={() => !disabled && setModalVisible(true)}
+          activeOpacity={0.8}
+        >
+          <View style={styles.dropdownLeft}>
+            <View style={[styles.avatarBadge, selectedDriver && styles.avatarBadgeActive]}>
+              <Text style={[styles.avatarBadgeText, selectedDriver && styles.avatarBadgeTextActive]}>
+                {selectedDriver?.fullName ? selectedDriver.fullName.charAt(0).toUpperCase() : '👤'}
               </Text>
-            )}
+            </View>
+            <View style={styles.selectedInfo}>
+              {selectedDriver ? (
+                <>
+                  <View style={styles.nameBadgeRow}>
+                    <Text style={styles.selectedDriverName} numberOfLines={1}>
+                      {selectedDriver.fullName || selectedDriver.name}
+                    </Text>
+                    <View style={styles.greenDot} />
+                  </View>
+                  <Text style={styles.selectedDriverSub} numberOfLines={1}>
+                    📞 {selectedDriver.phoneNumber || selectedDriver.email || 'Registered Driver'} • {totalRegisteredVehiclesCount} {totalRegisteredVehiclesCount === 1 ? 'vehicle' : 'vehicles'}
+                  </Text>
+                </>
+              ) : (
+                <Text style={styles.placeholderText} numberOfLines={1}>
+                  {placeholder} ({availableCount} Available)
+                </Text>
+              )}
+            </View>
           </View>
-        </View>
+          <Ionicons name="chevron-down" size={18} color={THEME.textMuted} />
+        </TouchableOpacity>
+      </View>
 
-        <Text style={styles.chevronIcon}>▼</Text>
-      </TouchableOpacity>
+      {/* ── STEP 2: VEHICLE SELECTOR (DISABLED UNTIL DRIVER CHOSEN) ── */}
+      <View style={[styles.stepBlock, { marginTop: 10 }]}>
+        <Text style={styles.stepLabel}>
+          Step 2: Assign Driver's Vehicle {!selectedDriver && '(Disabled)'}
+        </Text>
+        <TouchableOpacity
+          style={[
+            styles.dropdownBtn,
+            (!selectedDriver || disabled) && styles.dropdownBtnDisabled,
+            selectedVehicle && styles.dropdownBtnSelected,
+          ]}
+          onPress={() => {
+            if (!selectedDriver) {
+              Alert.alert('Select Driver First', 'Please select a delivery driver before selecting a vehicle.');
+              return;
+            }
+            if (vehiclesLoading) {
+              Alert.alert('Loading', 'Please wait while driver vehicles are loading.');
+              return;
+            }
+            if (vehiclesError) {
+              Alert.alert('Query Error', `Could not load vehicles: ${vehiclesError}`);
+              return;
+            }
+            if (totalRegisteredVehiclesCount === 0) {
+              Alert.alert('No Vehicles', 'No vehicles registered for this driver');
+              return;
+            }
+            if (availableVehiclesCount === 0) {
+              Alert.alert('No Available Vehicles', 'No available vehicles for this driver');
+              return;
+            }
+            setVehicleModalVisible(true);
+          }}
+          activeOpacity={0.8}
+          disabled={!selectedDriver || disabled}
+        >
+          <View style={styles.dropdownLeft}>
+            <View style={[styles.avatarBadge, selectedVehicle && styles.avatarBadgeActive]}>
+              <Ionicons
+                name="car-outline"
+                size={18}
+                color={selectedVehicle ? THEME.greenDark : THEME.textMuted}
+              />
+            </View>
+            <View style={styles.selectedInfo}>
+              {!selectedDriver ? (
+                <Text style={styles.placeholderTextMuted} numberOfLines={1}>
+                  Select driver first to view vehicles...
+                </Text>
+              ) : vehiclesLoading ? (
+                <Text style={styles.placeholderTextMuted} numberOfLines={1}>
+                  Loading registered vehicles...
+                </Text>
+              ) : vehiclesError ? (
+                <Text style={styles.warningPlaceholderText} numberOfLines={1}>
+                  ⚠️ Error: {vehiclesError}
+                </Text>
+              ) : selectedVehicle ? (
+                <>
+                  <View style={styles.nameBadgeRow}>
+                    <Text style={styles.selectedDriverName} numberOfLines={1}>
+                      {selectedVehicle.plateNumber}
+                    </Text>
+                    <View style={styles.greenDot} />
+                  </View>
+                  <Text style={styles.selectedDriverSub} numberOfLines={1}>
+                    {selectedVehicle.vehicleTypeLabel || selectedVehicle.vehicleType || 'Vehicle'} • {selectedVehicle.capacity ? `${selectedVehicle.capacity} kg` : 'Standard'} • {selectedVehicle.statusDisplay || 'Available'}
+                  </Text>
+                </>
+              ) : totalRegisteredVehiclesCount === 0 ? (
+                <Text style={styles.warningPlaceholderText} numberOfLines={1}>
+                  ⚠️ No vehicles registered for this driver
+                </Text>
+              ) : availableVehiclesCount === 0 ? (
+                <Text style={styles.warningPlaceholderText} numberOfLines={1}>
+                  ⚠️ No available vehicles for this driver
+                </Text>
+              ) : (
+                <Text style={styles.placeholderText} numberOfLines={1}>
+                  {vehiclePlaceholder} ({availableVehiclesCount} available)
+                </Text>
+              )}
+            </View>
+          </View>
+          <Ionicons name="chevron-down" size={18} color={THEME.textMuted} />
+        </TouchableOpacity>
+      </View>
 
-      {/* DRIVER SELECTION MODAL */}
+      {/* ── MODAL 1: DRIVER SELECTION ─────────────────────── */}
       <Modal
-        visible={modalVisible}
+        visible={driverModalVisible}
         transparent
         animationType="slide"
         onRequestClose={() => setModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            {/* MODAL HEADER */}
             <View style={styles.modalHeader}>
               <View>
                 <Text style={styles.modalTitle}>🚚 Select Logistics Driver</Text>
@@ -162,32 +435,27 @@ export default function DriverAssignmentDropdown({
                   <Text style={styles.boldRed}>{busyCount}</Text>
                 </Text>
               </View>
-              <TouchableOpacity
-                style={styles.closeBtn}
-                onPress={() => setModalVisible(false)}
-              >
-                <Text style={styles.closeBtnText}>✕</Text>
+              <TouchableOpacity style={styles.closeBtn} onPress={() => setModalVisible(false)}>
+                <Ionicons name="close" size={20} color={THEME.greenDark} />
               </TouchableOpacity>
             </View>
 
-            {/* SEARCH INPUT */}
             <View style={styles.searchBox}>
-              <Text style={styles.searchIcon}>🔍</Text>
+              <Ionicons name="search-outline" size={16} color={THEME.textMuted} style={{ marginRight: 8 }} />
               <TextInput
                 style={styles.searchInput}
-                placeholder="Search driver name, vehicle, district..."
+                placeholder="Search driver by name, phone, district..."
                 placeholderTextColor={THEME.textMuted}
                 value={searchQuery}
                 onChangeText={setSearchQuery}
               />
               {searchQuery.length > 0 && (
                 <TouchableOpacity onPress={() => setSearchQuery('')}>
-                  <Text style={styles.clearSearchText}>✕</Text>
+                  <Ionicons name="close-circle" size={18} color={THEME.textMuted} />
                 </TouchableOpacity>
               )}
             </View>
 
-            {/* DRIVERS LIST */}
             <FlatList
               data={filteredDrivers}
               keyExtractor={(item) => item.uid || item.id || item.email}
@@ -195,17 +463,16 @@ export default function DriverAssignmentDropdown({
               showsVerticalScrollIndicator={false}
               ListEmptyComponent={
                 <View style={styles.emptyState}>
-                  <Text style={styles.emptyIcon}>🚚</Text>
-                  <Text style={styles.emptyTitle}>No Drivers Found</Text>
+                  <Ionicons name="people-outline" size={44} color={THEME.textMuted} />
+                  <Text style={styles.emptyTitle}>No registered drivers found</Text>
                   <Text style={styles.emptySub}>
-                    Try searching with another name or register new drivers in the fleet.
+                    No drivers match your search query in the cooperative roster.
                   </Text>
                 </View>
               }
               renderItem={({ item }) => {
                 const isSelected =
-                  selectedDriver &&
-                  (selectedDriver.uid === item.uid || selectedDriver.id === item.id);
+                  selectedDriver && (selectedDriver.uid === item.uid || selectedDriver.id === item.id);
 
                 return (
                   <TouchableOpacity
@@ -225,21 +492,13 @@ export default function DriverAssignmentDropdown({
                           </Text>
                         </View>
                         <View style={{ flex: 1 }}>
-                          <View style={styles.nameRow}>
-                            <Text style={styles.driverName} numberOfLines={1}>
-                              {item.fullName}
-                            </Text>
-                            {item.rating && (
-                              <View style={styles.ratingBadge}>
-                                <Text style={styles.ratingText}>{item.rating}</Text>
-                              </View>
-                            )}
-                          </View>
-                          <Text style={styles.driverPhone}>📞 {item.phoneNumber || 'N/A'}</Text>
+                          <Text style={styles.driverName} numberOfLines={1}>
+                            {item.fullName}
+                          </Text>
+                          <Text style={styles.driverPhone}>📞 {item.phoneNumber || item.email || 'N/A'}</Text>
                         </View>
                       </View>
 
-                      {/* AVAILABILITY BADGE */}
                       <View
                         style={[
                           styles.statusBadge,
@@ -252,35 +511,159 @@ export default function DriverAssignmentDropdown({
                             item.isAvailable ? styles.statusTextAvailable : styles.statusTextBusy,
                           ]}
                         >
-                          {item.isAvailable ? '🟢 Available' : '🔴 On Delivery'}
+                          {item.isAvailable ? '🟢 Available' : '🔴 In Transit'}
                         </Text>
                       </View>
                     </View>
 
-                    {/* VEHICLE & DISTRICT DETAILS */}
                     <View style={styles.vehicleDetailsRow}>
                       <Text style={styles.vehicleText} numberOfLines={1}>
-                        🚛 {item.vehicleNumber || 'Lorry Fleet'}
+                        🚛 {item.vehiclesCount || 0} registered vehicle{(item.vehiclesCount || 0) === 1 ? '' : 's'}
                       </Text>
                       <Text style={styles.districtTag}>📍 {getDistrictName(item.district)}</Text>
                     </View>
 
-                    {/* BUSY WARNING BANNER IF NOT AVAILABLE */}
                     {!item.isAvailable && (
                       <View style={styles.busyBanner}>
                         <Text style={styles.busyBannerText}>
                           ⏳ {item.busyReason || 'Currently handling active delivery'}
                         </Text>
-                        <Text style={styles.busySubNotice}>
-                          Unavailable until delivery confirmation
+                      </View>
+                    )}
+
+                    {isSelected && (
+                      <View style={styles.selectedMarker}>
+                        <Ionicons name="checkmark-circle" size={14} color={THEME.green} style={{ marginRight: 4 }} />
+                        <Text style={styles.selectedMarkerText}>Selected Driver</Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                );
+              }}
+            />
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── MODAL 2: VEHICLE SELECTION (LOADS ONLY THIS DRIVER'S VEHICLES) ── */}
+      <Modal
+        visible={vehicleModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setVehicleModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>🚚 Select Vehicle for Dispatch</Text>
+                <Text style={styles.modalSubTitle}>
+                  Driver: <Text style={styles.boldGreen}>{selectedDriver?.fullName || 'Driver'}</Text> • Available:{' '}
+                  <Text style={styles.boldGreen}>{availableVehiclesCount}</Text> of {totalRegisteredVehiclesCount}
+                </Text>
+              </View>
+              <TouchableOpacity style={styles.closeBtn} onPress={() => setVehicleModalVisible(false)}>
+                <Ionicons name="close" size={20} color={THEME.greenDark} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.searchBox}>
+              <Ionicons name="search-outline" size={16} color={THEME.textMuted} style={{ marginRight: 8 }} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search plate number, type, model..."
+                placeholderTextColor={THEME.textMuted}
+                value={vehicleSearchQuery}
+                onChangeText={setVehicleSearchQuery}
+              />
+              {vehicleSearchQuery.length > 0 && (
+                <TouchableOpacity onPress={() => setVehicleSearchQuery('')}>
+                  <Ionicons name="close-circle" size={18} color={THEME.textMuted} />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <FlatList
+              data={filteredDriverVehicles}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={styles.listContainer}
+              showsVerticalScrollIndicator={false}
+              ListEmptyComponent={
+                <View style={styles.emptyState}>
+                  <Ionicons name="car-outline" size={44} color={THEME.textMuted} />
+                  <Text style={styles.emptyTitle}>
+                    {totalRegisteredVehiclesCount === 0 ? 'No Vehicles Registered' : 'No Available Vehicles'}
+                  </Text>
+                  <Text style={styles.emptySub}>
+                    {totalRegisteredVehiclesCount === 0
+                      ? 'No vehicles registered for this driver'
+                      : 'No available vehicles for this driver'}
+                  </Text>
+                </View>
+              }
+              renderItem={({ item }) => {
+                const isSelected = selectedVehicle && selectedVehicle.id === item.id;
+                return (
+                  <TouchableOpacity
+                    style={[
+                      styles.driverCard,
+                      item.isAvailable ? styles.driverCardAvailable : styles.driverCardBusy,
+                      isSelected && styles.driverCardSelected,
+                    ]}
+                    onPress={() => handleSelectVehicle(item)}
+                    activeOpacity={item.isAvailable ? 0.7 : 0.9}
+                  >
+                    <View style={styles.driverTopRow}>
+                      <View style={styles.driverMainInfo}>
+                        <View style={styles.avatarCircle}>
+                          <Ionicons name="car-outline" size={18} color={THEME.greenDark} />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.driverName} numberOfLines={1}>
+                            {item.plateNumber}
+                          </Text>
+                          <Text style={styles.driverPhone}>
+                            {item.vehicleTypeLabel || item.vehicleType || 'Vehicle'} • {item.capacity ? `${item.capacity} kg` : 'Standard'} • {item.statusDisplay}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <View
+                        style={[
+                          styles.statusBadge,
+                          item.isAvailable ? styles.statusBadgeAvailable : styles.statusBadgeBusy,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.statusBadgeText,
+                            item.isAvailable ? styles.statusTextAvailable : styles.statusTextBusy,
+                          ]}
+                        >
+                          {item.statusDisplay}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.vehicleDetailsRow}>
+                      <Text style={styles.vehicleText}>
+                        {item.makeModel ? `${item.makeModel} • ` : ''}Payload: {item.capacity ? `${item.capacity} kg` : 'Standard'}
+                      </Text>
+                      {item.hasColdChain && <Text style={styles.coldBadge}>❄️ Cold-Chain Ready</Text>}
+                    </View>
+
+                    {!item.isAvailable && (
+                      <View style={styles.busyBanner}>
+                        <Text style={styles.busyBannerText}>
+                          ⚠️ Vehicle currently {item.statusDisplay.toLowerCase()} (cannot dispatch)
                         </Text>
                       </View>
                     )}
 
-                    {/* SELECTION INDICATOR */}
                     {isSelected && (
                       <View style={styles.selectedMarker}>
-                        <Text style={styles.selectedMarkerText}>✓ Selected Driver</Text>
+                        <Ionicons name="checkmark-circle" size={14} color={THEME.green} style={{ marginRight: 4 }} />
+                        <Text style={styles.selectedMarkerText}>Selected Vehicle</Text>
                       </View>
                     )}
                   </TouchableOpacity>
@@ -299,20 +682,30 @@ const styles = StyleSheet.create({
     width: '100%',
     marginVertical: 4,
   },
+  stepBlock: {
+    width: '100%',
+  },
+  stepLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: THEME.textDark,
+    marginBottom: 5,
+  },
   dropdownBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: THEME.cardBg,
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderColor: THEME.border,
-    borderRadius: 12,
-    paddingHorizontal: 12,
+    borderRadius: 14,
+    minHeight: 52,
+    paddingHorizontal: 14,
     paddingVertical: 10,
   },
   dropdownBtnSelected: {
-    borderColor: THEME.emerald,
-    backgroundColor: '#F0FDF4',
+    borderColor: THEME.green,
+    backgroundColor: THEME.mint,
   },
   dropdownBtnDisabled: {
     opacity: 0.6,
@@ -324,8 +717,24 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 10,
   },
-  driverIcon: {
-    fontSize: 20,
+  avatarBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarBadgeActive: {
+    backgroundColor: '#FFFFFF',
+  },
+  avatarBadgeText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: THEME.textMuted,
+  },
+  avatarBadgeTextActive: {
+    color: THEME.greenDark,
   },
   selectedInfo: {
     flex: 1,
@@ -336,7 +745,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   selectedDriverName: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
     color: THEME.textDark,
   },
@@ -344,7 +753,7 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: THEME.emerald,
+    backgroundColor: THEME.green,
   },
   selectedDriverSub: {
     fontSize: 11,
@@ -353,19 +762,24 @@ const styles = StyleSheet.create({
   },
   placeholderText: {
     fontSize: 13,
-    color: THEME.textMuted,
+    color: THEME.textDark,
     fontWeight: '500',
   },
-  chevronIcon: {
+  placeholderTextMuted: {
     fontSize: 12,
     color: THEME.textMuted,
-    marginLeft: 8,
+    fontStyle: 'italic',
+  },
+  warningPlaceholderText: {
+    fontSize: 12,
+    color: THEME.warning,
+    fontWeight: '600',
   },
 
   /* MODAL STYLES */
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(11, 37, 69, 0.65)',
+    backgroundColor: 'rgba(12, 35, 26, 0.55)',
     justifyContent: 'flex-end',
   },
   modalContent: {
@@ -385,9 +799,9 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   modalTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '800',
-    color: THEME.navy,
+    color: THEME.ink,
   },
   modalSubTitle: {
     fontSize: 12,
@@ -395,7 +809,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   boldGreen: {
-    color: THEME.emerald,
+    color: THEME.green,
     fontWeight: 'bold',
   },
   boldRed: {
@@ -406,14 +820,9 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#E2E8F0',
+    backgroundColor: THEME.mint,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  closeBtnText: {
-    fontSize: 14,
-    color: THEME.textDark,
-    fontWeight: 'bold',
   },
 
   searchBox: {
@@ -422,15 +831,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: THEME.border,
-    borderRadius: 12,
+    borderRadius: 14,
     marginHorizontal: 20,
     marginBottom: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  searchIcon: {
-    fontSize: 14,
-    marginRight: 8,
+    paddingHorizontal: 14,
+    minHeight: 46,
   },
   searchInput: {
     flex: 1,
@@ -438,47 +843,36 @@ const styles = StyleSheet.create({
     color: THEME.textDark,
     padding: 0,
   },
-  clearSearchText: {
-    fontSize: 14,
-    color: THEME.textMuted,
-    paddingHorizontal: 4,
-  },
 
   listContainer: {
     paddingHorizontal: 20,
     paddingBottom: 20,
-    gap: 10,
   },
   driverCard: {
-    backgroundColor: THEME.cardBg,
-    borderRadius: 14,
-    padding: 12,
-    borderWidth: 1.5,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1,
     borderColor: THEME.border,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
   },
   driverCardAvailable: {
-    borderColor: '#BBF7D0',
+    borderLeftWidth: 4,
+    borderLeftColor: THEME.green,
   },
   driverCardBusy: {
-    borderColor: '#FECACA',
-    backgroundColor: '#FFF5F5',
-    opacity: 0.85,
+    borderLeftWidth: 4,
+    borderLeftColor: THEME.danger,
+    opacity: 0.75,
   },
   driverCardSelected: {
-    borderColor: THEME.emerald,
-    backgroundColor: '#F0FDF4',
-    borderWidth: 2,
+    borderColor: THEME.green,
+    backgroundColor: THEME.mint,
   },
   driverTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
   },
   driverMainInfo: {
     flexDirection: 'row',
@@ -487,135 +881,105 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   avatarCircle: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: THEME.navy,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: THEME.mint,
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  nameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
+    fontSize: 15,
+    fontWeight: '800',
+    color: THEME.greenDark,
   },
   driverName: {
     fontSize: 14,
     fontWeight: '700',
     color: THEME.textDark,
-    flexShrink: 1,
-  },
-  ratingBadge: {
-    backgroundColor: THEME.warningLight,
-    borderRadius: 6,
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-  },
-  ratingText: {
-    fontSize: 10,
-    fontWeight: 'bold',
-    color: '#B45309',
   },
   driverPhone: {
     fontSize: 11,
     color: THEME.textMuted,
-    marginTop: 1,
+    marginTop: 2,
   },
-
   statusBadge: {
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
   },
   statusBadgeAvailable: {
-    backgroundColor: THEME.emeraldLight,
+    backgroundColor: '#DCFCE7',
   },
   statusBadgeBusy: {
-    backgroundColor: THEME.dangerLight,
+    backgroundColor: '#FEE2E2',
   },
   statusBadgeText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '700',
   },
   statusTextAvailable: {
-    color: THEME.emerald,
+    color: '#059669',
   },
   statusTextBusy: {
-    color: THEME.danger,
+    color: '#DC2626',
   },
-
   vehicleDetailsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#F8FAFC',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    marginTop: 4,
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
   },
   vehicleText: {
-    fontSize: 11,
+    fontSize: 12,
     color: THEME.textDark,
     fontWeight: '600',
-    flex: 1,
-    marginRight: 6,
   },
   districtTag: {
-    fontSize: 10,
+    fontSize: 11,
     color: THEME.textMuted,
-    fontWeight: '500',
   },
-
+  coldBadge: {
+    fontSize: 10,
+    color: THEME.info,
+    fontWeight: '700',
+  },
   busyBanner: {
     marginTop: 8,
     backgroundColor: '#FEF2F2',
+    padding: 6,
     borderRadius: 8,
-    padding: 8,
-    borderLeftWidth: 3,
-    borderLeftColor: THEME.danger,
   },
   busyBannerText: {
     fontSize: 11,
-    color: '#991B1B',
+    color: THEME.danger,
     fontWeight: '600',
   },
-  busySubNotice: {
-    fontSize: 10,
-    color: '#B91C1C',
-    marginTop: 2,
-  },
-
   selectedMarker: {
-    marginTop: 8,
-    backgroundColor: THEME.emerald,
-    borderRadius: 6,
-    paddingVertical: 4,
+    flexDirection: 'row',
     alignItems: 'center',
+    marginTop: 8,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: THEME.border,
   },
   selectedMarkerText: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: 'bold',
+    fontSize: 12,
+    fontWeight: '700',
+    color: THEME.green,
   },
-
   emptyState: {
     alignItems: 'center',
-    paddingVertical: 30,
-  },
-  emptyIcon: {
-    fontSize: 32,
-    marginBottom: 8,
+    paddingVertical: 36,
   },
   emptyTitle: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '700',
     color: THEME.textDark,
+    marginTop: 10,
   },
   emptySub: {
     fontSize: 12,
