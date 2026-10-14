@@ -647,8 +647,8 @@ export default function BuyerHomeScreen({
                   backgroundColor: isOutOfStock
                     ? C.red
                     : isLimited
-                    ? C.amber
-                    : C.green,
+                      ? C.amber
+                      : C.green,
                 },
               ]}
             />
@@ -717,9 +717,8 @@ export default function BuyerHomeScreen({
         <DetailRow
           icon="location-outline"
           label={cleanLabel(t.customRequests.targetDistrict)}
-          value={`${req.targetDistrictName || req.targetDistrictEn || 'Island-wide'}${
-            req.specificArea ? ` · ${req.specificArea}` : ''
-          }`}
+          value={`${req.targetDistrictName || req.targetDistrictEn || 'Island-wide'}${req.specificArea ? ` · ${req.specificArea}` : ''
+            }`}
         />
         <DetailRow
           icon="calendar-outline"
@@ -1134,8 +1133,8 @@ export default function BuyerHomeScreen({
                       lang === 'si'
                         ? sortOpt.labelSi
                         : lang === 'ta'
-                        ? sortOpt.labelTa
-                        : sortOpt.labelEn;
+                          ? sortOpt.labelTa
+                          : sortOpt.labelEn;
                     return (
                       <FilterChip
                         key={sortOpt.id}
@@ -1281,8 +1280,8 @@ export default function BuyerHomeScreen({
               key === 'requests'
                 ? buyerRequests.length
                 : key === 'orders'
-                ? activeBuyerOrders.length
-                : 0;
+                  ? activeBuyerOrders.length
+                  : 0;
             return (
               <TourTarget key={key} id={"buyer-tab-" + key} style={{ flex: 1 }}>
                 <TouchableOpacity

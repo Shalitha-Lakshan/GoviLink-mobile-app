@@ -263,8 +263,8 @@ export default function DeliveryTrackingScreen({
           targetStatus === 'IN_TRANSIT'
             ? 'Delivery is now In Transit 🚛. Buyer & Farmer notified.'
             : targetStatus === 'DELIVERED'
-            ? 'Delivery completed and confirmed! 🎉'
-            : `Status changed to ${targetStatus.replace(/_/g, ' ')}.`;
+              ? 'Delivery completed and confirmed! 🎉'
+              : `Status changed to ${targetStatus.replace(/_/g, ' ')}.`;
 
         if (Platform.OS === 'web') {
           window.alert(successMsg);
@@ -441,8 +441,8 @@ export default function DeliveryTrackingScreen({
               size={16}
               color={
                 currentStatus === 'PENDING' ? '#D97706' :
-                (currentStatus === 'ACCEPTED' || currentStatus === 'READY_FOR_PICKUP' || currentStatus === 'PREPARING') ? '#2563EB' :
-                currentStatus === 'DELIVERED' ? '#006837' : '#16A34A'
+                  (currentStatus === 'ACCEPTED' || currentStatus === 'READY_FOR_PICKUP' || currentStatus === 'PREPARING') ? '#2563EB' :
+                    currentStatus === 'DELIVERED' ? '#006837' : '#16A34A'
               }
               style={{ marginRight: 6 }}
             />
