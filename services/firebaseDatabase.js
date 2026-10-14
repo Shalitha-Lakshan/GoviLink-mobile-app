@@ -278,7 +278,7 @@ export const triggerDeliveryNotification = async (orderId, order, newStatus, ext
     const notificationsRef = collection(db, 'notifications');
     const nowIso = new Date().toISOString();
     const produceTitle = order.produceName || 'Produce Batch';
-    const driverName = extraData.driverName || order.driverName || 'Kamal Perera';
+    const driverName = extraData.driverName || order.driverName || '';
 
     // 1. Notify Buyer
     const buyerNotification = {

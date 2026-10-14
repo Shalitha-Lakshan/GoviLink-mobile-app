@@ -224,15 +224,16 @@ export default function DriverHomeScreen({
     produceName: `${o.produceName || 'Produce Batch'} (${o.qty || 0} ${o.unit || 'kg'})`,
     qty: o.qty,
     unit: o.unit || 'kg',
-    farmerName: o.farmerName || 'GoviLink Farmer',
+    farmerName: o.farmerName || '',
     farmerPhone: o.farmerPhone || '',
-    pickupLocation: driverLocationLabel(o.pickupLocation || o.location, lang, 'Farm Origin'),
-    buyerName: o.buyerName || 'GoviLink Buyer',
+    pickupLocation: driverLocationLabel(o.pickupLocation || o.location, lang, ''),
+    buyerName: o.buyerName || '',
     buyerPhone: o.buyerPhone || '',
-    deliveryAddress: driverLocationLabel(o.deliveryAddress, lang, 'Delivery Destination'),
-    totalPrice: o.logisticsFee || 350,
+    deliveryAddress: driverLocationLabel(o.deliveryAddress, lang, ''),
+    // Use real logisticsFee; do NOT fallback to a hardcoded amount
+    totalPrice: o.logisticsFee != null ? o.logisticsFee : (o.totalPrice != null ? o.totalPrice : null),
     status: o.status || 'PENDING',
-    specialNotes: o.deliveryNotes || 'Standard agricultural transport safety handling.',
+    specialNotes: o.deliveryNotes || '',
   }));
 
   const allDriverTrips = realOrdersForDriver;
@@ -268,7 +269,7 @@ export default function DriverHomeScreen({
     setUpdatingTripId(trip.id);
     if (trip.id) {
       const res = await updateOrderStatus(trip.id, nextStatus, {
-        driverName: userProfile?.fullName || 'Assigned Driver',
+        driverName: userProfile?.fullName || '',
         driverPhone: userProfile?.phoneNumber || '',
         changedBy: userProfile?.fullName || 'Assigned Driver',
         actorRole: 'driver',
@@ -444,7 +445,7 @@ export default function DriverHomeScreen({
 
           <View style={styles.kpiCard}>
             <IconTile name="star-outline" /><Text style={styles.kpiLabel}>{t.stats.rating}</Text>
-            <Text style={styles.kpiValue}>5.0 ★</Text>
+            <Text style={styles.kpiValue}>{userProfile?.rating ? `${userProfile.rating} ★` : '—'}</Text>
           </View>
         </View>
 
