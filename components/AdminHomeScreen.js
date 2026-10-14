@@ -17,6 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import {
   subscribeToDrivers,
+  subscribeToAllVehicles,
   assignDriverToOrder,
   reassignDriverForOrder,
   checkDriverAvailability,
@@ -191,8 +192,24 @@ export default function AdminHomeScreen({
     );
   }
 
+  const [localVehiclesList, setLocalVehiclesList] = useState([]);
+
+  // Subscribe to real-time vehicles fleet for admin
+  useEffect(() => {
+    const unsubVehicles = subscribeToAllVehicles((vehicles) => {
+      if (Array.isArray(vehicles) && vehicles.length > 0) {
+        setLocalVehiclesList(vehicles);
+      }
+    });
+    return () => {
+      if (unsubVehicles) unsubVehicles();
+    };
+  }, []);
+
+  const allVehiclesList = (vehiclesList && vehiclesList.length > 0) ? vehiclesList : localVehiclesList;
+
   // Standard Fleet fallback merged with real Firebase vehicles
-  const VEHICLE_FLEET = vehiclesList.length > 0 ? vehiclesList : [
+  const VEHICLE_FLEET = allVehiclesList.length > 0 ? allVehiclesList : [
     {
       id: 'v1',
       title: 'Lorry - 5 Tonne',
@@ -482,6 +499,7 @@ export default function AdminHomeScreen({
         userProfile={userProfile}
         driversList={driversList}
         ordersList={ordersList}
+        vehiclesList={allVehiclesList}
         lang={lang}
         onBack={() => setSelectedOrderForDetails(null)}
         onLogout={onLogout}
@@ -1075,6 +1093,7 @@ export default function AdminHomeScreen({
                         <Text style={styles.dropdownTitle}>Select Available Fleet Driver:</Text>
                         <DriverAssignmentDropdown
                           drivers={driversList}
+                          vehiclesList={allVehiclesList}
                           ordersList={ordersList}
                           selectedDriver={selectedDriver}
                           onSelectDriver={(driver) => {

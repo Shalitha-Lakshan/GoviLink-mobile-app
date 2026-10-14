@@ -1473,7 +1473,7 @@ export const acceptBuyerCustomRequest = async (request, farmerProfile) => {
 /**
  * Real-time listener for Driver's registered vehicles
  */
-export const subscribeToDriverVehicles = (driverUid, onUpdate) => {
+export const subscribeToDriverVehicles = (driverUid, onUpdate, onError) => {
   if (!driverUid) {
     onUpdate([]);
     return () => { };
@@ -1492,6 +1492,7 @@ export const subscribeToDriverVehicles = (driverUid, onUpdate) => {
     },
     (error) => {
       console.warn('Firestore driver vehicles subscription error:', error);
+      if (onError) onError(error);
       onUpdate([]);
     }
   );
@@ -1500,7 +1501,7 @@ export const subscribeToDriverVehicles = (driverUid, onUpdate) => {
 /**
  * Real-time listener for ALL vehicles in Firestore (for Admin Dashboard & fleet metrics)
  */
-export const subscribeToAllVehicles = (onUpdate) => {
+export const subscribeToAllVehicles = (onUpdate, onError) => {
   const vehiclesRef = collection(db, 'vehicles');
 
   return onSnapshot(
@@ -1514,6 +1515,7 @@ export const subscribeToAllVehicles = (onUpdate) => {
     },
     (error) => {
       console.warn('Firestore all vehicles subscription error:', error);
+      if (onError) onError(error);
       onUpdate([]);
     }
   );

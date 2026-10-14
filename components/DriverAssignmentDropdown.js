@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   StyleSheet,
   Text,
@@ -10,6 +10,8 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { db } from '../firebaseConfig';
 import { checkDriverAvailability } from '../services/firebaseDatabase';
 import { FARMER_COLORS as C } from './FarmerDesign';
 
@@ -56,19 +58,96 @@ export default function DriverAssignmentDropdown({
   const [searchQuery, setSearchQuery] = useState('');
   const [vehicleSearchQuery, setVehicleSearchQuery] = useState('');
 
-  // 1. Compute driver availability
+  // Real-time queried vehicles for the currently selected driver
+  const [queriedVehicles, setQueriedVehicles] = useState([]);
+  const [vehiclesLoading, setVehiclesLoading] = useState(false);
+  const [vehiclesError, setVehiclesError] = useState(null);
+
+  // Normalized driver identifier
+  const selectedDriverActualId = selectedDriver?.uid || selectedDriver?.id || null;
+
+  // 1. Query/load ONLY vehicles belonging to that driver when selected (Section 3 & 11)
+  useEffect(() => {
+    if (!selectedDriverActualId) {
+      setQueriedVehicles([]);
+      setVehiclesLoading(false);
+      setVehiclesError(null);
+      return;
+    }
+
+    setVehiclesLoading(true);
+    setVehiclesError(null);
+
+    const vehiclesRef = collection(db, 'vehicles');
+    const q = query(vehiclesRef, where('driverUid', '==', selectedDriverActualId));
+
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const vehicles = snapshot.docs.map((docSnap) => ({
+          id: docSnap.id,
+          ...docSnap.data(),
+        }));
+
+        setQueriedVehicles(vehicles);
+        setVehiclesLoading(false);
+        setVehiclesError(null);
+
+        // Debug logging (Section 5 requirement)
+        console.log('[DriverAssignmentDropdown] Selected driver:', {
+          id: selectedDriver.id,
+          uid: selectedDriver.uid,
+          name: selectedDriver.fullName || selectedDriver.name,
+        });
+
+        vehicles.forEach((v) => {
+          console.log('[DriverAssignmentDropdown] Vehicle:', {
+            id: v.id,
+            driverUid: v.driverUid || v.driverId,
+            plateNumber: v.plateNumber,
+            status: v.status || 'AVAILABLE',
+          });
+        });
+      },
+      (error) => {
+        console.error('[DriverAssignmentDropdown] Firestore error loading vehicles:', error);
+        setVehiclesError(error.message || 'Error querying driver vehicles from Firestore');
+        setVehiclesLoading(false);
+      }
+    );
+
+    return () => {
+      unsubscribe();
+    };
+  }, [selectedDriverActualId]);
+
+  // Combine queried vehicles with any vehiclesList prop for this driver
+  const driverRawVehicles = useMemo(() => {
+    if (!selectedDriverActualId) return [];
+    if (queriedVehicles.length > 0) return queriedVehicles;
+    return (vehiclesList || []).filter((v) => {
+      const vOwner = v.driverUid || v.driverId || v.ownerDriverId || v.userId;
+      return vOwner === selectedDriverActualId;
+    });
+  }, [selectedDriverActualId, queriedVehicles, vehiclesList]);
+
+  // 1. Compute driver availability for driver roster
   const evaluatedDrivers = useMemo(() => {
     const list = Array.isArray(drivers) ? drivers : [];
     return list.map((driver) => {
       const driverId = driver.uid || driver.id;
       const availability = checkDriverAvailability(driver, ordersList || []);
-      const driverVehicles = (vehiclesList || []).filter((v) => v.driverUid === driverId);
+      const count = (vehiclesList || []).filter((v) => {
+        const vOwner = v.driverUid || v.driverId || v.ownerDriverId || v.userId;
+        return vOwner === driverId;
+      }).length;
+
       return {
         ...driver,
         isAvailable: availability.isAvailable,
         activeOrder: availability.activeOrder,
         busyReason: availability.reason,
-        vehiclesCount: driverVehicles.length,
+        vehiclesCount: count,
       };
     });
   }, [drivers, ordersList, vehiclesList]);
@@ -90,36 +169,55 @@ export default function DriverAssignmentDropdown({
   const availableCount = evaluatedDrivers.filter((d) => d.isAvailable).length;
   const busyCount = evaluatedDrivers.length - availableCount;
 
-  // 2. Compute vehicles belonging ONLY to the selected driver
+  // 2. Compute vehicles belonging ONLY to the selected driver with normalized status
   const driverVehicles = useMemo(() => {
-    if (!selectedDriver) return [];
-    const driverId = selectedDriver.uid || selectedDriver.id;
-    return (vehiclesList || []).filter((v) => v.driverUid === driverId).map((v) => {
+    return driverRawVehicles.map((v) => {
       const isAssignedToOther = (ordersList || []).some(
         (o) =>
-          (o.id !== orderId) &&
+          o.id !== orderId &&
           (o.vehicleId === v.id || o.driverVehicleId === v.id) &&
           ['ACCEPTED', 'ASSIGNED', 'PICKED_UP', 'IN_TRANSIT', 'PENDING_DELIVERY'].includes(o.status)
       );
 
-      const isMaintenance = v.status === 'MAINTENANCE';
-      const isInactive = v.status === 'INACTIVE';
-      const isBusy = isAssignedToOther || v.status === 'IN_USE';
+      const normStatus = String(v.status || '').trim().toUpperCase();
+      const isMaintenance = normStatus === 'MAINTENANCE' || normStatus === 'REPAIR';
+      const isInactive = normStatus === 'INACTIVE' || normStatus === 'DISABLED';
+      const isBusy =
+        isAssignedToOther ||
+        normStatus === 'IN_USE' ||
+        normStatus === 'IN_TRANSIT' ||
+        normStatus === 'IN TRANSIT' ||
+        normStatus === 'ASSIGNED' ||
+        normStatus === 'BUSY' ||
+        v.isAvailable === false;
+
+      // Available if not maintenance, not inactive, not busy (even if status is undefined in DB)
       const isAvailable = !isMaintenance && !isInactive && !isBusy;
+
+      const statusLabel = isMaintenance
+        ? 'MAINTENANCE'
+        : isBusy
+        ? 'IN_USE'
+        : isInactive
+        ? 'INACTIVE'
+        : 'AVAILABLE';
+
+      const statusDisplay = isMaintenance
+        ? 'Maintenance'
+        : isBusy
+        ? 'In Use'
+        : isInactive
+        ? 'Inactive'
+        : 'Available';
 
       return {
         ...v,
         isAvailable,
-        statusLabel: isMaintenance
-          ? 'MAINTENANCE'
-          : isBusy
-          ? 'IN_USE'
-          : isInactive
-          ? 'INACTIVE'
-          : 'AVAILABLE',
+        statusLabel,
+        statusDisplay,
       };
     });
-  }, [selectedDriver, vehiclesList, ordersList, orderId]);
+  }, [driverRawVehicles, ordersList, orderId]);
 
   const filteredDriverVehicles = useMemo(() => {
     if (!vehicleSearchQuery.trim()) return driverVehicles;
@@ -132,7 +230,19 @@ export default function DriverAssignmentDropdown({
     );
   }, [driverVehicles, vehicleSearchQuery]);
 
+  const totalRegisteredVehiclesCount = driverRawVehicles.length;
   const availableVehiclesCount = driverVehicles.filter((v) => v.isAvailable).length;
+
+  // Log summary metrics (Section 5 requirement)
+  useEffect(() => {
+    if (selectedDriverActualId && driverRawVehicles.length > 0) {
+      console.log('[DriverAssignmentDropdown] Vehicles summary:', {
+        totalVehiclesLoaded: driverRawVehicles.length,
+        vehiclesMatchingSelectedDriver: driverVehicles.length,
+        availableVehiclesAfterFiltering: availableVehiclesCount,
+      });
+    }
+  }, [selectedDriverActualId, driverRawVehicles.length, driverVehicles.length, availableVehiclesCount]);
 
   const handleSelectDriver = (driver) => {
     if (!driver.isAvailable) {
@@ -146,7 +256,7 @@ export default function DriverAssignmentDropdown({
     if (onSelectDriver) {
       onSelectDriver(driver);
     }
-    // Rule 12: Clear previous vehicle selection immediately on driver change
+    // Section 11: Clear previous vehicle selection immediately on driver change
     if (onSelectVehicle) {
       onSelectVehicle(null);
     }
@@ -157,7 +267,7 @@ export default function DriverAssignmentDropdown({
     if (!vehicle.isAvailable) {
       Alert.alert(
         'Vehicle Unavailable 🚚',
-        `Vehicle ${vehicle.plateNumber} is currently ${vehicle.statusLabel.toLowerCase().replace('_', ' ')}.`
+        `Vehicle ${vehicle.plateNumber} is currently ${vehicle.statusDisplay.toLowerCase()} and cannot be selected.`
       );
       return;
     }
@@ -205,7 +315,7 @@ export default function DriverAssignmentDropdown({
                     <View style={styles.greenDot} />
                   </View>
                   <Text style={styles.selectedDriverSub} numberOfLines={1}>
-                    📞 {selectedDriver.phoneNumber || selectedDriver.email || 'Registered Driver'} • {selectedDriver.vehiclesCount || driverVehicles.length} vehicles
+                    📞 {selectedDriver.phoneNumber || selectedDriver.email || 'Registered Driver'} • {totalRegisteredVehiclesCount} {totalRegisteredVehiclesCount === 1 ? 'vehicle' : 'vehicles'}
                   </Text>
                 </>
               ) : (
@@ -235,12 +345,20 @@ export default function DriverAssignmentDropdown({
               Alert.alert('Select Driver First', 'Please select a delivery driver before selecting a vehicle.');
               return;
             }
-            if (driverVehicles.length === 0) {
-              Alert.alert('No Vehicles', 'This driver does not have any registered vehicles in their fleet.');
+            if (vehiclesLoading) {
+              Alert.alert('Loading', 'Please wait while driver vehicles are loading.');
+              return;
+            }
+            if (vehiclesError) {
+              Alert.alert('Query Error', `Could not load vehicles: ${vehiclesError}`);
+              return;
+            }
+            if (totalRegisteredVehiclesCount === 0) {
+              Alert.alert('No Vehicles', 'No vehicles registered for this driver');
               return;
             }
             if (availableVehiclesCount === 0) {
-              Alert.alert('No Available Vehicles', 'All vehicles for this driver are currently in use or under maintenance.');
+              Alert.alert('No Available Vehicles', 'No available vehicles for this driver');
               return;
             }
             setVehicleModalVisible(true);
@@ -261,6 +379,14 @@ export default function DriverAssignmentDropdown({
                 <Text style={styles.placeholderTextMuted} numberOfLines={1}>
                   Select driver first to view vehicles...
                 </Text>
+              ) : vehiclesLoading ? (
+                <Text style={styles.placeholderTextMuted} numberOfLines={1}>
+                  Loading registered vehicles...
+                </Text>
+              ) : vehiclesError ? (
+                <Text style={styles.warningPlaceholderText} numberOfLines={1}>
+                  ⚠️ Error: {vehiclesError}
+                </Text>
               ) : selectedVehicle ? (
                 <>
                   <View style={styles.nameBadgeRow}>
@@ -270,10 +396,10 @@ export default function DriverAssignmentDropdown({
                     <View style={styles.greenDot} />
                   </View>
                   <Text style={styles.selectedDriverSub} numberOfLines={1}>
-                    {selectedVehicle.vehicleTypeLabel || selectedVehicle.vehicleType || 'Vehicle'} • {selectedVehicle.capacity ? `${selectedVehicle.capacity} kg` : 'Standard'} • Available
+                    {selectedVehicle.vehicleTypeLabel || selectedVehicle.vehicleType || 'Vehicle'} • {selectedVehicle.capacity ? `${selectedVehicle.capacity} kg` : 'Standard'} • {selectedVehicle.statusDisplay || 'Available'}
                   </Text>
                 </>
-              ) : driverVehicles.length === 0 ? (
+              ) : totalRegisteredVehiclesCount === 0 ? (
                 <Text style={styles.warningPlaceholderText} numberOfLines={1}>
                   ⚠️ No vehicles registered for this driver
                 </Text>
@@ -433,7 +559,7 @@ export default function DriverAssignmentDropdown({
                 <Text style={styles.modalTitle}>🚚 Select Vehicle for Dispatch</Text>
                 <Text style={styles.modalSubTitle}>
                   Driver: <Text style={styles.boldGreen}>{selectedDriver?.fullName || 'Driver'}</Text> • Available:{' '}
-                  <Text style={styles.boldGreen}>{availableVehiclesCount}</Text>
+                  <Text style={styles.boldGreen}>{availableVehiclesCount}</Text> of {totalRegisteredVehiclesCount}
                 </Text>
               </View>
               <TouchableOpacity style={styles.closeBtn} onPress={() => setVehicleModalVisible(false)}>
@@ -465,9 +591,13 @@ export default function DriverAssignmentDropdown({
               ListEmptyComponent={
                 <View style={styles.emptyState}>
                   <Ionicons name="car-outline" size={44} color={THEME.textMuted} />
-                  <Text style={styles.emptyTitle}>No Available Vehicles for this Driver</Text>
+                  <Text style={styles.emptyTitle}>
+                    {totalRegisteredVehiclesCount === 0 ? 'No Vehicles Registered' : 'No Available Vehicles'}
+                  </Text>
                   <Text style={styles.emptySub}>
-                    This driver has no vehicles ready for cargo dispatch right now.
+                    {totalRegisteredVehiclesCount === 0
+                      ? 'No vehicles registered for this driver'
+                      : 'No available vehicles for this driver'}
                   </Text>
                 </View>
               }
@@ -493,8 +623,7 @@ export default function DriverAssignmentDropdown({
                             {item.plateNumber}
                           </Text>
                           <Text style={styles.driverPhone}>
-                            {item.makeModel ? `${item.makeModel} • ` : ''}
-                            {item.vehicleTypeLabel || item.vehicleType || 'Transport'}
+                            {item.vehicleTypeLabel || item.vehicleType || 'Vehicle'} • {item.capacity ? `${item.capacity} kg` : 'Standard'} • {item.statusDisplay}
                           </Text>
                         </View>
                       </View>
@@ -511,14 +640,14 @@ export default function DriverAssignmentDropdown({
                             item.isAvailable ? styles.statusTextAvailable : styles.statusTextBusy,
                           ]}
                         >
-                          {item.statusLabel}
+                          {item.statusDisplay}
                         </Text>
                       </View>
                     </View>
 
                     <View style={styles.vehicleDetailsRow}>
                       <Text style={styles.vehicleText}>
-                        Payload: {item.capacity ? `${item.capacity} kg` : 'Standard'}
+                        {item.makeModel ? `${item.makeModel} • ` : ''}Payload: {item.capacity ? `${item.capacity} kg` : 'Standard'}
                       </Text>
                       {item.hasColdChain && <Text style={styles.coldBadge}>❄️ Cold-Chain Ready</Text>}
                     </View>
@@ -526,7 +655,7 @@ export default function DriverAssignmentDropdown({
                     {!item.isAvailable && (
                       <View style={styles.busyBanner}>
                         <Text style={styles.busyBannerText}>
-                          ⚠️ Vehicle currently {item.statusLabel.toLowerCase().replace('_', ' ')}
+                          ⚠️ Vehicle currently {item.statusDisplay.toLowerCase()} (cannot dispatch)
                         </Text>
                       </View>
                     )}
