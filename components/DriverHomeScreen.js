@@ -245,10 +245,6 @@ export default function DriverHomeScreen({
       trip.status === 'ASSIGNED'
   );
   const completedDeliveries = allDriverTrips.filter((trip) => trip.status === 'DELIVERED');
-  const totalDriverEarnings = completedDeliveries.reduce(
-    (sum, trip) => sum + (Number(trip.totalPrice) || 0),
-    0
-  );
 
   const handleTripProgression = async (trip) => {
     let nextStatus = '';
@@ -435,11 +431,6 @@ export default function DriverHomeScreen({
           <View style={styles.kpiCard}>
             <IconTile name="checkmark-circle-outline" /><Text style={styles.kpiLabel}>{t.stats.completedToday}</Text>
             <Text style={styles.kpiValue}>{completedDeliveries.length}</Text>
-          </View>
-
-          <View style={styles.kpiCard}>
-            <IconTile name="wallet-outline" /><Text style={styles.kpiLabel}>{t.stats.estEarnings}</Text>
-            <Text style={styles.kpiValue}>{t.currency} {totalDriverEarnings.toLocaleString()}</Text>
           </View>
 
           <View style={styles.kpiCard}>

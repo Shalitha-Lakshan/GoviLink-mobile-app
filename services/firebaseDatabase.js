@@ -1428,6 +1428,36 @@ export const addDriverVehicle = async (driverUid, vehicleData) => {
 
 export const saveDriverVehicle = addDriverVehicle;
 
+export const acceptDriverDelivery = async (orderId, driverUid) => {
+  try {
+    if (!orderId || !driverUid || auth.currentUser?.uid !== driverUid) {
+      throw new Error('Please sign in as the assigned driver.');
+    }
+    await runTransaction(db, async (transaction) => {
+      const orderRef = doc(db, 'orders', orderId);
+      const snapshot = await transaction.get(orderRef);
+      if (!snapshot.exists()) throw new Error('Delivery not found.');
+      const order = snapshot.data();
+      if (order.driverId !== driverUid) throw new Error('This delivery is no longer assigned to you.');
+      if (order.status !== 'ASSIGNED') throw new Error('Only an assigned delivery can be accepted.');
+      const timestamp = new Date().toISOString();
+      transaction.update(orderRef, {
+        status: 'ACCEPTED',
+        acceptedAt: serverTimestamp(),
+        acceptedIso: timestamp,
+        updatedAt: serverTimestamp(),
+        statusHistory: [
+          ...(Array.isArray(order.statusHistory) ? order.statusHistory : []),
+          { status: 'ACCEPTED', timestamp, changedBy: order.driverName || 'Driver', actorRole: 'driver', notes: 'Driver accepted the delivery assignment.' },
+        ],
+      });
+    });
+    return { success: true, orderId, status: 'ACCEPTED' };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+};
+
 /** Decline a driver's assignment before pickup, keeping the order open. */
 export const rejectDriverDelivery = async (orderId, driverUid) => {
   try {

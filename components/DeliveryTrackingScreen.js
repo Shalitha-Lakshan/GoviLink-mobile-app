@@ -18,6 +18,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import {
   updateOrderStatus,
+  acceptDriverDelivery,
   subscribeToOrderById,
   DELIVERY_STATUSES,
   VALID_DELIVERY_TRANSITIONS,
@@ -120,7 +121,10 @@ export default function DeliveryTrackingScreen({
   const driverRating = currentDelivery?.driverRating || '4.8';
   const driverRuns = currentDelivery?.driverRuns || '124 runs';
   const driverPhone = currentDelivery?.driverPhone || '0771234567';
-  const driverAvatar = currentDelivery?.driverAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80';
+  const isOwnDriverView = userRole === 'driver' && currentDelivery?.driverId === userProfile?.uid;
+  const driverAvatar = isOwnDriverView
+    ? userProfile?.photoURL || null
+    : currentDelivery?.driverAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80';
 
   // Farmer / Consignor details (GOVI-148)
   const farmerName = currentDelivery?.farmerName || 'Sunil Gamage';
@@ -239,7 +243,9 @@ export default function DeliveryTrackingScreen({
 
     setIsUpdatingStatus(true);
     try {
-      const res = await updateOrderStatus(orderId, targetStatus, {
+      const res = targetStatus === 'ACCEPTED' && userRole === 'driver'
+        ? await acceptDriverDelivery(orderId, userProfile?.uid)
+        : await updateOrderStatus(orderId, targetStatus, {
         driverName: userProfile?.fullName || currentDelivery?.driverName || 'Kamal Perera',
         driverPhone: userProfile?.phoneNumber || currentDelivery?.driverPhone || '',
         actorRole: userProfile?.role || 'driver',
@@ -464,7 +470,15 @@ export default function DeliveryTrackingScreen({
         <View style={styles.cardBox}>
           <Text style={styles.cardSublabel}>Assigned Driver</Text>
           <View style={styles.driverMainRow}>
-            <Image source={{ uri: driverAvatar }} style={styles.driverAvatar} />
+            {driverAvatar ? (
+              <Image source={{ uri: driverAvatar }} style={styles.driverAvatar} />
+            ) : (
+              <View style={[styles.driverAvatar, { backgroundColor: C.mint, alignItems: 'center', justifyContent: 'center' }]}>
+                <Text style={{ fontSize: 24, fontWeight: '700', color: C.greenDark }}>
+                  {(userProfile?.fullName || driverName || 'D').charAt(0).toUpperCase()}
+                </Text>
+              </View>
+            )}
             <View style={{ flex: 1 }}>
               <Text style={styles.driverName}>{driverName}</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
@@ -837,6 +851,23 @@ export default function DeliveryTrackingScreen({
                 <Text style={styles.statusBtnText}>✅ Confirm Dropoff & Delivered</Text>
               </TouchableOpacity>
             </View>
+          )}
+
+          {isOwnDriverView && currentStatus === 'ASSIGNED' && (
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Accept Delivery"
+              style={[styles.statusBtn, { backgroundColor: C.green, marginTop: 12 }]}
+              disabled={isUpdatingStatus || isRejecting}
+              onPress={() => setStatusActionModal({
+                targetStatus: 'ACCEPTED',
+                title: 'Accept Delivery',
+                message: 'Confirm that you will handle this delivery. You can start pickup once you are ready.',
+              })}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.statusBtnText}>Accept Delivery</Text>
+            </TouchableOpacity>
           )}
 
           {canRejectDelivery && <TouchableOpacity
