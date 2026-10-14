@@ -474,7 +474,7 @@ export default function DeliveryTrackingScreen({
             </View>
           </View>
 
-          <View style={styles.driverActionsRow}>
+          {userRole !== 'driver' && <View style={styles.driverActionsRow}>
             <TouchableOpacity
               style={styles.messageBtn}
               onPress={handleMessageDriver}
@@ -492,7 +492,7 @@ export default function DeliveryTrackingScreen({
               <Ionicons name="call-outline" size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
               <Text style={styles.callBtnText}>Call</Text>
             </TouchableOpacity>
-          </View>
+          </View>}
 
           {/* ADMIN REASSIGN DRIVER BUTTON (GOVI-151) */}
           {isAdmin && (
