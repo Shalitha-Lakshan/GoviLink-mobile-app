@@ -90,7 +90,7 @@ const readImageDataUrl = async (uri) => {
         const base64 = value.split(';base64,')[1];
         const mimeType = base64?.startsWith('/9j/') ? 'image/jpeg'
           : base64?.startsWith('iVBORw0KGgo') ? 'image/png'
-            : base64?.startsWith('R0lGOD') ? 'image/gif' : null;
+          : base64?.startsWith('R0lGOD') ? 'image/gif' : null;
         if (mimeType) {
           resolve(`data:${mimeType};base64,${base64}`);
           return;

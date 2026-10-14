@@ -382,8 +382,8 @@ export default function FarmerHomeScreen({
       lang === 'si'
         ? request.targetDistrictName || request.targetDistrictEn || 'දිවයින පුරා'
         : lang === 'ta'
-          ? request.targetDistrictName || request.targetDistrictEn || 'நாடு முழுவதும்'
-          : request.targetDistrictName || request.targetDistrictEn || 'Island-wide';
+        ? request.targetDistrictName || request.targetDistrictEn || 'நாடு முழுவதும்'
+        : request.targetDistrictName || request.targetDistrictEn || 'Island-wide';
     const areaDetail = request.specificArea ? ` (${request.specificArea})` : '';
 
     const message = `${t.customRequests.confirmMsg}\n\n${request.quantity} ${request.unit || 'kg'} of ${cropTitle}\n${districtDisplay}${areaDetail}\n${request.datePeriodDescription || [request.requiredDateStart, request.requiredDateEnd].filter(Boolean).join(' – ')}\n${request.buyerName || 'Buyer'}`;
@@ -435,38 +435,38 @@ export default function FarmerHomeScreen({
 
   return (
     <>
-      <View style={{ flex: 1 }} accessibilityElementsHidden={Boolean(showAddProduceScreen || editingProduceItem)}
-        importantForAccessibility={showAddProduceScreen || editingProduceItem ? 'no-hide-descendants' : 'auto'}
-        aria-hidden={Boolean(showAddProduceScreen || editingProduceItem)}>
-        <FarmerWorkspace
-          userProfile={userProfile} lang={lang} t={t}
-          activeTab={activeTab} setActiveTab={setActiveTab}
-          listings={displayListings} requests={openCustomRequests} orders={myAcceptedOrders}
-          onAdd={() => setShowAddProduceScreen(true)} onEdit={setEditingProduceItem}
-          onDelete={handleDeleteProduce} onProvide={handleProvideCustomRequest}
-          onUpdateStatus={handleUpdateOrderStatus} onDelivered={handleConfirmDelivered}
-          onTrack={setSelectedDeliveryForTracking} onLogout={onLogout}
-          onChangeLanguage={onChangeLanguage} onProfileUpdated={onProfileUpdated}
-          providingRequestId={providingRequestId} updatingOrderId={updatingOrderId}
-          produceToDelete={produceToDelete} isDeletingProduce={isDeletingProduce}
-          onCancelDelete={() => setProduceToDelete(null)} onConfirmDelete={confirmDeleteProduce}
-        />
-      </View>
-      {(showAddProduceScreen || editingProduceItem) && (
-        <AddProduceScreen
-          userProfile={userProfile}
-          lang={lang}
-          initialProduce={editingProduceItem}
-          onBack={() => {
-            setShowAddProduceScreen(false);
-            setEditingProduceItem(null);
-          }}
-          onProduceAdded={() => {
-            setShowAddProduceScreen(false);
-            setEditingProduceItem(null);
-          }}
-        />
-      )}
+    <View style={{ flex: 1 }} accessibilityElementsHidden={Boolean(showAddProduceScreen || editingProduceItem)}
+      importantForAccessibility={showAddProduceScreen || editingProduceItem ? 'no-hide-descendants' : 'auto'}
+      aria-hidden={Boolean(showAddProduceScreen || editingProduceItem)}>
+    <FarmerWorkspace
+      userProfile={userProfile} lang={lang} t={t}
+      activeTab={activeTab} setActiveTab={setActiveTab}
+      listings={displayListings} requests={openCustomRequests} orders={myAcceptedOrders}
+      onAdd={() => setShowAddProduceScreen(true)} onEdit={setEditingProduceItem}
+      onDelete={handleDeleteProduce} onProvide={handleProvideCustomRequest}
+      onUpdateStatus={handleUpdateOrderStatus} onDelivered={handleConfirmDelivered}
+      onTrack={setSelectedDeliveryForTracking} onLogout={onLogout}
+      onChangeLanguage={onChangeLanguage} onProfileUpdated={onProfileUpdated}
+      providingRequestId={providingRequestId} updatingOrderId={updatingOrderId}
+      produceToDelete={produceToDelete} isDeletingProduce={isDeletingProduce}
+      onCancelDelete={() => setProduceToDelete(null)} onConfirmDelete={confirmDeleteProduce}
+    />
+    </View>
+    {(showAddProduceScreen || editingProduceItem) && (
+      <AddProduceScreen
+        userProfile={userProfile}
+        lang={lang}
+        initialProduce={editingProduceItem}
+        onBack={() => {
+          setShowAddProduceScreen(false);
+          setEditingProduceItem(null);
+        }}
+        onProduceAdded={() => {
+          setShowAddProduceScreen(false);
+          setEditingProduceItem(null);
+        }}
+      />
+    )}
     </>
   );
 }
