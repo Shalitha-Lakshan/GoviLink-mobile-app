@@ -155,30 +155,10 @@ export default function LoginScreen({ lang = 'en', onBackToLang, onNavigateToReg
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [selectedRole, setSelectedRole] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
   const [authError, setAuthError] = useState(null);
-
-  const handleAutoFill = (role) => {
-    setSelectedRole(role);
-    setErrors({});
-    setAuthError(null);
-    if (role === 'farmer') {
-      setEmail('farmer.demo@govilink.lk');
-      setPassword('Farmer@123');
-    } else if (role === 'buyer') {
-      setEmail('buyer.demo@govilink.lk');
-      setPassword('Buyer@123');
-    } else if (role === 'driver') {
-      setEmail('driver.demo@govilink.lk');
-      setPassword('Driver@123');
-    } else if (role === 'admin') {
-      setEmail('admin.demo@govilink.lk');
-      setPassword('Admin@123');
-    }
-  };
 
   const validateForm = () => {
     let newErrors = {};
@@ -264,105 +244,6 @@ export default function LoginScreen({ lang = 'en', onBackToLang, onNavigateToReg
 
           {/* FORM FIELDS */}
           <View style={styles.formSection}>
-            {/* DEV AUTO-FILL ROLE SELECTOR */}
-            <View style={styles.devCard}>
-              <View style={styles.devHeader}>
-                <Text style={styles.devBadge}>⚡ DEV AUTO-FILL</Text>
-                <Text style={styles.devSub}>Click to auto-fill credentials</Text>
-              </View>
-              <View style={styles.devButtonsRow}>
-                <TouchableOpacity
-                  accessibilityRole="button"
-                  accessibilityLabel="Auto-fill Farmer Credentials"
-                  style={[
-                    styles.devRoleBtn,
-                    selectedRole === 'farmer' && styles.devRoleBtnActive,
-                  ]}
-                  onPress={() => handleAutoFill('farmer')}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.devRoleIcon}>🧑‍🌾</Text>
-                  <Text
-                    style={[
-                      styles.devRoleText,
-                      selectedRole === 'farmer' && styles.devRoleTextActive,
-                    ]}
-                  >
-                    Farmer
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  accessibilityRole="button"
-                  accessibilityLabel="Auto-fill Buyer Credentials"
-                  style={[
-                    styles.devRoleBtn,
-                    selectedRole === 'buyer' && styles.devRoleBtnActive,
-                  ]}
-                  onPress={() => handleAutoFill('buyer')}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.devRoleIcon}>🛒</Text>
-                  <Text
-                    style={[
-                      styles.devRoleText,
-                      selectedRole === 'buyer' && styles.devRoleTextActive,
-                    ]}
-                  >
-                    Buyer
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  accessibilityRole="button"
-                  accessibilityLabel="Auto-fill Driver Credentials"
-                  style={[
-                    styles.devRoleBtn,
-                    selectedRole === 'driver' && styles.devRoleBtnActive,
-                  ]}
-                  onPress={() => handleAutoFill('driver')}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.devRoleIcon}>🚚</Text>
-                  <Text
-                    style={[
-                      styles.devRoleText,
-                      selectedRole === 'driver' && styles.devRoleTextActive,
-                    ]}
-                  >
-                    Driver
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  accessibilityRole="button"
-                  accessibilityLabel="Auto-fill Admin Credentials"
-                  style={[
-                    styles.devRoleBtn,
-                    selectedRole === 'admin' && styles.devRoleBtnActive,
-                  ]}
-                  onPress={() => handleAutoFill('admin')}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.devRoleIcon}>🛡️</Text>
-                  <Text
-                    style={[
-                      styles.devRoleText,
-                      selectedRole === 'admin' && styles.devRoleTextActive,
-                    ]}
-                  >
-                    Admin
-                  </Text>
-                </TouchableOpacity>
-              </View>
-              {selectedRole && (
-                <View style={styles.devFeedbackRow}>
-                  <Text style={styles.devFeedbackText}>
-                    ✓ Loaded: <Text style={{ fontWeight: '700' }}>{email}</Text> • password: <Text style={{ fontWeight: '700' }}>{password}</Text>
-                  </Text>
-                </View>
-              )}
-            </View>
 
             {/* EMAIL INPUT */}
             <View style={styles.inputGroup}>
@@ -690,74 +571,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: THEME.primary,
     fontWeight: '800',
-  },
-  devCard: {
-    backgroundColor: '#F0FDF4',
-    borderWidth: 1,
-    borderColor: '#BBF7D0',
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 20,
-  },
-  devHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-  },
-  devBadge: {
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 1.2,
-    color: '#15803D',
-    backgroundColor: '#DCFCE7',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  devSub: {
-    fontSize: 11,
-    color: '#166534',
-    fontWeight: '500',
-  },
-  devButtonsRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  devRoleBtn: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: 12,
-    paddingVertical: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-  },
-  devRoleBtnActive: {
-    backgroundColor: '#15803D',
-    borderColor: '#15803D',
-  },
-  devRoleIcon: {
-    fontSize: 18,
-  },
-  devRoleText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#1E293B',
-  },
-  devRoleTextActive: {
-    color: '#FFFFFF',
-  },
-  devFeedbackRow: {
-    marginTop: 8,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#DCFCE7',
-  },
-  devFeedbackText: {
-    fontSize: 11,
-    color: '#15803D',
   },
 });
