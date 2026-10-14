@@ -5,6 +5,8 @@ import { Ionicons } from '@expo/vector-icons';
 import UserProfileScreen from './UserProfileScreen';
 import { VALID_DELIVERY_TRANSITIONS } from '../services/firebaseDatabase';
 import { FARMER_COLORS as C, FARMER_NAV, FarmerButton, FarmerEmpty, FarmerHeading, FilterChip, IconTile, DetailRow, cleanLabel } from './FarmerDesign';
+import TourTarget from './GuidedTour/TourTarget';
+import { useTour } from '../context/TourContext';
 
 const NAV_ICONS = { home: 'grid-outline', listings: 'leaf-outline', orders: 'chatbubbles-outline', accepted: 'cube-outline' };
 const STATUS = {
@@ -27,10 +29,24 @@ export default function FarmerWorkspace({ userProfile, lang, t, activeTab, setAc
   providingRequestId, updatingOrderId, produceToDelete, isDeletingProduce, onCancelDelete, onConfirmDelete }) {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
+  const { replayTour, setTabChangeHandler } = useTour();
   useEffect(() => { setSearch(''); setFilter('all'); }, [activeTab]);
   const nav = FARMER_NAV[lang] || FARMER_NAV.en;
   const district = typeof userProfile?.district === 'string' ? userProfile.district : userProfile?.district?.nameEn;
   const switchTab = (tab) => { setSearch(''); setFilter('all'); setActiveTab(tab); };
+
+  useEffect(() => {
+    if (setTabChangeHandler) {
+      setTabChangeHandler((tab) => {
+        if (tab) switchTab(tab);
+      });
+    }
+  }, [setTabChangeHandler]);
+
+  const handleReplayTour = () => {
+    switchTab('home');
+    replayTour('farmer');
+  };
   const query = search.trim().toLowerCase();
   const matches = (...values) => values.some(value => String(value || '').toLowerCase().includes(query));
   const visibleListings = listings.filter(item => matches(cropName(item, lang), item.category, item.location) && (filter !== 'stock' || Number(item.stockQty) > 0));
@@ -104,23 +120,32 @@ export default function FarmerWorkspace({ userProfile, lang, t, activeTab, setAc
 
   return <SafeAreaView edges={['top', 'left', 'right']} style={s.safe}>
     <StatusBar barStyle="dark-content" backgroundColor={C.canvas} />
-    <View style={s.header}><View style={s.brand}><Image source={require('../assets/splash-icon.png')} style={s.brandLogo} resizeMode="contain" /><View><Text style={s.brandName}>Govi<Text style={{ color: C.green }}>Link</Text></Text><Text style={s.brandCaption}>FARMER WORKSPACE</Text></View></View>
-      <View style={s.headerActions}>{onChangeLanguage && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Change language" onPress={() => onChangeLanguage(lang === 'en' ? 'si' : lang === 'si' ? 'ta' : 'en')} style={s.language}><Text style={s.languageText}>{lang === 'en' ? 'EN' : lang === 'si' ? 'සිං' : 'தம'}</Text></TouchableOpacity>}
+    <View style={s.header}>
+      <TourTarget id="farmer-brand">
+        <View style={s.brand}>
+          <Image source={require('../assets/splash-icon.png')} style={s.brandLogo} resizeMode="contain" />
+          <View>
+            <Text style={s.brandName}>Govi<Text style={{ color: C.green }}>Link</Text></Text>
+            <Text style={s.brandCaption}>FARMER WORKSPACE</Text>
+          </View>
+        </View>
+      </TourTarget>
+      <View style={s.headerActions}>{onChangeLanguage && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Change language" onPress={() => onChangeLanguage(lang === 'en' ? 'si' : lang === 'si' ? 'ta' : 'en')} style={s.language}><Text style={s.languageText}>{lang === 'en' ? 'EN' : lang === 'si' ? 'සිං' : 'தම'}</Text></TouchableOpacity>}
         <TouchableOpacity accessibilityRole="button" accessibilityLabel={nav.profile} onPress={() => switchTab('profile')} style={s.avatarButton}>{userProfile?.photoURL ? <Image source={{ uri: userProfile.photoURL }} style={s.avatarImage} /> : <Text style={s.avatarInitial}>{(userProfile?.fullName || 'F').charAt(0).toUpperCase()}</Text>}</TouchableOpacity>
       </View>
     </View>
 
-    {activeTab === 'profile' ? <UserProfileScreen embedded farmerDesign userProfile={userProfile} lang={lang} onBack={() => switchTab('home')} onLogout={onLogout} onChangeLanguage={onChangeLanguage} onProfileUpdated={onProfileUpdated} /> :
+    {activeTab === 'profile' ? <UserProfileScreen embedded farmerDesign userProfile={userProfile} lang={lang} onBack={() => switchTab('home')} onLogout={onLogout} onChangeLanguage={onChangeLanguage} onProfileUpdated={onProfileUpdated} onReplayTour={handleReplayTour} /> :
       <ScrollView key={activeTab} style={s.scroll} contentContainerStyle={s.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         {activeTab === 'home' ? <>
           <FarmerHeading eyebrow="YOUR FARM, AT A GLANCE" title={`Hello, ${userProfile?.fullName?.split(' ')[0] || 'farmer'}.`} subtitle="A fresh day to grow your business." />
-          <View style={s.hero}><View style={s.heroTop}><View style={s.heroPill}><Ionicons name="location-outline" size={13} color="#D1E9D9" /><Text style={s.heroEyebrow}>{district || 'Sri Lanka'}</Text></View><Ionicons name="leaf-outline" size={42} color="#82AE92" /></View><Text style={s.heroTitle}>Good harvests deserve{ '\n' }great connections.</Text><Text style={s.heroSub}>Share your produce. Connect with buyers.{ '\n' }Keep every order moving.</Text><FarmerButton label={nav.add} icon="add" onPress={onAdd} style={s.heroButton} /></View>
-          <View style={s.statsGrid}>{[
+          <View style={s.hero}><View style={s.heroTop}><View style={s.heroPill}><Ionicons name="location-outline" size={13} color="#D1E9D9" /><Text style={s.heroEyebrow}>{district || 'Sri Lanka'}</Text></View><Ionicons name="leaf-outline" size={42} color="#82AE92" /></View><Text style={s.heroTitle}>Good harvests deserve{ '\n' }great connections.</Text><Text style={s.heroSub}>Share your produce. Connect with buyers.{ '\n' }Keep every order moving.</Text><TourTarget id="farmer-add-button"><FarmerButton label={nav.add} icon="add" onPress={onAdd} style={s.heroButton} /></TourTarget></View>
+          <TourTarget id="farmer-stats"><View style={s.statsGrid}>{[
             [nav.listings, listings.length, 'leaf-outline', 'listings'],
             [nav.orders, requests.length, 'chatbubbles-outline', 'orders'],
             ['Active orders', activeOrders.length, 'cube-outline', 'accepted'],
             [cleanLabel(t.stats.totalRevenue), `${t.currency} ${money(sales)}`, 'wallet-outline', 'accepted'],
-          ].map(([label, value, icon, tab]) => <TouchableOpacity key={label} accessibilityRole="button" accessibilityLabel={`${label}: ${value}`} onPress={() => switchTab(tab)} style={s.statCard}><Ionicons name={icon} size={20} color={C.green} /><Text style={s.statValue}>{value}</Text><Text style={s.statLabel}>{label}</Text></TouchableOpacity>)}</View>
+          ].map(([label, value, icon, tab]) => <TouchableOpacity key={label} accessibilityRole="button" accessibilityLabel={`${label}: ${value}`} onPress={() => switchTab(tab)} style={s.statCard}><Ionicons name={icon} size={20} color={C.green} /><Text style={s.statValue}>{value}</Text><Text style={s.statLabel}>{label}</Text></TouchableOpacity>)}</View></TourTarget>
           <SectionLabel title="Your next steps" />
           <View style={s.quickCard}>{[
             ['chatbubbles-outline', 'Explore buyer requests', `${requests.length} open requests to explore`, 'orders'],
@@ -142,9 +167,11 @@ export default function FarmerWorkspace({ userProfile, lang, t, activeTab, setAc
     <SafeAreaView edges={['bottom']} style={s.navSafe}><View role="tablist" style={s.nav}>{Object.keys(NAV_ICONS).map(key => {
       const selected = key === activeTab;
       const count = key === 'orders' ? requests.length : 0;
-      return <TouchableOpacity key={key} accessibilityRole="tab" accessibilityLabel={nav[key]} accessibilityState={{ selected }} aria-selected={selected} onPress={() => switchTab(key)} style={s.navItem}>
-        <View style={[s.navIcon, selected && s.navIconActive]}><Ionicons name={NAV_ICONS[key]} size={22} color={selected ? C.greenDark : C.muted} />{count > 0 && <View style={s.navBadge}><Text style={s.navBadgeText}>{count > 9 ? '9+' : count}</Text></View>}</View><Text numberOfLines={2} style={[s.navLabel, selected && s.navLabelActive]}>{nav[key]}</Text>
-      </TouchableOpacity>;
+      return <TourTarget key={key} id={"farmer-tab-" + key} style={{ flex: 1 }}>
+        <TouchableOpacity accessibilityRole="tab" accessibilityLabel={nav[key]} accessibilityState={{ selected }} aria-selected={selected} onPress={() => switchTab(key)} style={s.navItem}>
+          <View style={[s.navIcon, selected && s.navIconActive]}><Ionicons name={NAV_ICONS[key]} size={22} color={selected ? C.greenDark : C.muted} />{count > 0 && <View style={s.navBadge}><Text style={s.navBadgeText}>{count > 9 ? '9+' : count}</Text></View>}</View><Text numberOfLines={2} style={[s.navLabel, selected && s.navLabelActive]}>{nav[key]}</Text>
+        </TouchableOpacity>
+      </TourTarget>;
     })}</View></SafeAreaView>
 
     <Modal visible={!!produceToDelete} transparent animationType="fade" onRequestClose={() => !isDeletingProduce && onCancelDelete()}>

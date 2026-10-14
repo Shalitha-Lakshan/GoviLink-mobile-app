@@ -27,6 +27,8 @@ import RequestDetailsScreen from './RequestDetailsScreen';
 import DeliveryTrackingScreen from './DeliveryTrackingScreen';
 import UserProfileScreen from './UserProfileScreen';
 import { FARMER_COLORS as C } from './FarmerDesign';
+import TourTarget from './GuidedTour/TourTarget';
+import { useTour } from '../context/TourContext';
 
 const THEME = {
   primaryGreen: C.green,
@@ -93,6 +95,27 @@ export default function AdminHomeScreen({
   const [selectedDriversByOrder, setSelectedDriversByOrder] = useState({});
   const [assigningOrderId, setAssigningOrderId] = useState(null);
   const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard' | 'requests' | 'drivers' | 'vehicles' | 'deliveries'
+
+  const { replayTour, setTabChangeHandler } = useTour();
+
+  useEffect(() => {
+    if (setTabChangeHandler) {
+      setTabChangeHandler((tab) => {
+        if (tab === 'profile') {
+          setShowProfileScreen(true);
+        } else {
+          setShowProfileScreen(false);
+          setActiveTab(tab);
+        }
+      });
+    }
+  }, [setTabChangeHandler]);
+
+  const handleReplayTour = () => {
+    setShowProfileScreen(false);
+    setActiveTab('dashboard');
+    replayTour('admin');
+  };
   const [searchQuery, setSearchQuery] = useState('');
   const [driverModalOrderId, setDriverModalOrderId] = useState(null);
   const [selectedOrderForDetails, setSelectedOrderForDetails] = useState(null);
@@ -533,6 +556,7 @@ export default function AdminHomeScreen({
         onBack={() => setShowProfileScreen(false)}
         onLogout={onLogout}
         onChangeLanguage={onChangeLanguage}
+        onReplayTour={handleReplayTour}
         onProfileUpdated={(updated) => {
           if (onProfileUpdated) onProfileUpdated(updated);
         }}
@@ -581,19 +605,21 @@ export default function AdminHomeScreen({
 
       {/* TOP APP HEADER */}
       <View style={styles.topHeader}>
-        <View style={styles.brandContainer}>
-          <Image
-            source={require('../assets/splash-icon.png')}
-            style={styles.brandLogo}
-            resizeMode="contain"
-          />
-          <View>
-            <Text style={styles.brandTitle}>
-              Govi<Text style={{ color: C.green }}>Link</Text>
-            </Text>
-            <Text style={styles.brandCaption}>COOPERATIVE ADMIN</Text>
+        <TourTarget id="admin-brand">
+          <View style={styles.brandContainer}>
+            <Image
+              source={require('../assets/splash-icon.png')}
+              style={styles.brandLogo}
+              resizeMode="contain"
+            />
+            <View>
+              <Text style={styles.brandTitle}>
+                Govi<Text style={{ color: C.green }}>Link</Text>
+              </Text>
+              <Text style={styles.brandCaption}>COOPERATIVE ADMIN</Text>
+            </View>
           </View>
-        </View>
+        </TourTarget>
 
         <View style={styles.headerRightActions}>
           {onChangeLanguage && (
@@ -635,6 +661,7 @@ export default function AdminHomeScreen({
 
       {/* MAIN SCROLLABLE CONTENT */}
       <ScrollView
+        key={activeTab}
         contentContainerStyle={styles.scrollContainer}
         showsVerticalScrollIndicator={false}
       >
@@ -654,73 +681,75 @@ export default function AdminHomeScreen({
             </View>
 
             {/* STATISTICS CARDS GRID */}
-            <View style={styles.metricsGrid}>
-              <View style={styles.cardRow}>
-                <View style={[styles.statCard, styles.statCardHalf, { borderLeftColor: THEME.accentTotal, borderTopColor: THEME.accentTotal }]}>
-                  <View style={styles.statCardHeader}>
-                    <View style={[styles.statIconBox, { backgroundColor: '#E6F4EA' }]}>
-                      <Ionicons name="clipboard-outline" size={18} color="#006837" />
+            <TourTarget id="admin-kpi-grid">
+              <View style={styles.metricsGrid}>
+                <View style={styles.cardRow}>
+                  <View style={[styles.statCard, styles.statCardHalf, { borderLeftColor: THEME.accentTotal, borderTopColor: THEME.accentTotal }]}>
+                    <View style={styles.statCardHeader}>
+                      <View style={[styles.statIconBox, { backgroundColor: '#E6F4EA' }]}>
+                        <Ionicons name="clipboard-outline" size={18} color="#006837" />
+                      </View>
                     </View>
+                    <Text style={styles.statLabel}>Total Requests</Text>
+                    <Text style={styles.statValue}>{totalRequestsCount}</Text>
                   </View>
-                  <Text style={styles.statLabel}>Total Requests</Text>
-                  <Text style={styles.statValue}>{totalRequestsCount}</Text>
+
+                  <View style={[styles.statCard, styles.statCardHalf, { borderLeftColor: THEME.accentPending, borderTopColor: THEME.accentPending }]}>
+                    <View style={styles.statCardHeader}>
+                      <View style={[styles.statIconBox, { backgroundColor: '#FEE2E2' }]}>
+                        <Ionicons name="hourglass-outline" size={18} color="#DC2626" />
+                      </View>
+                    </View>
+                    <Text style={styles.statLabel}>Pending Requests</Text>
+                    <Text style={styles.statValue}>{pendingRequestsCount}</Text>
+                  </View>
                 </View>
 
-                <View style={[styles.statCard, styles.statCardHalf, { borderLeftColor: THEME.accentPending, borderTopColor: THEME.accentPending }]}>
-                  <View style={styles.statCardHeader}>
-                    <View style={[styles.statIconBox, { backgroundColor: '#FEE2E2' }]}>
-                      <Ionicons name="hourglass-outline" size={18} color="#DC2626" />
+                <View style={styles.cardRow}>
+                  <View style={[styles.statCard, styles.statCardHalf, { borderLeftColor: THEME.accentDeliveries, borderTopColor: THEME.accentDeliveries }]}>
+                    <View style={styles.statCardHeader}>
+                      <View style={[styles.statIconBox, { backgroundColor: '#DCFCE7' }]}>
+                        <MaterialCommunityIcons name="truck-delivery-outline" size={20} color="#059669" />
+                      </View>
                     </View>
+                    <Text style={styles.statLabel}>Active Deliveries</Text>
+                    <Text style={styles.statValue}>{activeDeliveriesCount}</Text>
                   </View>
-                  <Text style={styles.statLabel}>Pending Requests</Text>
-                  <Text style={styles.statValue}>{pendingRequestsCount}</Text>
+
+                  <View style={[styles.statCard, styles.statCardHalf, { borderLeftColor: THEME.accentCompleted, borderTopColor: THEME.accentCompleted }]}>
+                    <View style={styles.statCardHeader}>
+                      <View style={[styles.statIconBox, { backgroundColor: '#DBEAFE' }]}>
+                        <Ionicons name="checkmark-circle-outline" size={19} color="#2563EB" />
+                      </View>
+                    </View>
+                    <Text style={styles.statLabel}>Completed Deliveries</Text>
+                    <Text style={styles.statValue}>{completedCount}</Text>
+                  </View>
+                </View>
+
+                <View style={styles.cardRow}>
+                  <View style={[styles.statCard, styles.statCardHalf, { borderLeftColor: THEME.accentDrivers, borderTopColor: THEME.accentDrivers }]}>
+                    <View style={styles.statCardHeader}>
+                      <View style={[styles.statIconBox, { backgroundColor: '#EEF2FF' }]}>
+                        <Ionicons name="people-outline" size={18} color="#4F46E5" />
+                      </View>
+                    </View>
+                    <Text style={styles.statLabel}>Available Drivers</Text>
+                    <Text style={styles.statValue}>{availableDriversCount}</Text>
+                  </View>
+
+                  <View style={[styles.statCard, styles.statCardHalf, { borderLeftColor: THEME.accentVehicles, borderTopColor: THEME.accentVehicles }]}>
+                    <View style={styles.statCardHeader}>
+                      <View style={[styles.statIconBox, { backgroundColor: '#F3E8FF' }]}>
+                        <Ionicons name="bus-outline" size={18} color="#7C3AED" />
+                      </View>
+                    </View>
+                    <Text style={styles.statLabel}>Available Vehicles</Text>
+                    <Text style={styles.statValue}>{availableVehiclesCount}</Text>
+                  </View>
                 </View>
               </View>
-
-              <View style={styles.cardRow}>
-                <View style={[styles.statCard, styles.statCardHalf, { borderLeftColor: THEME.accentDeliveries, borderTopColor: THEME.accentDeliveries }]}>
-                  <View style={styles.statCardHeader}>
-                    <View style={[styles.statIconBox, { backgroundColor: '#DCFCE7' }]}>
-                      <MaterialCommunityIcons name="truck-delivery-outline" size={20} color="#059669" />
-                    </View>
-                  </View>
-                  <Text style={styles.statLabel}>Active Deliveries</Text>
-                  <Text style={styles.statValue}>{activeDeliveriesCount}</Text>
-                </View>
-
-                <View style={[styles.statCard, styles.statCardHalf, { borderLeftColor: THEME.accentCompleted, borderTopColor: THEME.accentCompleted }]}>
-                  <View style={styles.statCardHeader}>
-                    <View style={[styles.statIconBox, { backgroundColor: '#DBEAFE' }]}>
-                      <Ionicons name="checkmark-circle-outline" size={19} color="#2563EB" />
-                    </View>
-                  </View>
-                  <Text style={styles.statLabel}>Completed Deliveries</Text>
-                  <Text style={styles.statValue}>{completedCount}</Text>
-                </View>
-              </View>
-
-              <View style={styles.cardRow}>
-                <View style={[styles.statCard, styles.statCardHalf, { borderLeftColor: THEME.accentDrivers, borderTopColor: THEME.accentDrivers }]}>
-                  <View style={styles.statCardHeader}>
-                    <View style={[styles.statIconBox, { backgroundColor: '#EEF2FF' }]}>
-                      <Ionicons name="people-outline" size={18} color="#4F46E5" />
-                    </View>
-                  </View>
-                  <Text style={styles.statLabel}>Available Drivers</Text>
-                  <Text style={styles.statValue}>{availableDriversCount}</Text>
-                </View>
-
-                <View style={[styles.statCard, styles.statCardHalf, { borderLeftColor: THEME.accentVehicles, borderTopColor: THEME.accentVehicles }]}>
-                  <View style={styles.statCardHeader}>
-                    <View style={[styles.statIconBox, { backgroundColor: '#F3E8FF' }]}>
-                      <Ionicons name="bus-outline" size={18} color="#7C3AED" />
-                    </View>
-                  </View>
-                  <Text style={styles.statLabel}>Available Vehicles</Text>
-                  <Text style={styles.statValue}>{availableVehiclesCount}</Text>
-                </View>
-              </View>
-            </View>
+            </TourTarget>
 
             {/* ATTENTION REQUIRED SECTION (CONDITIONAL) */}
             {(pendingRequestsCount > 0 || availableDriversCount === 0 || availableVehiclesCount === 0) && (
@@ -804,16 +833,18 @@ export default function AdminHomeScreen({
                   <Text style={styles.quickActionTextPrimary}>View Transport{'\n'}Requests</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity
-                  style={styles.quickActionCard}
-                  onPress={() => setActiveTab('requests')}
-                  activeOpacity={0.85}
-                >
-                  <View style={styles.quickActionIconBoxSecondary}>
-                    <Ionicons name="swap-horizontal-outline" size={20} color="#0D9488" />
-                  </View>
-                  <Text style={styles.quickActionTextSecondary}>Assign Driver{'\n'}& Vehicle</Text>
-                </TouchableOpacity>
+                <TourTarget id="admin-assign-driver">
+                  <TouchableOpacity
+                    style={styles.quickActionCard}
+                    onPress={() => setActiveTab('requests')}
+                    activeOpacity={0.85}
+                  >
+                    <View style={styles.quickActionIconBoxSecondary}>
+                      <Ionicons name="swap-horizontal-outline" size={20} color="#0D9488" />
+                    </View>
+                    <Text style={styles.quickActionTextSecondary}>Assign Driver{'\n'}& Vehicle</Text>
+                  </TouchableOpacity>
+                </TourTarget>
 
                 <TouchableOpacity
                   style={styles.quickActionCard}
@@ -1885,100 +1916,110 @@ export default function AdminHomeScreen({
 
       {/* BOTTOM NAVIGATION BAR */}
       <View style={styles.bottomTabBar}>
-        <TouchableOpacity
-          style={styles.navTabItem}
-          onPress={() => setActiveTab('dashboard')}
-          activeOpacity={0.8}
-        >
-          <View style={[styles.navIconBox, activeTab === 'dashboard' && styles.navIconBoxActive]}>
-            <Ionicons
-              name={activeTab === 'dashboard' ? 'grid' : 'grid-outline'}
-              size={20}
-              color={activeTab === 'dashboard' ? C.greenDark : C.muted}
-            />
-          </View>
-          <Text style={[styles.navTabLabel, activeTab === 'dashboard' && styles.navTabLabelActive]}>
-            Dashboard
-          </Text>
-        </TouchableOpacity>
+        <TourTarget id="admin-tab-dashboard" style={{ flex: 1 }}>
+          <TouchableOpacity
+            style={styles.navTabItem}
+            onPress={() => setActiveTab('dashboard')}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.navIconBox, activeTab === 'dashboard' && styles.navIconBoxActive]}>
+              <Ionicons
+                name={activeTab === 'dashboard' ? 'grid' : 'grid-outline'}
+                size={20}
+                color={activeTab === 'dashboard' ? C.greenDark : C.muted}
+              />
+            </View>
+            <Text style={[styles.navTabLabel, activeTab === 'dashboard' && styles.navTabLabelActive]}>
+              Dashboard
+            </Text>
+          </TouchableOpacity>
+        </TourTarget>
 
-        <TouchableOpacity
-          style={styles.navTabItem}
-          onPress={() => setActiveTab('requests')}
-          activeOpacity={0.8}
-        >
-          <View style={[styles.navIconBox, activeTab === 'requests' && styles.navIconBoxActive]}>
-            <Ionicons
-              name={activeTab === 'requests' ? 'clipboard' : 'clipboard-outline'}
-              size={20}
-              color={activeTab === 'requests' ? C.greenDark : C.muted}
-            />
-            {pendingRequestsCount > 0 && (
-              <View style={styles.navBadge}>
-                <Text style={styles.navBadgeText}>{pendingRequestsCount > 9 ? '9+' : pendingRequestsCount}</Text>
-              </View>
-            )}
-          </View>
-          <Text style={[styles.navTabLabel, activeTab === 'requests' && styles.navTabLabelActive]}>
-            Requests
-          </Text>
-        </TouchableOpacity>
+        <TourTarget id="admin-tab-requests" style={{ flex: 1 }}>
+          <TouchableOpacity
+            style={styles.navTabItem}
+            onPress={() => setActiveTab('requests')}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.navIconBox, activeTab === 'requests' && styles.navIconBoxActive]}>
+              <Ionicons
+                name={activeTab === 'requests' ? 'clipboard' : 'clipboard-outline'}
+                size={20}
+                color={activeTab === 'requests' ? C.greenDark : C.muted}
+              />
+              {pendingRequestsCount > 0 && (
+                <View style={styles.navBadge}>
+                  <Text style={styles.navBadgeText}>{pendingRequestsCount > 9 ? '9+' : pendingRequestsCount}</Text>
+                </View>
+              )}
+            </View>
+            <Text style={[styles.navTabLabel, activeTab === 'requests' && styles.navTabLabelActive]}>
+              Requests
+            </Text>
+          </TouchableOpacity>
+        </TourTarget>
 
-        <TouchableOpacity
-          style={styles.navTabItem}
-          onPress={() => setActiveTab('drivers')}
-          activeOpacity={0.8}
-        >
-          <View style={[styles.navIconBox, activeTab === 'drivers' && styles.navIconBoxActive]}>
-            <Ionicons
-              name={activeTab === 'drivers' ? 'people' : 'people-outline'}
-              size={20}
-              color={activeTab === 'drivers' ? C.greenDark : C.muted}
-            />
-          </View>
-          <Text style={[styles.navTabLabel, activeTab === 'drivers' && styles.navTabLabelActive]}>
-            Drivers
-          </Text>
-        </TouchableOpacity>
+        <TourTarget id="admin-tab-drivers" style={{ flex: 1 }}>
+          <TouchableOpacity
+            style={styles.navTabItem}
+            onPress={() => setActiveTab('drivers')}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.navIconBox, activeTab === 'drivers' && styles.navIconBoxActive]}>
+              <Ionicons
+                name={activeTab === 'drivers' ? 'people' : 'people-outline'}
+                size={20}
+                color={activeTab === 'drivers' ? C.greenDark : C.muted}
+              />
+            </View>
+            <Text style={[styles.navTabLabel, activeTab === 'drivers' && styles.navTabLabelActive]}>
+              Drivers
+            </Text>
+          </TouchableOpacity>
+        </TourTarget>
 
-        <TouchableOpacity
-          style={styles.navTabItem}
-          onPress={() => setActiveTab('vehicles')}
-          activeOpacity={0.8}
-        >
-          <View style={[styles.navIconBox, activeTab === 'vehicles' && styles.navIconBoxActive]}>
-            <MaterialCommunityIcons
-              name={activeTab === 'vehicles' ? 'truck' : 'truck-outline'}
-              size={22}
-              color={activeTab === 'vehicles' ? C.greenDark : C.muted}
-            />
-          </View>
-          <Text style={[styles.navTabLabel, activeTab === 'vehicles' && styles.navTabLabelActive]}>
-            Vehicles
-          </Text>
-        </TouchableOpacity>
+        <TourTarget id="admin-tab-vehicles" style={{ flex: 1 }}>
+          <TouchableOpacity
+            style={styles.navTabItem}
+            onPress={() => setActiveTab('vehicles')}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.navIconBox, activeTab === 'vehicles' && styles.navIconBoxActive]}>
+              <MaterialCommunityIcons
+                name={activeTab === 'vehicles' ? 'truck' : 'truck-outline'}
+                size={22}
+                color={activeTab === 'vehicles' ? C.greenDark : C.muted}
+              />
+            </View>
+            <Text style={[styles.navTabLabel, activeTab === 'vehicles' && styles.navTabLabelActive]}>
+              Vehicles
+            </Text>
+          </TouchableOpacity>
+        </TourTarget>
 
-        <TouchableOpacity
-          style={styles.navTabItem}
-          onPress={() => setActiveTab('deliveries')}
-          activeOpacity={0.8}
-        >
-          <View style={[styles.navIconBox, activeTab === 'deliveries' && styles.navIconBoxActive]}>
-            <Ionicons
-              name={activeTab === 'deliveries' ? 'navigate' : 'navigate-outline'}
-              size={20}
-              color={activeTab === 'deliveries' ? C.greenDark : C.muted}
-            />
-            {inTransitDeliveries.length > 0 && (
-              <View style={styles.navBadge}>
-                <Text style={styles.navBadgeText}>{inTransitDeliveries.length > 9 ? '9+' : inTransitDeliveries.length}</Text>
-              </View>
-            )}
-          </View>
-          <Text style={[styles.navTabLabel, activeTab === 'deliveries' && styles.navTabLabelActive]}>
-            Deliveries
-          </Text>
-        </TouchableOpacity>
+        <TourTarget id="admin-tab-deliveries" style={{ flex: 1 }}>
+          <TouchableOpacity
+            style={styles.navTabItem}
+            onPress={() => setActiveTab('deliveries')}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.navIconBox, activeTab === 'deliveries' && styles.navIconBoxActive]}>
+              <Ionicons
+                name={activeTab === 'deliveries' ? 'navigate' : 'navigate-outline'}
+                size={20}
+                color={activeTab === 'deliveries' ? C.greenDark : C.muted}
+              />
+              {inTransitDeliveries.length > 0 && (
+                <View style={styles.navBadge}>
+                  <Text style={styles.navBadgeText}>{inTransitDeliveries.length > 9 ? '9+' : inTransitDeliveries.length}</Text>
+                </View>
+              )}
+            </View>
+            <Text style={[styles.navTabLabel, activeTab === 'deliveries' && styles.navTabLabelActive]}>
+              Deliveries
+            </Text>
+          </TouchableOpacity>
+        </TourTarget>
       </View>
     </SafeAreaView>
   );

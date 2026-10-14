@@ -615,6 +615,7 @@ export const registerWithFirebase = async (userData) => {
       phoneNumber: phoneNumber.trim(),
       role: role || 'buyer',
       ...(district ? { district } : {}),
+      onboardingTourCompleted: false,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };

@@ -20,6 +20,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { FARMER_COLORS as C, FarmerHeading } from './FarmerDesign';
 import * as ImagePicker from 'expo-image-picker';
 import { updateUserProfileInFirestore, uploadProduceImage } from '../services/firebaseDatabase';
+import { TOUR_TRANSLATIONS } from '../translations/tourTranslations';
 
 // Standard Sri Lankan Districts for Selection
 const DISTRICTS_LIST = [
@@ -58,6 +59,7 @@ export default function UserProfileScreen({
   onLogout,
   onChangeLanguage,
   onProfileUpdated,
+  onReplayTour,
   embedded = false,
   farmerDesign = false,
 }) {
@@ -83,6 +85,7 @@ export default function UserProfileScreen({
   const [showDistrictPicker, setShowDistrictPicker] = useState(false);
 
   const role = (userProfile?.role || 'FARMER').toUpperCase(); // 'ADMIN' | 'FARMER' | 'DRIVER' | 'BUYER'
+  const tourTexts = (TOUR_TRANSLATIONS[lang] || TOUR_TRANSLATIONS.en).common;
 
   // Handle Android hardware back button
   useEffect(() => {
@@ -481,6 +484,31 @@ export default function UserProfileScreen({
               thumbColor={notificationsEnabled ? '#006837' : '#94A3B8'}
             />
           </View>
+
+          {/* REPLAY APP TOUR */}
+          {Boolean(onReplayTour) && (
+            <>
+              <View style={styles.prefDivider} />
+              <TouchableOpacity
+                style={styles.replayTourRow}
+                onPress={onReplayTour}
+                accessibilityRole="button"
+                accessibilityLabel={tourTexts.replayTour}
+                activeOpacity={0.75}
+              >
+                <View style={styles.replayTourLeft}>
+                  <View style={styles.replayTourIconCircle}>
+                    <Ionicons name="compass-outline" size={20} color="#006837" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.prefTitle}>{tourTexts.replayTour}</Text>
+                    <Text style={styles.prefSub}>{tourTexts.replayTourSub}</Text>
+                  </View>
+                </View>
+                <Ionicons name="play-circle-outline" size={24} color="#006837" />
+              </TouchableOpacity>
+            </>
+          )}
         </View>
 
         {!!saveMessage && <View accessibilityRole="alert" style={{ backgroundColor: saveMessage.error ? C.redBg : C.mint, padding: 16, borderRadius: 14, marginBottom: 14 }}><Text style={{ color: saveMessage.error ? C.red : C.greenDark, fontSize: 13, lineHeight: 20 }}>{saveMessage.text}</Text></View>}
@@ -770,6 +798,27 @@ const baseStyles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '800',
     color: '#FFFFFF',
+  },
+  replayTourRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 6,
+  },
+  replayTourLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 12,
+    marginRight: 10,
+  },
+  replayTourIconCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#E8F5E9',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   /* BUTTONS */

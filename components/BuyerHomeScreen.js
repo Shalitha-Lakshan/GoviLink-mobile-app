@@ -34,6 +34,8 @@ import {
 import BuyerRequestProduceScreen from './BuyerRequestProduceScreen';
 import UserProfileScreen from './UserProfileScreen';
 import DeliveryTrackingScreen from './DeliveryTrackingScreen';
+import TourTarget from './GuidedTour/TourTarget';
+import { useTour } from '../context/TourContext';
 
 const NAV_ICONS = {
   home: 'grid-outline',
@@ -351,6 +353,21 @@ export default function BuyerHomeScreen({
 
   const switchTab = (tab) => {
     setActiveTab(tab);
+  };
+
+  const { replayTour, setTabChangeHandler } = useTour();
+
+  useEffect(() => {
+    if (setTabChangeHandler) {
+      setTabChangeHandler((tab) => {
+        if (tab) switchTab(tab);
+      });
+    }
+  }, [setTabChangeHandler]);
+
+  const handleReplayTour = () => {
+    switchTab('home');
+    replayTour('buyer');
   };
 
   const getProduceUnit = (item) => {
@@ -842,14 +859,16 @@ export default function BuyerHomeScreen({
 
       {/* TOP HEADER BAR (MATCHING FARMER WORKSPACE) */}
       <View style={s.header}>
-        <View style={s.brand}>
-          <Image
-            source={require('../assets/logo.png')}
-            style={{ width: 88, height: 44 }}
-            resizeMode="contain"
-          />
-          <Text style={s.brandCaption}>BUYER WORKSPACE</Text>
-        </View>
+        <TourTarget id="buyer-brand">
+          <View style={s.brand}>
+            <Image
+              source={require('../assets/logo.png')}
+              style={{ width: 88, height: 44 }}
+              resizeMode="contain"
+            />
+            <Text style={s.brandCaption}>BUYER WORKSPACE</Text>
+          </View>
+        </TourTarget>
 
         <View style={s.headerActions}>
           {onChangeLanguage && (
@@ -895,6 +914,7 @@ export default function BuyerHomeScreen({
           onLogout={onLogout}
           onChangeLanguage={onChangeLanguage}
           onProfileUpdated={onProfileUpdated}
+          onReplayTour={handleReplayTour}
         />
       ) : (
         <ScrollView
@@ -916,22 +936,26 @@ export default function BuyerHomeScreen({
               {/* HERO BANNER MATCHING FARMER HERO */}
               <View style={s.hero}>
                 <View style={s.heroTop}>
-                  <View style={s.heroPill}>
-                    <Ionicons name="location-outline" size={13} color="#D1E9D9" />
-                    <Text style={s.heroEyebrow}>{district || 'Sri Lanka'}</Text>
-                  </View>
+                  <TourTarget id="buyer-delivery-location">
+                    <View style={s.heroPill}>
+                      <Ionicons name="location-outline" size={13} color="#D1E9D9" />
+                      <Text style={s.heroEyebrow}>{district || 'Sri Lanka'}</Text>
+                    </View>
+                  </TourTarget>
                   <Ionicons name="storefront-outline" size={36} color="#82AE92" />
                 </View>
                 <Text style={s.heroTitle}>Direct farm sourcing,{'\n'}fresh harvest at fair prices.</Text>
                 <Text style={s.heroSub}>
                   Connect directly with verified growers.{'\n'}Support local agriculture with transparent pricing.
                 </Text>
-                <FarmerButton
-                  label="Browse Marketplace"
-                  icon="storefront-outline"
-                  onPress={() => switchTab('market')}
-                  style={s.heroButton}
-                />
+                <TourTarget id="buyer-tab-market">
+                  <FarmerButton
+                    label="Browse Marketplace"
+                    icon="storefront-outline"
+                    onPress={() => switchTab('market')}
+                    style={s.heroButton}
+                  />
+                </TourTarget>
               </View>
 
               {/* STATS GRID */}
@@ -1038,27 +1062,29 @@ export default function BuyerHomeScreen({
               </View>
 
               {/* SEARCH BOX MATCHING FARMER WORKSPACE */}
-              <View style={s.searchBox}>
-                <Ionicons name="search-outline" size={20} color={C.muted} />
-                <TextInput
-                  accessibilityLabel="Search marketplace"
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
-                  placeholder={t.searchPlaceholder}
-                  placeholderTextColor={C.muted}
-                  style={s.searchInput}
-                />
-                {!!searchQuery && (
-                  <TouchableOpacity
-                    accessibilityRole="button"
-                    accessibilityLabel="Clear search"
-                    onPress={() => setSearchQuery('')}
-                    style={s.clearSearch}
-                  >
-                    <Ionicons name="close-circle" size={20} color={C.muted} />
-                  </TouchableOpacity>
-                )}
-              </View>
+              <TourTarget id="buyer-search-filter">
+                <View style={s.searchBox}>
+                  <Ionicons name="search-outline" size={20} color={C.muted} />
+                  <TextInput
+                    accessibilityLabel="Search marketplace"
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                    placeholder={t.searchPlaceholder}
+                    placeholderTextColor={C.muted}
+                    style={s.searchInput}
+                  />
+                  {!!searchQuery && (
+                    <TouchableOpacity
+                      accessibilityRole="button"
+                      accessibilityLabel="Clear search"
+                      onPress={() => setSearchQuery('')}
+                      style={s.clearSearch}
+                    >
+                      <Ionicons name="close-circle" size={20} color={C.muted} />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </TourTarget>
 
               {/* CATEGORY CHIPS */}
               <ScrollView
@@ -1128,7 +1154,15 @@ export default function BuyerHomeScreen({
 
               {/* LISTINGS / EMPTY */}
               {filteredListings.length ? (
-                filteredListings.map(renderListing)
+                filteredListings.map((item, idx) =>
+                  idx === 0 ? (
+                    <TourTarget key={item.id} id="buyer-product-card">
+                      {renderListing(item)}
+                    </TourTarget>
+                  ) : (
+                    renderListing(item)
+                  )
+                )
               ) : produceListings.length ? (
                 <FarmerEmpty
                   icon="search-outline"
@@ -1250,34 +1284,35 @@ export default function BuyerHomeScreen({
                 ? activeBuyerOrders.length
                 : 0;
             return (
-              <TouchableOpacity
-                key={key}
-                accessibilityRole="tab"
-                accessibilityLabel={nav[key]}
-                accessibilityState={{ selected }}
-                aria-selected={selected}
-                onPress={() => switchTab(key)}
-                style={s.navItem}
-              >
-                <View style={[s.navIcon, selected && s.navIconActive]}>
-                  <Ionicons
-                    name={NAV_ICONS[key]}
-                    size={22}
-                    color={selected ? C.greenDark : C.muted}
-                  />
-                  {count > 0 && (
-                    <View style={s.navBadge}>
-                      <Text style={s.navBadgeText}>{count > 9 ? '9+' : count}</Text>
-                    </View>
-                  )}
-                </View>
-                <Text
-                  numberOfLines={2}
-                  style={[s.navLabel, selected && s.navLabelActive]}
+              <TourTarget key={key} id={"buyer-tab-" + key} style={{ flex: 1 }}>
+                <TouchableOpacity
+                  accessibilityRole="tab"
+                  accessibilityLabel={nav[key]}
+                  accessibilityState={{ selected }}
+                  aria-selected={selected}
+                  onPress={() => switchTab(key)}
+                  style={s.navItem}
                 >
-                  {nav[key]}
-                </Text>
-              </TouchableOpacity>
+                  <View style={[s.navIcon, selected && s.navIconActive]}>
+                    <Ionicons
+                      name={NAV_ICONS[key]}
+                      size={22}
+                      color={selected ? C.greenDark : C.muted}
+                    />
+                    {count > 0 && (
+                      <View style={s.navBadge}>
+                        <Text style={s.navBadgeText}>{count > 9 ? '9+' : count}</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text
+                    numberOfLines={2}
+                    style={[s.navLabel, selected && s.navLabelActive]}
+                  >
+                    {nav[key]}
+                  </Text>
+                </TouchableOpacity>
+              </TourTarget>
             );
           })}
         </View>
