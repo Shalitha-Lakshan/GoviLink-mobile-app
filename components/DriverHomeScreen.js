@@ -219,7 +219,7 @@ export default function DriverHomeScreen({
   // Real-time vehicles subscription
   useEffect(() => {
     if (!userProfile?.uid) return;
-    let unsub = () => { };
+    let unsub = () => {};
     try {
       unsub = subscribeToDriverVehicles(userProfile.uid, (vehicles) => {
         if (Array.isArray(vehicles)) {
@@ -233,7 +233,7 @@ export default function DriverHomeScreen({
       if (typeof unsub === 'function') {
         try {
           unsub();
-        } catch (_e) { }
+        } catch (_e) {}
       }
     };
   }, [userProfile?.uid]);
@@ -247,15 +247,16 @@ export default function DriverHomeScreen({
     produceName: `${o.produceName || 'Produce Batch'} (${o.qty || 0} ${o.unit || 'kg'})`,
     qty: o.qty,
     unit: o.unit || 'kg',
-    farmerName: o.farmerName || 'GoviLink Farmer',
+    farmerName: o.farmerName || '',
     farmerPhone: o.farmerPhone || '',
-    pickupLocation: driverLocationLabel(o.pickupLocation || o.location, lang, 'Farm Origin'),
-    buyerName: o.buyerName || 'GoviLink Buyer',
+    pickupLocation: driverLocationLabel(o.pickupLocation || o.location, lang, ''),
+    buyerName: o.buyerName || '',
     buyerPhone: o.buyerPhone || '',
-    deliveryAddress: driverLocationLabel(o.deliveryAddress, lang, 'Delivery Destination'),
-    totalPrice: o.logisticsFee || 350,
+    deliveryAddress: driverLocationLabel(o.deliveryAddress, lang, ''),
+    // Use real logisticsFee; do NOT fallback to a hardcoded amount
+    totalPrice: o.logisticsFee != null ? o.logisticsFee : (o.totalPrice != null ? o.totalPrice : null),
     status: o.status || 'PENDING',
-    specialNotes: o.deliveryNotes || 'Standard agricultural transport safety handling.',
+    specialNotes: o.deliveryNotes || '',
   }));
 
   const allDriverTrips = realOrdersForDriver;
@@ -291,7 +292,7 @@ export default function DriverHomeScreen({
     setUpdatingTripId(trip.id);
     if (trip.id) {
       const res = await updateOrderStatus(trip.id, nextStatus, {
-        driverName: userProfile?.fullName || 'Assigned Driver',
+        driverName: userProfile?.fullName || '',
         driverPhone: userProfile?.phoneNumber || '',
         changedBy: userProfile?.fullName || 'Assigned Driver',
         actorRole: 'driver',
@@ -399,214 +400,214 @@ export default function DriverHomeScreen({
       </View>
       {showProfileScreen ? <UserProfileScreen embedded farmerDesign userProfile={userProfile} lang={lang}
         onBack={() => setShowProfileScreen(false)} onLogout={onLogout} onChangeLanguage={onChangeLanguage} onProfileUpdated={onProfileUpdated} onReplayTour={handleReplayTour} /> : workspaceTab === 'fleet' ? (
-          <DriverVehiclesListScreen embedded userProfile={userProfile} lang={lang} vehicles={vehiclesList}
-            onBack={() => setWorkspaceTab('home')}
-            onAddNewVehicle={() => { setEditingVehicle(null); setCurrentScreen('addVehicle'); }}
-            onEditVehicle={(vehicle) => { setEditingVehicle(vehicle); setCurrentScreen('addVehicle'); }} />
-        ) : (
-        <ScrollView key={workspaceTab} style={{ flex: 1 }} contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
-          <FarmerHeading eyebrow={workspaceTab === 'home' ? 'YOUR ROUTES, AT A GLANCE' : 'FARM PICKUP & DELIVERY'}
-            title={workspaceTab === 'home' ? `Hello, ${userProfile?.fullName?.split(' ')[0] || 'Driver'}.` : t.tabs.assigned} subtitle={t.tagline} />
-          {workspaceTab === 'home' && <>
-            <View style={styles.hero}>
-              <View style={styles.heroTop}>
-                <TourTarget id="driver-tracking-feature">
-                  <View style={styles.heroPill}><Ionicons name="location-outline" size={13} color="#D1E9D9" /><Text style={styles.heroEyebrow}>{driverLocationLabel(userProfile?.district, lang, 'Sri Lanka')}</Text></View>
-                </TourTarget>
-                <Ionicons name="car-outline" size={36} color="#82AE92" />
-              </View>
-              <Text style={styles.heroTitle}>Connecting farms,{'\n'}delivering fresh harvests.</Text>
-              <Text style={styles.heroSub}>Plan your pickups, manage your fleet, and keep every delivery moving.</Text>
-              <TourTarget id="driver-tab-deliveries">
-                <FarmerButton label={cleanLabel(t.tabs.assigned)} icon="navigate-outline" onPress={() => setWorkspaceTab('deliveries')} style={styles.heroButton} />
+        <DriverVehiclesListScreen embedded userProfile={userProfile} lang={lang} vehicles={vehiclesList}
+          onBack={() => setWorkspaceTab('home')}
+          onAddNewVehicle={() => { setEditingVehicle(null); setCurrentScreen('addVehicle'); }}
+          onEditVehicle={(vehicle) => { setEditingVehicle(vehicle); setCurrentScreen('addVehicle'); }} />
+      ) : (
+      <ScrollView key={workspaceTab} style={{ flex: 1 }} contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
+        <FarmerHeading eyebrow={workspaceTab === 'home' ? 'YOUR ROUTES, AT A GLANCE' : 'FARM PICKUP & DELIVERY'}
+          title={workspaceTab === 'home' ? `Hello, ${userProfile?.fullName?.split(' ')[0] || 'Driver'}.` : t.tabs.assigned} subtitle={t.tagline} />
+        {workspaceTab === 'home' && <>
+          <View style={styles.hero}>
+            <View style={styles.heroTop}>
+              <TourTarget id="driver-tracking-feature">
+                <View style={styles.heroPill}><Ionicons name="location-outline" size={13} color="#D1E9D9" /><Text style={styles.heroEyebrow}>{driverLocationLabel(userProfile?.district, lang, 'Sri Lanka')}</Text></View>
               </TourTarget>
+              <Ionicons name="car-outline" size={36} color="#82AE92" />
             </View>
-            {/* SHIFT & DUTY STATUS CARD */}
-            <TourTarget id="driver-duty-card">
-              <View style={styles.dutyCard}>
-                <View style={styles.dutyInfo}>
-                  <Text style={styles.dutyTitle}>Logistics availability</Text>
-                  <Text style={styles.dutySub}>
-                    {isOnDuty ? 'Ready for farm pickup & dropoff dispatches' : 'Offline • No new trip requests'}
-                  </Text>
-                </View>
-
-                <TouchableOpacity
-                  style={[styles.dutyToggleBtn, isOnDuty ? styles.dutyBtnOn : styles.dutyBtnOff]}
-                  onPress={() => setIsOnDuty(!isOnDuty)}
-                  activeOpacity={0.8}
-                >
-                  <Text style={[styles.dutyToggleText, isOnDuty ? { color: C.green } : { color: C.red }]}>
-                    {cleanLabel(isOnDuty ? t.shift.onDuty : t.shift.offDuty)}
-                  </Text>
-                </TouchableOpacity>
-              </View>
+            <Text style={styles.heroTitle}>Connecting farms,{'\n'}delivering fresh harvests.</Text>
+            <Text style={styles.heroSub}>Plan your pickups, manage your fleet, and keep every delivery moving.</Text>
+            <TourTarget id="driver-tab-deliveries">
+              <FarmerButton label={cleanLabel(t.tabs.assigned)} icon="navigate-outline" onPress={() => setWorkspaceTab('deliveries')} style={styles.heroButton} />
             </TourTarget>
-
-            {/* COMPACT FLEET ENTRY */}
-            <TourTarget id="driver-fleet-management">
-              <TouchableOpacity
-                accessibilityRole="button"
-                accessibilityLabel={cleanLabel(t.vehicle.viewAllBtn)}
-                style={styles.fleetShortcut}
-                onPress={() => setWorkspaceTab('fleet')}
-                activeOpacity={0.75}
-              >
-                <IconTile name="car-outline" />
-                <View style={styles.fleetShortcutContent}>
-                  <Text style={styles.fleetShortcutTitle}>{t.vehicle.fleetLabel} ({vehiclesList.length})</Text>
-                  <Text style={styles.fleetShortcutSubtitle}>{cleanLabel(t.vehicle.viewAllBtn)} · {cleanLabel(t.vehicle.addNewBtn)}</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={20} color={C.green} />
-              </TouchableOpacity>
-            </TourTarget>
-
-            {/* DRIVER METRICS GRID */}
-            <View style={styles.statsGrid}>
-              <View style={styles.kpiCard}>
-                <IconTile name="navigate-outline" /><Text style={styles.kpiLabel}>{t.stats.activeTrips}</Text>
-                <Text style={styles.kpiValue}>{activeDeliveries.length}</Text>
-              </View>
-
-              <View style={styles.kpiCard}>
-                <IconTile name="checkmark-circle-outline" /><Text style={styles.kpiLabel}>{t.stats.completedToday}</Text>
-                <Text style={styles.kpiValue}>{completedDeliveries.length}</Text>
-              </View>
-
-              <View style={styles.kpiCard}>
-                <IconTile name="wallet-outline" /><Text style={styles.kpiLabel}>{t.stats.estEarnings}</Text>
-                <Text style={styles.kpiValue}>{t.currency} {totalDriverEarnings.toLocaleString()}</Text>
-              </View>
-
-              <View style={styles.kpiCard}>
-                <IconTile name="star-outline" /><Text style={styles.kpiLabel}>{t.stats.rating}</Text>
-                <Text style={styles.kpiValue}>5.0 ★</Text>
-              </View>
-            </View>
-
-          </>}
-          <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>{cleanLabel(t.tabs.assigned)}</Text><Text style={styles.sectionMeta}>{activeDeliveries.length}</Text></View>
-
-          {/* ASSIGNED DELIVERIES ROUTE CARDS */}
-          <View>
-            {activeDeliveries.length === 0 ? (
-              <View style={styles.emptyCard}>
-                <Ionicons name="checkmark-circle-outline" size={48} color={C.green} />
-                <Text style={styles.emptyTitle}>All deliveries completed!</Text>
-                <Text style={styles.emptySubtitle}>You have no pending pickup routes right now.</Text>
-              </View>
-            ) : (
-              activeDeliveries.map((trip) => {
-                const isInTransit = trip.status === 'IN_TRANSIT';
-                const isAssigned = trip.status === 'ASSIGNED';
-                const isReady = trip.status === 'READY_FOR_PICKUP' || trip.status === 'ACCEPTED' || trip.status === 'PENDING' || isAssigned;
-
-                return (
-                  <View key={trip.id} style={styles.deliveryCard}>
-                    {/* CARD HEADER ROW */}
-                    <View style={styles.tripHeaderRow}>
-                      <Text style={styles.cargoTitle}>{trip.produceName}</Text>
-                      <View style={[
-                        styles.tripBadge,
-                        isInTransit ? styles.badgeInTransit : isAssigned ? { backgroundColor: '#EFF6FF', borderColor: '#BFDBFE', borderWidth: 1 } : styles.badgePending,
-                      ]}>
-                        <Text style={[
-                          styles.tripBadgeText,
-                          isInTransit ? { color: C.green } : isAssigned ? { color: '#2563EB' } : { color: C.muted },
-                        ]}>
-                          {isInTransit ? 'IN TRANSIT' : isAssigned ? 'ASSIGNED' : 'READY FOR PICKUP'}
-                        </Text>
-                      </View>
-                    </View>
-
-                    {/* FARMER SUBHEADER ROW */}
-                    <View style={styles.farmerRow}>
-                      <Ionicons name="person-outline" size={14} color={C.muted} style={{ marginRight: 6 }} />
-                      <Text style={styles.farmerNameText}>
-                        {trip.farmerName} • 📞 {trip.farmerPhone || 'N/A'}
-                      </Text>
-                    </View>
-
-                    {/* DIVIDER LINE */}
-                    <View style={styles.cardDivider} />
-
-                    {/* ROUTE TIMELINE VISUALIZER (MATCHES REQUEST SCREEN) */}
-                    <View style={styles.routeContainer}>
-                      {/* PICKUP NODE */}
-                      <View style={styles.routeNodeRow}>
-                        <View style={styles.pickupCircleOuter}>
-                          <View style={styles.pickupCircleInner} />
-                        </View>
-                        <View style={styles.routeTextCol}>
-                          <Text style={styles.routeLabelPickup}>PICKUP</Text>
-                          <Text style={styles.locationTitle}>{trip.pickupLocation}</Text>
-                        </View>
-                      </View>
-
-                      {/* CONNECTING LINE */}
-                      <View style={styles.routeConnectingLine} />
-
-                      {/* DESTINATION NODE */}
-                      <View style={styles.routeNodeRow}>
-                        <View style={styles.destCircleOuter} />
-                        <View style={styles.routeTextCol}>
-                          <Text style={styles.routeLabelDest}>DESTINATION</Text>
-                          <Text style={styles.locationTitle}>{trip.deliveryAddress}</Text>
-                          <Text style={styles.buyerContactSub}>Buyer: {trip.buyerName} • 📞 {trip.buyerPhone || 'N/A'}</Text>
-                        </View>
-                      </View>
-                    </View>
-
-                    {/* HANDLING NOTES BANNER */}
-                    {trip.specialNotes ? (
-                      <View style={styles.specialNotesCard}>
-                        <Ionicons name="information-circle-outline" size={16} color={C.blue} style={{ marginRight: 8 }} />
-                        <Text style={styles.specialNotesText}>{trip.specialNotes}</Text>
-                      </View>
-                    ) : null}
-
-                    {/* ACTION BUTTON */}
-                    <TouchableOpacity
-                      style={[
-                        styles.actionBtn,
-                        isInTransit ? styles.actionBtnDelivered : styles.actionBtnTransit,
-                      ]}
-                      disabled={updatingTripId === trip.id}
-                      onPress={() => handleTripProgression(trip)}
-                      activeOpacity={0.85}
-                    >
-                      {updatingTripId === trip.id ? (
-                        <ActivityIndicator size="small" color="#FFFFFF" />
-                      ) : (
-                        <>
-                          <Ionicons name={isInTransit ? 'checkmark-circle-outline' : 'car-outline'}
-                            size={18}
-                            color="#FFFFFF"
-                            style={{ marginRight: 8 }}
-                          />
-                          <Text style={styles.actionBtnText}>
-                            {cleanLabel(isInTransit ? t.actions.markDelivered : t.actions.startTransit)}
-                          </Text>
-                        </>
-                      )}
-                    </TouchableOpacity>
-
-                    {/* VIEW LIVE TRACKING BUTTON */}
-                    <TouchableOpacity
-                      style={styles.viewTrackingBtn}
-                      onPress={() => setSelectedTripForTracking(trip)}
-                      activeOpacity={0.8}
-                    >
-                      <Text style={styles.viewTrackingBtnText}>
-                        View route & tracking details
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                );
-              })
-            )}
           </View>
-        </ScrollView>)}
+        {/* SHIFT & DUTY STATUS CARD */}
+        <TourTarget id="driver-duty-card">
+          <View style={styles.dutyCard}>
+            <View style={styles.dutyInfo}>
+              <Text style={styles.dutyTitle}>Logistics availability</Text>
+              <Text style={styles.dutySub}>
+                {isOnDuty ? 'Ready for farm pickup & dropoff dispatches' : 'Offline • No new trip requests'}
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.dutyToggleBtn, isOnDuty ? styles.dutyBtnOn : styles.dutyBtnOff]}
+              onPress={() => setIsOnDuty(!isOnDuty)}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.dutyToggleText, isOnDuty ? { color: C.green } : { color: C.red }]}>
+                {cleanLabel(isOnDuty ? t.shift.onDuty : t.shift.offDuty)}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </TourTarget>
+
+        {/* COMPACT FLEET ENTRY */}
+        <TourTarget id="driver-fleet-management">
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel={cleanLabel(t.vehicle.viewAllBtn)}
+            style={styles.fleetShortcut}
+            onPress={() => setWorkspaceTab('fleet')}
+            activeOpacity={0.75}
+          >
+            <IconTile name="car-outline" />
+            <View style={styles.fleetShortcutContent}>
+              <Text style={styles.fleetShortcutTitle}>{t.vehicle.fleetLabel} ({vehiclesList.length})</Text>
+              <Text style={styles.fleetShortcutSubtitle}>{cleanLabel(t.vehicle.viewAllBtn)} · {cleanLabel(t.vehicle.addNewBtn)}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={C.green} />
+          </TouchableOpacity>
+        </TourTarget>
+
+        {/* DRIVER METRICS GRID */}
+        <View style={styles.statsGrid}>
+          <View style={styles.kpiCard}>
+            <IconTile name="navigate-outline" /><Text style={styles.kpiLabel}>{t.stats.activeTrips}</Text>
+            <Text style={styles.kpiValue}>{activeDeliveries.length}</Text>
+          </View>
+
+          <View style={styles.kpiCard}>
+            <IconTile name="checkmark-circle-outline" /><Text style={styles.kpiLabel}>{t.stats.completedToday}</Text>
+            <Text style={styles.kpiValue}>{completedDeliveries.length}</Text>
+          </View>
+
+          <View style={styles.kpiCard}>
+            <IconTile name="wallet-outline" /><Text style={styles.kpiLabel}>{t.stats.estEarnings}</Text>
+            <Text style={styles.kpiValue}>{t.currency} {totalDriverEarnings.toLocaleString()}</Text>
+          </View>
+
+          <View style={styles.kpiCard}>
+            <IconTile name="star-outline" /><Text style={styles.kpiLabel}>{t.stats.rating}</Text>
+            <Text style={styles.kpiValue}>{userProfile?.rating ? `${userProfile.rating} ★` : '—'}</Text>
+          </View>
+        </View>
+
+        </>}
+        <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>{cleanLabel(t.tabs.assigned)}</Text><Text style={styles.sectionMeta}>{activeDeliveries.length}</Text></View>
+
+        {/* ASSIGNED DELIVERIES ROUTE CARDS */}
+        <View>
+          {activeDeliveries.length === 0 ? (
+            <View style={styles.emptyCard}>
+              <Ionicons name="checkmark-circle-outline" size={48} color={C.green} />
+              <Text style={styles.emptyTitle}>All deliveries completed!</Text>
+              <Text style={styles.emptySubtitle}>You have no pending pickup routes right now.</Text>
+            </View>
+          ) : (
+            activeDeliveries.map((trip) => {
+              const isInTransit = trip.status === 'IN_TRANSIT';
+              const isAssigned = trip.status === 'ASSIGNED';
+              const isReady = trip.status === 'READY_FOR_PICKUP' || trip.status === 'ACCEPTED' || trip.status === 'PENDING' || isAssigned;
+
+              return (
+                <View key={trip.id} style={styles.deliveryCard}>
+                  {/* CARD HEADER ROW */}
+                  <View style={styles.tripHeaderRow}>
+                    <Text style={styles.cargoTitle}>{trip.produceName}</Text>
+                    <View style={[
+                      styles.tripBadge,
+                      isInTransit ? styles.badgeInTransit : isAssigned ? { backgroundColor: '#EFF6FF', borderColor: '#BFDBFE', borderWidth: 1 } : styles.badgePending,
+                    ]}>
+                      <Text style={[
+                        styles.tripBadgeText,
+                        isInTransit ? { color: C.green } : isAssigned ? { color: '#2563EB' } : { color: C.muted },
+                      ]}>
+                        {isInTransit ? 'IN TRANSIT' : isAssigned ? 'ASSIGNED' : 'READY FOR PICKUP'}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* FARMER SUBHEADER ROW */}
+                  <View style={styles.farmerRow}>
+                    <Ionicons name="person-outline" size={14} color={C.muted} style={{ marginRight: 6 }} />
+                    <Text style={styles.farmerNameText}>
+                      {trip.farmerName} • 📞 {trip.farmerPhone || 'N/A'}
+                    </Text>
+                  </View>
+
+                  {/* DIVIDER LINE */}
+                  <View style={styles.cardDivider} />
+
+                  {/* ROUTE TIMELINE VISUALIZER (MATCHES REQUEST SCREEN) */}
+                  <View style={styles.routeContainer}>
+                    {/* PICKUP NODE */}
+                    <View style={styles.routeNodeRow}>
+                      <View style={styles.pickupCircleOuter}>
+                        <View style={styles.pickupCircleInner} />
+                      </View>
+                      <View style={styles.routeTextCol}>
+                        <Text style={styles.routeLabelPickup}>PICKUP</Text>
+                        <Text style={styles.locationTitle}>{trip.pickupLocation}</Text>
+                      </View>
+                    </View>
+
+                    {/* CONNECTING LINE */}
+                    <View style={styles.routeConnectingLine} />
+
+                    {/* DESTINATION NODE */}
+                    <View style={styles.routeNodeRow}>
+                      <View style={styles.destCircleOuter} />
+                      <View style={styles.routeTextCol}>
+                        <Text style={styles.routeLabelDest}>DESTINATION</Text>
+                        <Text style={styles.locationTitle}>{trip.deliveryAddress}</Text>
+                        <Text style={styles.buyerContactSub}>Buyer: {trip.buyerName} • 📞 {trip.buyerPhone || 'N/A'}</Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* HANDLING NOTES BANNER */}
+                  {trip.specialNotes ? (
+                    <View style={styles.specialNotesCard}>
+                      <Ionicons name="information-circle-outline" size={16} color={C.blue} style={{ marginRight: 8 }} />
+                      <Text style={styles.specialNotesText}>{trip.specialNotes}</Text>
+                    </View>
+                  ) : null}
+
+                  {/* ACTION BUTTON */}
+                  <TouchableOpacity
+                    style={[
+                      styles.actionBtn,
+                      isInTransit ? styles.actionBtnDelivered : styles.actionBtnTransit,
+                    ]}
+                    disabled={updatingTripId === trip.id}
+                    onPress={() => handleTripProgression(trip)}
+                    activeOpacity={0.85}
+                  >
+                    {updatingTripId === trip.id ? (
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                    ) : (
+                      <>
+                        <Ionicons name={isInTransit ? 'checkmark-circle-outline' : 'car-outline'}
+                          size={18}
+                          color="#FFFFFF"
+                          style={{ marginRight: 8 }}
+                        />
+                        <Text style={styles.actionBtnText}>
+                          {cleanLabel(isInTransit ? t.actions.markDelivered : t.actions.startTransit)}
+                        </Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+
+                  {/* VIEW LIVE TRACKING BUTTON */}
+                  <TouchableOpacity
+                    style={styles.viewTrackingBtn}
+                    onPress={() => setSelectedTripForTracking(trip)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.viewTrackingBtnText}>
+                      View route & tracking details
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              );
+            })
+          )}
+        </View>
+      </ScrollView>)}
       <SafeAreaView edges={['bottom']} style={styles.navSafe}><View role="tablist" style={styles.nav}>
         {[
           ['home', lang === 'si' ? 'සාරාංශය' : lang === 'ta' ? 'சுருக்கம்' : 'Overview', 'grid-outline'],

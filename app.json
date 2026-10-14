@@ -29,7 +29,13 @@
           "cameraPermission": "The app accesses your camera to allow you to take photos of your produce."
         }
       ],
-      "expo-status-bar"
+      "expo-status-bar",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "GoviLink uses your location to set delivery and pickup coordinates."
+        }
+      ]
     ],
     "ios": {
       "supportsTablet": true

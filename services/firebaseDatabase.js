@@ -90,7 +90,7 @@ const readImageDataUrl = async (uri) => {
         const base64 = value.split(';base64,')[1];
         const mimeType = base64?.startsWith('/9j/') ? 'image/jpeg'
           : base64?.startsWith('iVBORw0KGgo') ? 'image/png'
-            : base64?.startsWith('R0lGOD') ? 'image/gif' : null;
+          : base64?.startsWith('R0lGOD') ? 'image/gif' : null;
         if (mimeType) {
           resolve(`data:${mimeType};base64,${base64}`);
           return;
@@ -278,7 +278,7 @@ export const triggerDeliveryNotification = async (orderId, order, newStatus, ext
     const notificationsRef = collection(db, 'notifications');
     const nowIso = new Date().toISOString();
     const produceTitle = order.produceName || 'Produce Batch';
-    const driverName = extraData.driverName || order.driverName || 'Kamal Perera';
+    const driverName = extraData.driverName || order.driverName || '';
 
     // 1. Notify Buyer
     const buyerNotification = {

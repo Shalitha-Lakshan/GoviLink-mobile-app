@@ -2365,8 +2365,8 @@ export default function AdminHomeScreen({
                   {deliveryFilter === 'pending'
                     ? 'All current farm shipments have been assigned to fleet drivers.'
                     : deliverySearchQuery.trim()
-                      ? `No deliveries match "${deliverySearchQuery}". Try another search.`
-                      : 'No delivery shipments match the selected filter category.'}
+                    ? `No deliveries match "${deliverySearchQuery}". Try another search.`
+                    : 'No delivery shipments match the selected filter category.'}
                 </Text>
                 {deliveryFilter !== 'all' && (
                   <TouchableOpacity
