@@ -7,7 +7,8 @@
     "tunnel": "expo start --tunnel",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "test:driver": "node --test tests/driver/driver-location.test.cjs tests/driver/driver-services.test.cjs tests/driver/driver-screens.test.cjs"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.1.1",
